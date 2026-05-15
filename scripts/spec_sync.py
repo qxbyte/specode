@@ -138,6 +138,50 @@ def _extract_affected_files_section(text: str) -> list[str]:
     return out
 
 
+def _glob_to_regex(pattern: str) -> re.Pattern:
+    """Convert a path glob (with `**` recursive support) into a regex.
+
+    Rules:
+      - `**/`  → zero or more path components (incl. none)
+      - `**`   → any sequence (incl. `/`)
+      - `*`    → any sequence not containing `/`
+      - `?`    → any single non-`/` character
+      - `[...]` → character class (passed through)
+      - other  → literal
+    """
+    out: list[str] = []
+    i = 0
+    n = len(pattern)
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            if i + 1 < n and pattern[i + 1] == "*":
+                if i + 2 < n and pattern[i + 2] == "/":
+                    out.append("(?:.*/)?")
+                    i += 3
+                else:
+                    out.append(".*")
+                    i += 2
+            else:
+                out.append("[^/]*")
+                i += 1
+        elif c == "?":
+            out.append("[^/]")
+            i += 1
+        elif c == "[":
+            j = pattern.find("]", i)
+            if j == -1:
+                out.append(re.escape(c))
+                i += 1
+            else:
+                out.append(pattern[i : j + 1])
+                i = j + 1
+        else:
+            out.append(re.escape(c))
+            i += 1
+    return re.compile("^" + "".join(out) + "$")
+
+
 def matches_tasks_files(target: Path, tasks_files: Iterable[str], project_root: Path) -> bool:
     """Check if `target` matches any entry in tasks_files (literal or glob)."""
     try:
@@ -149,7 +193,7 @@ def matches_tasks_files(target: Path, tasks_files: Iterable[str], project_root: 
         if not entry:
             continue
         if "*" in entry or "?" in entry or "[" in entry:
-            if fnmatch.fnmatch(rel_str, entry):
+            if _glob_to_regex(entry).match(rel_str):
                 return True
         else:
             if rel_str == entry or rel_str == entry.lstrip("./"):

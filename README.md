@@ -1,3 +1,5 @@
+<p align="right"><strong>English</strong> | <a href="./README.zh-CN.md">中文</a></p>
+
 # spec-mode
 
 Specification-driven workflow plugin for **Claude Code** and **CodeBuddy**.

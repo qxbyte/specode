@@ -149,16 +149,42 @@ def handle_pre_tool_use(payload: dict) -> int:
     spec_dir = Path(info["spec_dir"])
     ledger = spec_sync.read_ledger(spec_dir)
     project_root = _resolve_project_root(payload, ledger)
+    current_phase = info.get("current_phase") or "unknown"
+    session_id = info.get("session_id") or _prefer_session_id()
+    slug = info.get("spec_slug") or spec_dir.name
 
     cls = spec_sync.classify_path(target, spec_dir, project_root)
-    if cls == "spec-doc":
-        # Phase 4 will add INV-3 verify-lock here. For now, allow.
-        _audit("PreToolUse", payload, "ok-spec-doc", str(target))
-        return ok()
+
     if cls == "outside":
         _audit("PreToolUse", payload, "ok-outside", str(target))
         return ok()
 
+    if cls == "spec-doc":
+        # INV-3: verify lock ownership before spec-doc writes.
+        decision, info_msg = spec_sync.check_verify_lock(spec_dir, session_id, slug)
+        if decision == "deny":
+            ledger["last_violation"] = {"id": "INV-3", "file": str(target), "at": spec_sync._now()}
+            spec_sync.write_ledger(spec_dir, ledger)
+            _audit("PreToolUse", payload, "deny-INV-3", str(target))
+            return deny(info_msg)
+        _audit("PreToolUse", payload, f"ok-spec-doc[{info_msg}]", str(target))
+        return ok()
+
+    # project-code branch.
+    # INV-6 phase gate first (absolute; freeform does NOT exempt).
+    decision, msg = spec_sync.check_phase_gate(current_phase)
+    if decision == "deny":
+        ledger["last_violation"] = {
+            "id": "INV-6",
+            "phase": current_phase,
+            "file": str(target),
+            "at": spec_sync._now(),
+        }
+        spec_sync.write_ledger(spec_dir, ledger)
+        _audit("PreToolUse", payload, "deny-INV-6", f"phase={current_phase} target={target}")
+        return deny(msg)
+
+    # Then INV-1 (relaxable by freeform).
     decision, msg = spec_sync.check_pre_edit(target, spec_dir, project_root, ledger)
     if decision == "deny":
         ledger["last_violation"] = {"id": "INV-1", "file": str(target), "at": spec_sync._now()}

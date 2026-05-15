@@ -265,6 +265,22 @@ INV1_MESSAGE_TMPL = (
     "  (B) 如确需自由实现, 运行 /spec --freeform 切换至自由阶段。"
 )
 
+INV3_EVICTED_MSG = (
+    "代码-文档同步守卫 (INV-3): 当前 session 已被另一个窗口抢占 (evicted)。\n"
+    "本会话对 spec '{slug}' 的写权限已被回收。请运行 /spec-continue {slug} 重新取回 lock, "
+    "或停止编辑以避免覆盖另一会话的工作。"
+)
+
+INV6_MESSAGE_TMPL = (
+    "代码-文档同步守卫 (INV-6): 当前阶段 [{phase}] 禁止修改源码。\n"
+    "必须先完成 requirements/design/tasks 阶段确认 (推进到 implementation 后才能写代码)。\n"
+    "phase gate 是绝对规则, freeform 模式也不豁免。"
+)
+
+# Phases that forbid source-code edits. Spec-doc edits within these phases
+# are still allowed (and in fact expected).
+PHASES_FORBID_CODE = {"intake", "requirements", "bugfix", "design", "tasks"}
+
 INV2_MESSAGE_TMPL = (
     "代码-文档同步守卫 (INV-2): 本回合修改了 {n} 个源码文件但未同步任何 spec 文档。\n"
     "必须在本回合内完成下列之一:\n"
@@ -298,6 +314,44 @@ def check_pre_edit(
     if ledger.get("freeform_mode"):
         return "ok", ""
     return "deny", INV1_MESSAGE_TMPL.format(target=str(target))
+
+
+def check_phase_gate(current_phase: str) -> tuple[str, str]:
+    """INV-6: forbid source-code edits in pre-implementation phases.
+
+    freeform mode does NOT exempt INV-6 (phase gate is absolute).
+    """
+    if current_phase in PHASES_FORBID_CODE:
+        return "deny", INV6_MESSAGE_TMPL.format(phase=current_phase)
+    return "ok", ""
+
+
+def check_verify_lock(spec_dir: Path, session_id: str, slug: str) -> tuple[str, str]:
+    """INV-3: lock-ownership check before spec-doc write.
+
+    Imports spec_session lazily (heavy module). Returns deny only on 'evicted';
+    other non-ok statuses (not_held / stale_lock) are allowed with a soft signal
+    so existing pre-Phase-4 specs without a lock keep working.
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import spec_session  # type: ignore
+    except Exception as e:
+        return "ok", f"verify-lock-import-failed: {e}"
+
+    try:
+        result = spec_session._verify(spec_dir, session_id)
+    except SystemExit as e:
+        # spec_session raises SystemExit for missing config; treat as "no lock model"
+        return "ok", f"verify-lock-skipped: {e}"
+    except Exception as e:
+        return "ok", f"verify-lock-error: {e}"
+
+    status = result.get("status")
+    if status == "evicted":
+        return "deny", INV3_EVICTED_MSG.format(slug=slug)
+    # status in {"ok", "not_held", "stale_lock"} -> allow.
+    return "ok", status or ""
 
 
 def check_stop(ledger: dict) -> list[dict]:

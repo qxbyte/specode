@@ -24,34 +24,59 @@ INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
 ## Architecture
 
 ```
-.claude-plugin/plugin.json  ← Claude Code / CodeBuddy plugin manifest
-hooks/hooks.json            ← 6 event handlers with shell short-circuit on sentinel
-hooks/hooks-probe.json      ← diagnostic probe (swap in for re-verification)
-skills/spec-mode/           ← skill content (SKILL.md + references)
-commands/                   ← /spec, /continue, /status, /end
-scripts/
-  spec_guard.py             ← hook entry; dispatches to handlers; audit log
-  spec_state.py             ← read-only state probe + sentinel + Claude-session record
-  spec_sync.py              ← INV-1/2/3/4/6 logic; ledger; phase gate; glob matcher
-  spec_session.py           ← (existing) lock + phase + active-pointer model
-  spec_init.py / spec_lint.py / spec_status.py / spec_choice.py / spec_vault.py
-adapters/codebuddy/         ← verified contract + re-verification procedure
-tests/                      ← 19 pytest cases (unit + integration)
-state/                      ← runtime data (gitignored)
+.claude-plugin/marketplace.json   ← single-plugin marketplace manifest
+plugins/spec-mode/
+  .claude-plugin/plugin.json      ← plugin manifest
+  hooks/hooks.json                ← 6 event handlers with shell short-circuit on sentinel
+  hooks/hooks-probe.json          ← diagnostic probe (swap in for re-verification)
+  skills/spec-mode/               ← skill content (SKILL.md + references)
+  commands/                       ← /spec, /continue, /status, /end
+  scripts/
+    spec_guard.py                 ← hook entry; dispatches to handlers; audit log
+    spec_state.py                 ← read-only state probe + sentinel + Claude-session record
+    spec_sync.py                  ← INV-1/2/3/4/6 logic; ledger; phase gate; glob matcher
+    spec_session.py               ← lock + phase + active-pointer model
+    spec_init.py / spec_lint.py / spec_status.py / spec_choice.py / spec_vault.py
+  adapters/codebuddy/             ← verified contract + re-verification procedure
+  tests/                          ← 19 pytest cases (unit + integration)
 ```
 
 ## Install
 
+### From GitHub (recommended)
+
 ```sh
 # Claude Code
-claude --plugin-dir /path/to/spec-mode
+claude plugin marketplace add https://github.com/qxbyte/spec-mode
+claude plugin install spec-mode@spec-mode
 
-# CodeBuddy (verified on 2.97.1; see adapters/codebuddy/README.md)
-codebuddy --plugin-dir /path/to/spec-mode
+# CodeBuddy (verified on 2.97.1)
+codebuddy plugin marketplace add https://github.com/qxbyte/spec-mode
+codebuddy plugin install spec-mode@spec-mode
 ```
 
-Both harnesses auto-discover `.claude-plugin/plugin.json` and load
-`hooks/hooks.json`, `skills/`, and `commands/`. Once running:
+Both harnesses clone the marketplace, locate the plugin under
+`plugins/spec-mode/`, and auto-load `hooks/`, `skills/`, `commands/`.
+Updates land via `claude plugin update spec-mode` or `claude plugin
+marketplace update spec-mode`.
+
+### One-shot session (Claude Code only)
+
+```sh
+claude --plugin-url https://github.com/qxbyte/spec-mode/archive/refs/heads/main.zip
+```
+
+Loads the plugin for the current session only; nothing persists.
+
+### Local development
+
+```sh
+git clone https://github.com/qxbyte/spec-mode.git
+claude    --plugin-dir ./spec-mode/plugins/spec-mode
+codebuddy --plugin-dir ./spec-mode/plugins/spec-mode
+```
+
+Once loaded:
 
 ```
 /help                              # list /spec-mode:* commands
@@ -65,14 +90,14 @@ Hook activity logs to `~/.spec-mode/audit/<date>.log` (UTC).
 Inside a Claude Code session with the plugin loaded:
 
 ```
-/spec-mode:start --persist <requirement>    # start persistent spec session
+/spec-mode:spec --persist <requirement>     # start persistent spec session
 /spec-mode:continue [slug]                  # resume / switch
 /spec-mode:status                           # show current session
 /spec-mode:end                              # end persistent session
 
-/spec-mode:start --freeform                 # relax INV-1 (INV-2 still enforced)
-/spec-mode:start --strict                   # restore INV-1
-/spec-mode:start --sync-status              # ledger / pending sync / last violation
+/spec-mode:spec --freeform                  # relax INV-1 (INV-2 still enforced)
+/spec-mode:spec --strict                    # restore INV-1
+/spec-mode:spec --sync-status               # ledger / pending sync / last violation
 ```
 
 Once a spec is active:
@@ -131,7 +156,7 @@ re-verification procedure if a future release breaks something.
 
 ```sh
 python3 -m pip install --user pytest
-python3 -m pytest tests/ -v
+python3 -m pytest plugins/spec-mode/tests/ -v
 ```
 
 19 cases covering INV-1..INV-6 paths, freeform behavior, lock states,
@@ -146,6 +171,7 @@ phase gate matrix, and glob/literal tasks_files matching.
 - Phase 5: CodeBuddy static adapter (env var fallback + open items doc) ✓
 - Phase 6: pytest suite + docs + old-skill stub ✓
 - Phase 7: live CodeBuddy verification (2.97.1, all hooks confirmed) ✓
+- Phase 8: self-marketplace + GitHub install via `plugin marketplace add` ✓
 
 ## License
 

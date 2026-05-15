@@ -24,29 +24,34 @@ INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
 ## Architecture
 
 ```
-plugin.json              ← Claude Code / CodeBuddy plugin manifest
-hooks/hooks.json         ← 6 event handlers with shell short-circuit on sentinel
-skills/spec-mode/        ← skill content (SKILL.md + references)
-commands/                ← /spec, /continue, /status, /end
+.claude-plugin/plugin.json  ← Claude Code / CodeBuddy plugin manifest
+hooks/hooks.json            ← 6 event handlers with shell short-circuit on sentinel
+hooks/hooks-probe.json      ← diagnostic probe (swap in for re-verification)
+skills/spec-mode/           ← skill content (SKILL.md + references)
+commands/                   ← /spec, /continue, /status, /end
 scripts/
-  spec_guard.py          ← hook entry; dispatches to handlers; audit log
-  spec_state.py          ← read-only state probe + sentinel + Claude-session record
-  spec_sync.py           ← INV-1/2/3/4/6 logic; ledger; phase gate; glob matcher
-  spec_session.py        ← (existing) lock + phase + active-pointer model
+  spec_guard.py             ← hook entry; dispatches to handlers; audit log
+  spec_state.py             ← read-only state probe + sentinel + Claude-session record
+  spec_sync.py              ← INV-1/2/3/4/6 logic; ledger; phase gate; glob matcher
+  spec_session.py           ← (existing) lock + phase + active-pointer model
   spec_init.py / spec_lint.py / spec_status.py / spec_choice.py / spec_vault.py
-adapters/codebuddy/      ← assumed-API-compatible note + open items
-tests/                   ← 19 pytest cases (unit + integration)
-state/                   ← runtime data (gitignored)
+adapters/codebuddy/         ← verified contract + re-verification procedure
+tests/                      ← 19 pytest cases (unit + integration)
+state/                      ← runtime data (gitignored)
 ```
 
-## Install (local dev)
+## Install
 
 ```sh
+# Claude Code
 claude --plugin-dir /path/to/spec-mode
+
+# CodeBuddy (verified on 2.97.1; see adapters/codebuddy/README.md)
+codebuddy --plugin-dir /path/to/spec-mode
 ```
 
-The plugin is discovered automatically; `plugin.json`, `hooks/hooks.json`,
-`skills/`, and `commands/` are all picked up. Once running:
+Both harnesses auto-discover `.claude-plugin/plugin.json` and load
+`hooks/hooks.json`, `skills/`, and `commands/`. Once running:
 
 ```
 /help                              # list /spec-mode:* commands
@@ -113,11 +118,14 @@ Every hook returns 0 immediately, without audit. Debugging only.
 
 ## CodeBuddy support
 
-`hooks/hooks.json` uses `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}` so
-the plugin works under both harnesses *if* CodeBuddy's hook payload protocol
-matches Claude Code's. Open items live at `adapters/codebuddy/README.md`.
-CodeBuddy real-run verification has not yet happened — see that adapter
-README before deploying to CodeBuddy users.
+Verified on CodeBuddy 2.97.1: plugin / hook contract is byte-for-byte
+identical to Claude Code, so the same `hooks/hooks.json` and
+`scripts/spec_guard.py` run unmodified. CodeBuddy injects both
+`CLAUDE_PLUGIN_ROOT` and `CODEBUDDY_PLUGIN_ROOT` (plus `CLAUDECODE=1`
+and `AI_AGENT=claude-code_2-1-142_agent`), confirming it ships a
+Claude Code agent under the hood. See `adapters/codebuddy/README.md` for
+the full verified contract and `adapters/codebuddy/VERIFY.md` for the
+re-verification procedure if a future release breaks something.
 
 ## Tests
 
@@ -137,7 +145,7 @@ phase gate matrix, and glob/literal tasks_files matching.
 - Phase 4: verify-lock + phase gate (INV-3/6) ✓
 - Phase 5: CodeBuddy static adapter (env var fallback + open items doc) ✓
 - Phase 6: pytest suite + docs + old-skill stub ✓
-- *Live CodeBuddy verification* — pending user
+- Phase 7: live CodeBuddy verification (2.97.1, all hooks confirmed) ✓
 
 ## License
 

@@ -6,7 +6,7 @@
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"
   },
-  "homepage": "https://github.com/qxbyte/spec-mode-plugin",
+  "homepage": "https://github.com/qxbyte/spec-mode",
   "license": "MIT",
   "keywords": ["spec", "specification", "workflow", "hooks", "code-doc-sync"]
 }

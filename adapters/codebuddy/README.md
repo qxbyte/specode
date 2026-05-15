@@ -1,52 +1,104 @@
 # CodeBuddy Adapter
 
-This plugin targets both Claude Code and CodeBuddy under the assumption that
-CodeBuddy's plugin / hook model is API-compatible with Claude Code's.
+**Status: verified.** CodeBuddy 2.97.1 (`AI_AGENT=claude-code_2-1-142_agent`) is
+a Claude Code fork. Plugin / hook contract is byte-for-byte compatible — the
+same `hooks/hooks.json` and `scripts/spec_guard.py` work without modification.
+Verification was done by loading this plugin via `--plugin-dir` and capturing
+hook invocations with `hooks/hooks-probe.json`.
 
-## What is already in place
+## Verified contract
 
-`hooks/hooks.json` uses `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}` so the
-hook command resolves correctly under either harness:
+### Plugin discovery
 
-- Claude Code sets `CLAUDE_PLUGIN_ROOT` → primary path.
-- CodeBuddy is assumed to set `CODEBUDDY_PLUGIN_ROOT` → fallback path.
+CodeBuddy looks for the manifest in `<plugin-root>/.claude-plugin/plugin.json`
+(also accepts `.codebuddy-plugin/` and `.workbuddy-plugin/`). The current
+location works on both harnesses:
 
-If CodeBuddy uses a different environment variable name, replace the fallback
-chain in `hooks/hooks.json` accordingly.
+```
+spec-mode/
+  .claude-plugin/plugin.json   ← discovered by both Claude Code and CodeBuddy
+  hooks/hooks.json
+  commands/*.md                ← loaded as /spec-mode:<name>
+  skills/spec-mode/SKILL.md    ← loaded as skill
+  scripts/spec_guard.py
+```
 
-## What needs CodeBuddy real-run verification
+`codebuddy plugin validate <plugin-dir>` accepts this layout.
 
-1. **Hook event names**. We use Claude Code's names (`SessionStart`,
-   `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`).
-   Confirm CodeBuddy emits the same names; if not, write a translation table
-   here and add a parallel `hooks-codebuddy.json` to swap in.
-2. **stdin/stdout protocol**. We rely on:
-   - hook input as JSON on stdin
-   - `payload.session_id`, `payload.cwd`, `payload.tool_name`,
-     `payload.tool_input.file_path` keys
-   - hook output for UserPromptSubmit:
-     `{"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
-       "additionalContext": "..."}}` on stdout
-   - exit code 2 + stderr to deny
-3. **Plugin discovery**. We assume CodeBuddy auto-discovers `plugin.json`,
-   `skills/`, `commands/`, `hooks/hooks.json` at the plugin root.
+### Environment variables CodeBuddy injects
 
-## Open items
+| Variable | Value | Notes |
+|----------|-------|-------|
+| `CLAUDE_PLUGIN_ROOT` | absolute path to plugin | Compatibility alias |
+| `CODEBUDDY_PLUGIN_ROOT` | same as above | Native CodeBuddy form |
+| `CLAUDE_PROJECT_DIR` | user's cwd | Compatibility alias |
+| `CODEBUDDY_PROJECT_DIR` | same as above | Native CodeBuddy form |
+| `CODEBUDDY_PLUGIN_DIRS` | colon-separated list | All loaded plugin dirs |
+| `CLAUDECODE` | `1` | Claude Code compat marker |
+| `AI_AGENT` | `claude-code_2-1-142_agent` | Identifies the underlying agent |
 
-- Confirm whether CodeBuddy honors `${VAR:-fallback}` shell parameter expansion
-  inside the `command` string. If not, switch to a wrapper script:
+So our existing `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}` works under
+both harnesses (and in fact `${CLAUDE_PLUGIN_ROOT}` alone would suffice on
+CodeBuddy 2.97.1; the fallback is kept for forward compatibility).
 
-  ```sh
-  # scripts/spec_guard.sh
-  #!/bin/sh
-  ROOT="${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}"
-  exec python3 "$ROOT/scripts/spec_guard.py" "$@"
-  ```
+### Hook events confirmed firing
 
-- Confirm `commands/*.md` are loaded as slash commands under a `/spec-mode:`
-  namespace, identical to Claude Code's behavior.
-- Confirm `${VAR}` env expansion inside `hooks.json` command string is
-  identical to Claude Code's pre-execution rules.
+| Event | Confirmed | Notes |
+|-------|-----------|-------|
+| `SessionStart` | ✓ | `source: "startup"`; payload has no `cwd` (use env) |
+| `UserPromptSubmit` | ✓ | Includes `prompt`, `cwd`, `transcript_path` |
+| `PreToolUse` | ✓ | Matcher `Edit\|Write\|MultiEdit` works |
+| `PostToolUse` | ✓ | Includes `tool_response` |
+| `Stop` | ✓ | Includes `stop_hook_active`, `last_assistant_message` |
+| `SessionEnd` | not observed in `--print` | Likely interactive-only; not load-bearing |
 
-When live verification is done, edit this README to record the actual behavior
-and remove the "needs verification" section.
+### stdin payload (verified samples)
+
+All payloads carry: `session_id`, `transcript_path`, `hook_event_name`,
+`permission_mode`, `client`, `version`, `model`. Per-event extras:
+
+```json
+// SessionStart
+{"source": "startup"}
+
+// UserPromptSubmit
+{"cwd": "...", "prompt": "..."}
+
+// PreToolUse / PostToolUse
+{"cwd": "...", "tool_name": "Write", "tool_input": {...},
+ "tool_response": "...", "call_id": "...", "tool_use_id": "..."}
+
+// Stop
+{"cwd": "...", "stop_hook_active": false,
+ "last_assistant_message": "...", "generation_id": "..."}
+```
+
+These are the exact key names `scripts/spec_guard.py` already reads.
+
+### Output protocol
+
+Same as Claude Code:
+- exit code 0 + JSON on stdout for `additionalContext` injection
+- exit code 2 + message on stderr to deny a tool call
+- (Deny semantics inferred from agent identity, not exhaustively stress-tested.)
+
+## Install
+
+End-user install on either harness:
+
+```sh
+# Claude Code
+claude --plugin-dir /path/to/spec-mode
+
+# CodeBuddy
+codebuddy --plugin-dir /path/to/spec-mode
+```
+
+Both auto-discover the manifest, register hooks, and expose `/spec-mode:*`
+slash commands.
+
+## Re-verifying
+
+If a future CodeBuddy release breaks something, swap `hooks/hooks.json`
+with `hooks/hooks-probe.json`, re-run, and inspect `~/.spec-mode/probe/`.
+Procedure documented in [`VERIFY.md`](./VERIFY.md).

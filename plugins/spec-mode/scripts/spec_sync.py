@@ -29,7 +29,6 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import re
@@ -222,10 +221,6 @@ def classify_path(target: Path, spec_dir: Path, project_root: Optional[Path]) ->
     if project_root and is_under(target, project_root):
         return "project-code"
     return "outside"
-
-
-def is_doc_filename(target: Path) -> bool:
-    return target.name in SPEC_DOC_FILENAMES
 
 
 # --- ledger ----------------------------------------------------------------

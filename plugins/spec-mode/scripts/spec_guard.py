@@ -30,11 +30,60 @@ AUDIT_DIR = Path(
     or os.path.expanduser("~/.spec-mode/audit")
 )
 
+# Per-file size cap. When today's daily log exceeds this, it gets truncated
+# in place (keeping the most recent half). No cross-file pruning — older
+# daily files are left alone. At ~256 bytes/record this holds ~80k entries
+# per day, plenty of headroom for normal use; the cap exists to bound
+# pathological growth (e.g. an error loop emitting tracebacks).
+AUDIT_MAX_BYTES = int(
+    os.environ.get("SPEC_MODE_AUDIT_MAX_BYTES") or 20 * 1024 * 1024
+)
+
+_truncate_checked = False
+
+
+def _maybe_truncate(log_file: Path) -> None:
+    """If log_file is over the cap, rewrite it keeping only the tail half.
+
+    Called once per process at first _audit() write. Safe under concurrent
+    writers from other hook processes — worst case is a lost record at the
+    rewrite boundary, which is acceptable for an advisory audit log.
+    """
+    try:
+        size = log_file.stat().st_size
+    except OSError:
+        return
+    if size <= AUDIT_MAX_BYTES:
+        return
+    keep = AUDIT_MAX_BYTES // 2
+    try:
+        with log_file.open("rb") as f:
+            f.seek(-keep, 2)
+            tail = f.read()
+        nl = tail.find(b"\n")
+        if nl >= 0:
+            tail = tail[nl + 1:]
+        marker = (
+            json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "event": "_truncate",
+                "decision": "ok",
+                "msg": f"prev_size={size} kept_bytes={len(tail)}",
+            }, ensure_ascii=False) + "\n"
+        ).encode("utf-8")
+        log_file.write_bytes(marker + tail)
+    except OSError:
+        pass
+
 
 def _audit(event: str, payload: dict, decision: str, msg: str = "") -> None:
+    global _truncate_checked
     try:
         AUDIT_DIR.mkdir(parents=True, exist_ok=True)
         log_file = AUDIT_DIR / f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}.log"
+        if not _truncate_checked:
+            _truncate_checked = True
+            _maybe_truncate(log_file)
         record = {
             "ts": datetime.now(timezone.utc).isoformat(),
             "event": event,

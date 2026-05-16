@@ -8,8 +8,6 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-import spec_sync
-
 
 def make_edit_payload(target, project_root, session_id="test-sess"):
     return {

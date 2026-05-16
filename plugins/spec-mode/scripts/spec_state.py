@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,10 @@ USER_CONFIG = Path.home() / ".config/spec-mode/config.json"
 SPEC_MODE_DIR = Path.home() / ".spec-mode"
 SESSIONS_DIR = SPEC_MODE_DIR / "sessions"
 ANY_ACTIVE_SENTINEL = SPEC_MODE_DIR / ".any-active"
+AUDIT_DIR = Path(
+    os.environ.get("SPEC_MODE_AUDIT_DIR")
+    or SPEC_MODE_DIR / "audit"
+)
 
 
 def now_iso() -> str:
@@ -162,6 +167,22 @@ def clear_claude_session(claude_session_id: str) -> None:
         pass
 
 
+# --- audit log readers ------------------------------------------------------
+
+def _audit_log_for(date: Optional[str]) -> Path:
+    d = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return AUDIT_DIR / f"{d}.log"
+
+
+def _fmt_audit_line(rec: dict) -> str:
+    ts = rec.get("ts") or ""
+    event = rec.get("event") or ""
+    decision = rec.get("decision") or ""
+    tool = rec.get("tool") or "-"
+    msg = rec.get("msg") or ""
+    return f"{ts}  {event:<18} {decision:<24} {tool:<10} {msg}"
+
+
 # --- CLI -------------------------------------------------------------------
 
 def _cmd_status(_args: argparse.Namespace) -> int:
@@ -263,6 +284,93 @@ def _cmd_demo_deactivate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit_tail(args: argparse.Namespace) -> int:
+    path = _audit_log_for(args.date)
+    if not path.exists():
+        print(f"(no audit log at {path})", file=sys.stderr)
+        return 0
+    raw = "json" if args.json else "text"
+    with path.open("r", encoding="utf-8") as f:
+        lines = f.readlines()
+    for line in lines[-args.n:]:
+        line = line.rstrip("\n")
+        if not line:
+            continue
+        if raw == "json":
+            print(line)
+            continue
+        try:
+            print(_fmt_audit_line(json.loads(line)))
+        except json.JSONDecodeError:
+            print(line)
+    if not args.follow:
+        return 0
+    with path.open("r", encoding="utf-8") as f:
+        f.seek(0, 2)
+        try:
+            while True:
+                line = f.readline()
+                if not line:
+                    time.sleep(0.5)
+                    continue
+                line = line.rstrip("\n")
+                if raw == "json":
+                    print(line, flush=True)
+                else:
+                    try:
+                        print(_fmt_audit_line(json.loads(line)), flush=True)
+                    except json.JSONDecodeError:
+                        print(line, flush=True)
+        except KeyboardInterrupt:
+            return 0
+
+
+def _cmd_audit_summary(args: argparse.Namespace) -> int:
+    if not AUDIT_DIR.exists():
+        print(f"(no audit dir at {AUDIT_DIR})", file=sys.stderr)
+        return 0
+    files = sorted(AUDIT_DIR.glob("*.log"))
+    if args.days and args.days > 0:
+        files = files[-args.days:]
+    by_event: dict[str, int] = {}
+    by_decision: dict[str, int] = {}
+    deny_lines: list[str] = []
+    total = 0
+    for fp in files:
+        try:
+            content = fp.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total += 1
+            ev = rec.get("event") or "?"
+            dec = rec.get("decision") or "?"
+            by_event[ev] = by_event.get(ev, 0) + 1
+            by_decision[dec] = by_decision.get(dec, 0) + 1
+            if dec.startswith("deny") and len(deny_lines) < args.show_deny:
+                deny_lines.append(_fmt_audit_line(rec))
+    print(f"audit summary: {total} records across {len(files)} log file(s)")
+    if files:
+        print(f"  range: {files[0].stem} → {files[-1].stem}")
+    print("\nby event:")
+    for k, v in sorted(by_event.items(), key=lambda x: (-x[1], x[0])):
+        print(f"  {v:7d}  {k}")
+    print("\nby decision:")
+    for k, v in sorted(by_decision.items(), key=lambda x: (-x[1], x[0])):
+        print(f"  {v:7d}  {k}")
+    if deny_lines:
+        print(f"\nrecent denies (up to {args.show_deny}):")
+        for line in deny_lines[-args.show_deny:]:
+            print(f"  {line}")
+    return 0
+
+
 def main(argv) -> int:
     p = argparse.ArgumentParser(prog="spec_state.py")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -276,12 +384,22 @@ def main(argv) -> int:
     sd = sub.add_parser("demo-deactivate", help="(testing) End the fake spec session")
     sd.add_argument("--root")
     sd.add_argument("--session")
+    at = sub.add_parser("audit-tail", help="Pretty-print the last N lines of an audit log")
+    at.add_argument("-n", type=int, default=50, help="lines to show (default 50)")
+    at.add_argument("--date", help="YYYY-MM-DD UTC; default today")
+    at.add_argument("--follow", action="store_true", help="keep streaming new entries")
+    at.add_argument("--json", action="store_true", help="output raw JSON lines")
+    asum = sub.add_parser("audit-summary", help="Aggregate event/decision counts")
+    asum.add_argument("--days", type=int, default=7, help="how many most-recent daily logs to scan (default 7; 0=all)")
+    asum.add_argument("--show-deny", type=int, default=10, help="how many recent deny entries to include (default 10)")
     args = p.parse_args(argv)
     return {
         "status": _cmd_status,
         "sync-sentinel": _cmd_sync_sentinel,
         "demo-activate": _cmd_demo_activate,
         "demo-deactivate": _cmd_demo_deactivate,
+        "audit-tail": _cmd_audit_tail,
+        "audit-summary": _cmd_audit_summary,
     }[args.cmd](args)
 
 

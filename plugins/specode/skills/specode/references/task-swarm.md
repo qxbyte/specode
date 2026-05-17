@@ -28,14 +28,16 @@ task-swarm 模式把任务派发给**不同角色的独立子 agent**：
 
 ## 角色到 subagent 的映射
 
-| @role | subagent_type | 它能用的工具 |
-| --- | --- | --- |
-| `coder` | `task-swarm-coder` | Bash, Read, Edit, Write, Grep, Glob |
-| `reviewer` | `task-swarm-reviewer` | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
-| `validator` | `task-swarm-validator` | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
-| `planner` | `task-swarm-planner` | Bash, Read, Grep, Glob, Write |
+| @role | subagent_type | 职责 | 它能用的工具 |
+| --- | --- | --- | --- |
+| `coder` | `specode:task-swarm-coder` | 写 / 改业务代码，按子任务清单顺序完成阶段下所有叶子；修复轮按 review.md 的 P0 清单定向修补 | Bash, Read, Edit, Write, Grep, Glob |
+| `reviewer` | `specode:task-swarm-reviewer` | 评审上游 coder 的产出，输出 P0/P1/P2 分级担忧；阶段评审下不能 approve 0 P0 而不举证；连续两轮同 P0 自报死循环 | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
+| `validator` | `specode:task-swarm-validator` | 跑测试 / lint / 端到端检查，给 pass/fail 判定；fail 时**必须**输出"给 coder 的修复指引"（文件 + 位置 + 做法 + 涉及需求） | Bash, Read, Grep, Glob **(无 Edit/Write！)** |
+| `planner` | `specode:task-swarm-planner` | 把粗粒度需求拆成 task-swarm 风格的 tasks.md（叶子+检查点+三角色）；输出到 outbox/plan.md 供 spec-mode 主会话审阅采纳；**不写实现代码** | Bash, Read, Grep, Glob, Write |
 
 **reviewer 和 validator 故意没有 Edit/Write** —— 这是工具层面的物理隔离，让"想改也改不了"。
+
+> `planner` 角色在 specode + task-swarm 集成流程中**通常用不到**——specode 自身的"tasks 阶段"已经在主会话内完成了拆分。planner 主要服务两种边缘场景：(1) 用户绕过 specode 直接给一份粗粒度需求让 task-swarm 接管；(2) specode tasks.md 中某个一级阶段拆分粒度太粗，coder 主动反馈"需要再拆"时主会话可以 fork planner 单独处理这个阶段。
 
 ## 按一级阶段聚合派发（核心设计）
 
@@ -87,6 +89,22 @@ specode tasks.md 的天然层级：
 启发式默认（无标签时）：
 - `[*]` 可选任务 → 自动 coder-only
 - 没有 `_需求：` traceability 的辅助任务 → 自动 coder-only
+
+#### 优先级冲突处理
+
+当**显式标签**与**启发式默认**冲突，或**多个显式标签**同时出现时，按以下规则裁决（高 → 低）：
+
+| 优先级 | 规则 | 例 |
+| --- | --- | --- |
+| 1 | 显式 `@swarm:skip` **总是赢**——无论其他标签或启发式怎么说 | `- [*] 1.1 xxx @swarm:full @swarm:skip` → 跳过 |
+| 2 | 显式 `@swarm:full` 优先于 `@swarm:coder-only` | `- [ ] 1.1 xxx @swarm:full @swarm:coder-only` → full（全角色）|
+| 3 | 显式 `@swarm:coder-only` 优先于启发式 | `- [ ] 1.1 xxx @swarm:coder-only` (含 `_需求：1.1_`) → coder-only（用户显式声明优先）|
+| 4 | 显式 `@swarm:full` 优先于启发式 | `- [*] 1.1 xxx @swarm:full` → full（用户明确要全角色覆盖可选任务）|
+| 5 | 都没显式标签 → 跑启发式（`[*]` → coder-only；无 `_需求：` → coder-only；其他默认按阶段聚合）| `- [ ] 1.1 xxx _需求：1.1_` → 按阶段聚合 |
+
+**主编排器解析时**：每个叶子任务先扫所有 `@swarm:*` 标签，去重后按上表裁决；启发式只在标签集为空时启用。冲突时**不要**报错，但在 orchestrator.log 留一行 `[INFO] T1.1 标签冲突 @swarm:full + @swarm:coder-only → 采用 full`，便于排查为什么某个任务的派发跟用户预期不一致。
+
+**遇到无效标签**（如 `@swarm:strict` 拼错）：当成无标签处理，并在 orchestrator.log 警告一条 `[WARN] T1.1 无效 @swarm: 标签 "strict"，已忽略`。
 
 ## 编排步骤（主会话必须按顺序执行）
 
@@ -188,37 +206,66 @@ done
 ```
 Task(
   description="阶段 N coder: <标题简称>",
-  subagent_type="task-swarm-coder",
+  subagent_type="specode:task-swarm-coder",
   prompt=<上述构造的 prompt>
 )
 ```
 
 #### 4d. coder 结束后立刻派 reviewer
 
-把 coder 的 outbox 中继到 reviewer 的 inbox，构造 reviewer prompt（明确告知"这是阶段批评审，按子任务分节给担忧，必须输出 P0/P1/P2 分级"），`subagent_type="task-swarm-reviewer"`。
+把 coder 的 outbox 中继到 reviewer 的 inbox，构造 reviewer prompt（明确告知"这是阶段批评审，按子任务分节给担忧，必须输出 P0/P1/P2 分级"），`subagent_type="specode:task-swarm-reviewer"`。
 
 #### 4e. **循环：reviewer P0 修复轮**（核心）
 
 每个阶段不是跑一遍就结束，而是 `coder → reviewer → 修复 coder → 复审 reviewer → ...` 循环到 reviewer **无 P0**。
 
 ```python
-# 伪代码（主编排器在脑中跑）
+# 伪代码（主编排器在脑中跑）。类型用 Python typing 风格标注，便于实现时对照。
+from typing import Literal
+from dataclasses import dataclass
+
+@dataclass
+class ReviewResult:
+    review_md: str                         # outbox/review.md 全文
+    p0_count: int                          # "## P0" 节非 "(none)" 的条目数
+    loop_warning: bool                     # 是否含 "## 进入死循环风险"
+
+@dataclass
+class ValidationResult:
+    validation_md: str                     # outbox/validation.md 全文
+    judgment: Literal["pass", "fail"]
+    loop_warning: bool
+
+def fork_reviewer(
+    stage_num: int,                        # 一级阶段编号，如 1
+    round: int,                            # 当前轮号 (1=初轮, 2=复审, ...)
+    prev_review: str | None = None,        # 上一轮 review.md（修复轮才有）
+) -> ReviewResult: ...
+
+def fork_coder_fix_round(
+    stage_num: int,
+    round: int,
+    review: ReviewResult,                  # 这一轮 reviewer 的输出
+) -> None: ...                             # 产物落到 stage-N-coder-r<round>/outbox/
+
+# --- reviewer P0 循环 ---
 round = 1
-MAX_ROUNDS = 3          # 默认上限，可被 /task-swarm --max-rounds N 覆盖
+MAX_ROUNDS = 3                             # 默认上限，可被 /task-swarm --max-rounds N 覆盖
+prev_review = None
 
 while True:
-    review = fork_reviewer(round)         # 见 4d
-    p0_count = count_p0_in(review)
-    if p0_count == 0:
+    review = fork_reviewer(stage_num, round, prev_review)
+    if review.p0_count == 0:
         break                              # ✅ 进入 4f validator
-    if "进入死循环风险" in review:         # reviewer 自报"我跟上轮提的一模一样"
+    if review.loop_warning:                # reviewer 自报"我跟上轮提的一模一样"
         mark_stage_failed("reviewer 死循环")
         return
     if round >= MAX_ROUNDS:
         mark_stage_failed(f"已 {round} 轮仍有 P0")
         return
     round += 1
-    fork_coder_fix_round(round, review)    # 进入修复轮，见下
+    fork_coder_fix_round(stage_num, round, review)
+    prev_review = review.review_md
 ```
 
 **派发修复轮 coder**：
@@ -250,23 +297,42 @@ cp "$RUN_DIR/agents/stage-${STAGE_NUM}-reviewer${REV_SUFFIX}/outbox/review.md" \
 reviewer 全清后才派 validator。validator 判 fail 也走类似循环：
 
 ```python
+def fork_validator(
+    stage_num: int,
+    round: int,
+    prev_validation: str | None = None,
+) -> ValidationResult: ...
+
+def fork_coder_fix_round_for_validator(
+    stage_num: int,
+    round: int,
+    val: ValidationResult,                 # validator 输出，含"给 coder 的修复指引"
+) -> None: ...
+
+def fork_reviewer_quick_check(
+    stage_num: int,
+    round: int,
+    coder_diff_files: list[str],           # 仅本轮 coder 改的文件，缩窄评审面
+) -> ReviewResult: ...
+
 round = 1
+prev_validation = None
+
 while True:
-    val = fork_validator(round)
+    val = fork_validator(stage_num, round, prev_validation)
     if val.judgment == "pass":
         break                                          # ✅ 阶段完成
-    if "进入死循环风险" in val:
+    if val.loop_warning:
         mark_stage_failed("validator 死循环")
         return
     if round >= MAX_ROUNDS:
         mark_stage_failed(f"validator 已 {round} 轮仍 fail")
         return
     round += 1
-    # validator fail 后回 coder，coder inbox 是 validation.md（含修复指引）
-    fork_coder_fix_round_for_validator(round, val)
-    # coder 修完后**必须**再走一遍 reviewer（轻量 review，可以是同一轮号）
-    # 然后才回到 validator
-    fork_reviewer_quick_check(round, ...)
+    fork_coder_fix_round_for_validator(stage_num, round, val)
+    # 修后必须再过一次 reviewer（防引入回归），只看本轮 coder 改的文件
+    fork_reviewer_quick_check(stage_num, round, coder_diff_files=val.fix_files)
+    prev_validation = val.validation_md
 ```
 
 注意：validator fail 后的 coder 修复轮**必须再过一次 reviewer**——避免 coder 改坏新地方却没人发现。reviewer 在这种"checkpoint 复审"模式下只看 validator 失败点附近的改动，不重新评全阶段。
@@ -288,7 +354,7 @@ specode 的"检查点"任务直接对应 validator。它没有先跑的 reviewer
 ```
 Task(
   description="检查点 N: <标题>",
-  subagent_type="task-swarm-validator",
+  subagent_type="specode:task-swarm-validator",
   prompt=<包含上游 coder 与 reviewer 全部产物的 inbox 列表 + 运行命令清单>
 )
 ```
@@ -382,7 +448,7 @@ subagent 工作区: .task-swarm/runs/<RUN_ID>/
 ## 关键原则
 
 1. **主会话是编排器，不是执行者** — 主会话自己不写业务代码、不做评审。所有任务必须 fork subagent。
-2. **每个 fork 必须用对应 subagent_type** — `task-swarm-coder` / `-reviewer` / `-validator` / `-planner`。不要 fall back 到 `general-purpose`。
+2. **每个 fork 必须用对应 subagent_type**（**必须**带 `specode:` plugin 前缀，否则 Claude Code 报 "Agent type not found"）— `specode:task-swarm-coder` / `specode:task-swarm-reviewer` / `specode:task-swarm-validator` / `specode:task-swarm-planner`。不要 fall back 到 `general-purpose`。
 3. **subagent 之间无共享上下文** — 它们只能看自己 inbox 里的文件。主会话负责中继 outbox → inbox。
 4. **subagent 绝不碰 spec 目录** — spec 文档锁仍由主会话持有，subagent 只动业务代码。
 5. **每阶段回写 tasks.md 都走 verify-lock** — 防止跨窗口接管时数据撕裂。

@@ -9,10 +9,10 @@ argument-hint: "[<spec-dir>/tasks.md] [--parallel N] [--max-rounds N] [--dry-run
 
 1. **必须先读取 `references/task-swarm.md`** 获取完整编排步骤、subagent 协议、回写规则。
 2. **必须使用 Task 工具 fork 专用 subagent**：
-   - `subagent_type="task-swarm-coder"` 给写代码任务
-   - `subagent_type="task-swarm-reviewer"` 给评审任务
-   - `subagent_type="task-swarm-validator"` 给验收 / 检查点任务
-   - `subagent_type="task-swarm-planner"` 给拆分任务（一般不需要）
+   - `subagent_type="specode:task-swarm-coder"` 给写代码任务
+   - `subagent_type="specode:task-swarm-reviewer"` 给评审任务
+   - `subagent_type="specode:task-swarm-validator"` 给验收 / 检查点任务
+   - `subagent_type="specode:task-swarm-planner"` 给拆分任务（一般不需要）
    - **不要**用 `general-purpose`，那会让角色隔离失效
 3. **你是编排器，不是执行者** — 不要自己直接写代码、做评审、跑测试。所有具体任务必须 fork subagent。
 4. **按一级阶段聚合派发** — coder 一次拿一整阶段（多个子任务），reviewer 一次评一整阶段，validator 直接复用 specode 检查点任务。详见 task-swarm.md。

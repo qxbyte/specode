@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 
-ACTIVE_FILE = ".active-spec-mode.json"
+ACTIVE_FILE = ".active-specode.json"
 ACTIVE_VERSION = 2
 SESSION_RE = re.compile(r"[^a-zA-Z0-9_.-]+")
 PHASES = {
@@ -40,8 +40,8 @@ DOC_FILENAMES = (
 DOC_COL_WIDTH = max(len(name) for name in DOC_FILENAMES) + 2
 
 # Lock staleness: a lock whose lastHeartbeatAt is older than this is silently
-# reclaimable by another session. Overridable via SPEC_MODE_LOCK_STALE_SECONDS.
-LOCK_STALE_SECONDS = int(os.environ.get("SPEC_MODE_LOCK_STALE_SECONDS") or 1800)
+# reclaimable by another session. Overridable via SPECODE_LOCK_STALE_SECONDS.
+LOCK_STALE_SECONDS = int(os.environ.get("SPECODE_LOCK_STALE_SECONDS") or 1800)
 
 
 def now() -> str:
@@ -266,7 +266,7 @@ def _acquire(spec_dir: Path, session_id: str, *, force: bool, agent: str | None)
             "sessionId": session_id,
             "acquiredAt": now(),
             "lastHeartbeatAt": now(),
-            "agent": agent or os.environ.get("SPEC_MODE_AGENT") or "unknown",
+            "agent": agent or os.environ.get("SPECODE_AGENT") or "unknown",
             "pid": os.getpid(),
         }
         config["lock"] = new_lock
@@ -807,7 +807,7 @@ def command_iterate(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Manage persistent spec-mode sessions.")
+    parser = argparse.ArgumentParser(description="Manage persistent specode sessions.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     session_help = "Window/thread/session id. Defaults to $TERM_SESSION_ID or 'default'."
 

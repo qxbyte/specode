@@ -1,12 +1,12 @@
-# State probe for the spec-mode plugin's hooks.
+# State probe for the specode plugin's hooks.
 #
-# Read-only against existing spec-mode artifacts (.active-spec-mode.json,
+# Read-only against existing specode artifacts (.active-specode.json,
 # <spec-dir>/.config.json) — state authoring stays with spec_session.py /
 # spec_init.py, driven by the slash commands. This module only:
 #   - discovers the configured document_root
 #   - detects whether any spec is currently active (and where)
-#   - maintains ~/.spec-mode/.any-active sentinel for hooks.json shell short-circuit
-#   - records/clears per-Claude-session metadata under ~/.spec-mode/sessions/
+#   - maintains ~/.specode/.any-active sentinel for hooks.json shell short-circuit
+#   - records/clears per-Claude-session metadata under ~/.specode/sessions/
 #
 # Phase 2 scope. Phase 4 will refine session-id binding (TERM_SESSION_ID -> spec
 # session linkage), turn ledger, etc.
@@ -23,13 +23,13 @@ from pathlib import Path
 from typing import Optional
 
 
-USER_CONFIG = Path.home() / ".config/spec-mode/config.json"
-SPEC_MODE_DIR = Path.home() / ".spec-mode"
-SESSIONS_DIR = SPEC_MODE_DIR / "sessions"
-ANY_ACTIVE_SENTINEL = SPEC_MODE_DIR / ".any-active"
+USER_CONFIG = Path.home() / ".config/specode/config.json"
+SPECODE_DIR = Path.home() / ".specode"
+SESSIONS_DIR = SPECODE_DIR / "sessions"
+ANY_ACTIVE_SENTINEL = SPECODE_DIR / ".any-active"
 AUDIT_DIR = Path(
-    os.environ.get("SPEC_MODE_AUDIT_DIR")
-    or SPEC_MODE_DIR / "audit"
+    os.environ.get("SPECODE_AUDIT_DIR")
+    or SPECODE_DIR / "audit"
 )
 
 
@@ -72,7 +72,7 @@ def find_active_spec(prefer_session_id: Optional[str] = None) -> Optional[dict]:
     root = get_document_root()
     if not root or not root.exists():
         return None
-    active = _read_json(root / ".active-spec-mode.json")
+    active = _read_json(root / ".active-specode.json")
     if not active:
         return None
     sessions = active.get("sessions") or {}
@@ -116,7 +116,7 @@ def _build_spec_info(sid: str, entry: dict, spec_dir: Path) -> dict:
 
 def render_status_block(info: dict) -> str:
     return (
-        "=== spec-mode active ===\n"
+        "=== specode active ===\n"
         f"spec:          {info.get('spec_slug')}\n"
         f"phase:         {info.get('current_phase')}\n"
         f"spec_dir:      {info.get('spec_dir')}\n"
@@ -128,7 +128,7 @@ def render_status_block(info: dict) -> str:
 
 def sync_any_active_sentinel() -> bool:
     is_active = find_active_spec() is not None
-    SPEC_MODE_DIR.mkdir(parents=True, exist_ok=True)
+    SPECODE_DIR.mkdir(parents=True, exist_ok=True)
     if is_active:
         ANY_ACTIVE_SENTINEL.touch(exist_ok=True)
     else:
@@ -202,11 +202,11 @@ def _cmd_demo_activate(args: argparse.Namespace) -> int:
     """Fabricate an active spec entry under document_root for Phase 2 testing.
 
     Creates <root>/<slug>/.config.json minimal contents + appends to
-    .active-spec-mode.json. Idempotent: re-running updates lastActivityAt.
+    .active-specode.json. Idempotent: re-running updates lastActivityAt.
     """
     root = Path(args.root).expanduser() if args.root else get_document_root()
     if not root:
-        print("ERR: no document_root configured (~/.config/spec-mode/config.json missing)", file=sys.stderr)
+        print("ERR: no document_root configured (~/.config/specode/config.json missing)", file=sys.stderr)
         return 2
     root.mkdir(parents=True, exist_ok=True)
 
@@ -224,7 +224,7 @@ def _cmd_demo_activate(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
 
-    active_path = root / ".active-spec-mode.json"
+    active_path = root / ".active-specode.json"
     active = _read_json(active_path) or {
         "version": 2,
         "documentRoot": str(root.resolve()),
@@ -260,10 +260,10 @@ def _cmd_demo_deactivate(args: argparse.Namespace) -> int:
     if not root:
         print("ERR: no document_root configured", file=sys.stderr)
         return 2
-    active_path = root / ".active-spec-mode.json"
+    active_path = root / ".active-specode.json"
     active = _read_json(active_path)
     if not active:
-        print("(no .active-spec-mode.json to clear)")
+        print("(no .active-specode.json to clear)")
         sync_any_active_sentinel()
         return 0
     sid = args.session or os.environ.get("TERM_SESSION_ID") or "demo-phase-2"
@@ -375,7 +375,7 @@ def main(argv) -> int:
     p = argparse.ArgumentParser(prog="spec_state.py")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status", help="Print active-spec info (JSON) or null")
-    sub.add_parser("sync-sentinel", help="Re-sync ~/.spec-mode/.any-active to current state")
+    sub.add_parser("sync-sentinel", help="Re-sync ~/.specode/.any-active to current state")
     sp = sub.add_parser("demo-activate", help="(testing) Mark a fake spec as active")
     sp.add_argument("--slug", default="demo-phase-2")
     sp.add_argument("--phase", default="implementation")

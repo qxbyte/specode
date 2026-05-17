@@ -30,7 +30,7 @@ def normalize_slug(value: str) -> str:
 
 
 def resolve_document_root(root: str | None) -> tuple[Path, str]:
-    """Three-tier resolution: --root → SPEC_MODE_ROOT/config → Obsidian.
+    """Three-tier resolution: --root → SPECODE_ROOT/config → Obsidian.
 
     Returns (resolved_root, source_tag). On total failure raises SystemExit with
     a guidance message and a JSON error code on stderr for agent consumption.
@@ -76,7 +76,7 @@ def write_if_missing(path: Path, content: str, force: bool) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Initialize a Kiro-style spec-mode document folder.")
+    parser = argparse.ArgumentParser(description="Initialize a Kiro-style specode document folder.")
     parser.add_argument("--root", help="Document management root. The script creates <root>/<name>/.")
     parser.add_argument("--name", required=True,
                         help="Semantic slug (lowercase, hyphen-separated). The agent must compute and pass this; "
@@ -146,7 +146,7 @@ def main() -> int:
         "requirementName": name,
         "slug": slug,
         "sourceFile": str(Path(args.source_file).expanduser().resolve()) if args.source_file else None,
-        "createdBy": "spec-mode",
+        "createdBy": "specode",
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "persistentMode": False,
         "sessionStatus": None,

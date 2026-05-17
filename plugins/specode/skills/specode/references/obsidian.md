@@ -7,7 +7,7 @@
 └── spec-in/
     └── <os>-<username>/          ← e.g. macos-alice, windows-bob, linux-carol
         └── specs/
-            ├── .active-spec-mode.json
+            ├── .active-specode.json
             └── <requirement-name>/
                 ├── requirements.md       (or bugfix.md)
                 ├── design.md
@@ -19,7 +19,7 @@
 
 ## config.json 生命周期
 
-`~/.config/spec-mode/config.json` 在两种情况下写入：
+`~/.config/specode/config.json` 在两种情况下写入：
 
 - **首次 Obsidian 检测**：`resolve_spec_root()` 检测到 vault 后计算路径并自动保存。后续调用直接读取此文件，不再重新检测 Obsidian。
 - **显式设置**：用户运行 `/spec --set-vault` 或 `/spec --set-root`（任何时候可执行，立即覆盖旧值）。
@@ -28,7 +28,7 @@
 
 ## 跨会话路径读取
 
-对于持久 session 和跨会话恢复（`/continue`），文档根目录从各 spec 自身的 `.config.json`（`documentRoot` 字段）直接读取，**不依赖** vault 检测或 `~/.config/spec-mode/config.json`。vault 路径解析仅在创建新 spec 时需要。
+对于持久 session 和跨会话恢复（`/continue`），文档根目录从各 spec 自身的 `.config.json`（`documentRoot` 字段）直接读取，**不依赖** vault 检测或 `~/.config/specode/config.json`。vault 路径解析仅在创建新 spec 时需要。
 
 ## 旧位置警告
 

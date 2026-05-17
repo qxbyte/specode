@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Hook entry for spec-mode plugin.
+# Hook entry for specode plugin.
 #
 # Phase 3: wires Code-Doc Sync Guard.
 #   - UserPromptSubmit: inject status block; start new turn in ledger; refresh tasks_files.
@@ -10,7 +10,7 @@
 #
 # Invariants:
 #   - Never raise out of main(). Internal errors log to audit and return 0.
-#   - SPEC_MODE_GUARD=off → global bypass.
+#   - SPECODE_GUARD=off → global bypass.
 
 import json
 import os
@@ -26,8 +26,8 @@ import spec_sync   # noqa: E402
 
 
 AUDIT_DIR = Path(
-    os.environ.get("SPEC_MODE_AUDIT_DIR")
-    or os.path.expanduser("~/.spec-mode/audit")
+    os.environ.get("SPECODE_AUDIT_DIR")
+    or os.path.expanduser("~/.specode/audit")
 )
 
 # Per-file size cap. When today's daily log exceeds this, it gets truncated
@@ -36,7 +36,7 @@ AUDIT_DIR = Path(
 # per day, plenty of headroom for normal use; the cap exists to bound
 # pathological growth (e.g. an error loop emitting tracebacks).
 AUDIT_MAX_BYTES = int(
-    os.environ.get("SPEC_MODE_AUDIT_MAX_BYTES") or 20 * 1024 * 1024
+    os.environ.get("SPECODE_AUDIT_MAX_BYTES") or 20 * 1024 * 1024
 )
 
 _truncate_checked = False
@@ -324,7 +324,7 @@ HANDLERS = {
 
 
 def main(argv: list) -> int:
-    if os.environ.get("SPEC_MODE_GUARD", "").lower() == "off":
+    if os.environ.get("SPECODE_GUARD", "").lower() == "off":
         return 0
 
     if len(argv) < 2 or argv[1] not in HANDLERS:

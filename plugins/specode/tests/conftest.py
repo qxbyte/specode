@@ -1,4 +1,4 @@
-"""Shared fixtures for spec-mode tests.
+"""Shared fixtures for specode tests.
 
 Tests use pytest but the plugin runtime stays stdlib-only. Install dev deps
 with `python3 -m pip install pytest` to run the suite.
@@ -29,7 +29,7 @@ def workspace() -> Iterator[dict]:
     Yields a dict with paths and patches spec_state.find_active_spec to return
     a synthetic info struct pointing into the workspace.
     """
-    root = Path(tempfile.mkdtemp(prefix="spec-mode-test-"))
+    root = Path(tempfile.mkdtemp(prefix="specode-test-"))
     spec_dir = root / "test-spec"
     project_root = root / "project"
     spec_dir.mkdir()

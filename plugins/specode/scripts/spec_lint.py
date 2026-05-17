@@ -130,7 +130,7 @@ def lint(spec_dir: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Lint a spec-mode folder.")
+    parser = argparse.ArgumentParser(description="Lint a specode folder.")
     parser.add_argument("spec_dir", type=Path)
     args = parser.parse_args()
     messages = lint(args.spec_dir)

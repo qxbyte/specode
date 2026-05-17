@@ -1,13 +1,13 @@
 # Prompt Output Templates
 
-Unified format for all clarification / confirmation / selection outputs in spec-mode. Every interaction point must conform to one of the templates below.
+Unified format for all clarification / confirmation / selection outputs in specode. Every interaction point must conform to one of the templates below.
 
 ## Selector Preference (Iron Rule)
 
 For any fixed-option decision (≤5 options), use `scripts/spec_choice.py`.
 
 - **TTY**: curses ↑/↓ + Enter; script writes the chosen label to stdout, exits 0.
-- **Non-TTY (Claude Code Bash, CI)**: script prints the option block + `[spec-mode:non-interactive] AWAITING_USER_CHOICE` sentinel on stdout, exits 0. Agent must forward the stdout block to the user verbatim and end the turn. **Do not** re-run the script in the same turn to "retry" or restate the options in your own words.
+- **Non-TTY (Claude Code Bash, CI)**: script prints the option block + `[specode:non-interactive] AWAITING_USER_CHOICE` sentinel on stdout, exits 0. Agent must forward the stdout block to the user verbatim and end the turn. **Do not** re-run the script in the same turn to "retry" or restate the options in your own words.
 
 Never ask "请回复确认/继续/取消" as plain text without running the script first — the script is the source of truth for option wording.
 
@@ -131,8 +131,12 @@ python3 scripts/spec_choice.py --title "确认 <filename>？" \
 python3 scripts/spec_choice.py --title "是否开始执行 tasks？" \
   --option "开始 required tasks::只执行必需任务::recommended" \
   --option "开始 required + optional tasks::执行必需任务和可选任务" \
+  --option "用 task-swarm 多 agent 并发::按阶段聚合派发 coder/reviewer/validator 子 agent（需已安装 task-swarm skill）" \
   --option "暂不 coding::只保留文档，不开始实现"
 ```
+
+第三个选项 `用 task-swarm 多 agent 并发` 的协议见 `references/task-swarm.md`。
+如本机未安装 task-swarm skill（`~/.claude/skills/task-swarm/` 不存在），用户选这一项时温柔降级到第一项，并提示安装路径（`~/Git/task-swarm/install.sh`）。
 
 ### `/continue` 接管（spec 已被其他 session 锁定）
 

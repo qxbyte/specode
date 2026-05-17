@@ -118,6 +118,6 @@ This skill uses `.config.json` in the generated requirement folder for portabili
   "specType": "feature",
   "documentRoot": "...",
   "requirementName": "...",
-  "createdBy": "spec-mode"
+  "createdBy": "specode"
 }
 ```

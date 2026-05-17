@@ -24,7 +24,7 @@
 /spec -h                                  ← help (hook-intercepted; bypasses model)
 ```
 
-`--set-vault` / `--set-root` 任何时候都可运行；新值立即写入 `~/.config/spec-mode/config.json` 并被后续命令使用。
+`--set-vault` / `--set-root` 任何时候都可运行；新值立即写入 `~/.config/specode/config.json` 并被后续命令使用。
 
 `/spec` 后文本若是已存在的文件路径 → 当作需求源读入；否则当作需求描述。
 
@@ -68,20 +68,20 @@ Sub-flag dispatch 由模型按本表执行，不进入 intake 流程。`-h` / `-
 **Persistent footer 格式（仅持久会话）**：
 
 ```
-─── spec-mode ─── spec: <slug> | session: <sessionId> | phase: <phase> | /end 退出
+─── specode ─── spec: <slug> | session: <sessionId> | phase: <phase> | /end 退出
 ```
 
 只读模式额外标记 `[只读]`（见 `lock-protocol.md`）：
 
 ```
-─── spec-mode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /end 退出
+─── specode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /end 退出
 ```
 
 **sessionId 解析顺序**：`$TERM_SESSION_ID` → `$SPEC_SESSION_ID` → `"default"`。多窗口并行需要每窗口独立 sessionId。
 
 **状态文件**：
 - `<spec-dir>/.config.json` — per-spec 身份、生命周期、**锁**、sessions、iteration round
-- `<document-root>/.active-spec-mode.json` — v2 窗口索引，按 sessionId 索引（slug-only，不含绝对路径）
+- `<document-root>/.active-specode.json` — v2 窗口索引，按 sessionId 索引（slug-only，不含绝对路径）
 
 ## Helper Scripts
 

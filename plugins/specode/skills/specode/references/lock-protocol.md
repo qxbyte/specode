@@ -5,7 +5,7 @@ Per-spec write lock for safe multi-window operation. Implemented in
 
 ## 设计原则
 
-- **锁存放在 spec 自身 `.config.json`**，不放在 `.active-spec-mode.json`。原因：spec 文档可能跨设备同步（Obsidian），边界判断必须以 spec 自身状态为准；如果索引文件丢失，锁不能跟着消失。
+- **锁存放在 spec 自身 `.config.json`**，不放在 `.active-specode.json`。原因：spec 文档可能跨设备同步（Obsidian），边界判断必须以 spec 自身状态为准；如果索引文件丢失，锁不能跟着消失。
 - **任何 spec 文档写入前，必须持锁。** 这是不可绕过的铁律。
 - **多窗口可同时打开不同 spec**；同一 spec 同一时刻只允许一个 session 写入。
 
@@ -48,7 +48,7 @@ Per-spec write lock for safe multi-window operation. Implemented in
 
 - 默认 `lastHeartbeatAt` 超过 **1800 秒（30 分钟）** → 视为 stale
 - 下一次 `acquire` 静默接管（记录到 `evictedSessions`，reason=`stale`）
-- 通过环境变量 `SPEC_MODE_LOCK_STALE_SECONDS` 覆盖
+- 通过环境变量 `SPECODE_LOCK_STALE_SECONDS` 覆盖
 
 ## 心跳触发点（agent 行为契约）
 
@@ -88,16 +88,16 @@ agent 在持久 session 中必须在以下时机调 `heartbeat`：
   继续工作请用 /continue 强制接管回来。
   ```
 
-  并将本窗口 `.active-spec-mode.json` 对应条目改为 `status: "evicted"`。后续在该 spec 的任何写操作 → 直接拒绝。
+  并将本窗口 `.active-specode.json` 对应条目改为 `status: "evicted"`。后续在该 spec 的任何写操作 → 直接拒绝。
 
 ## 只读模式
 
 - agent 调 `spec_session.py load --json` 加载文档（**不**调 acquire）
-- 不更新 `.active-spec-mode.json` 中本 session 的 specSlug 绑定
+- 不更新 `.active-specode.json` 中本 session 的 specSlug 绑定
 - footer 格式：
 
   ```
-  ─── spec-mode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /end 退出
+  ─── specode ─── spec: <slug> | session: <id> | phase: <phase> | [只读] | /end 退出
   ```
 
 - 禁止所有写操作：Edit / Write / heartbeat / `spec_session.py continue|start|iterate` 全部拒绝

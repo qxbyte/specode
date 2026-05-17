@@ -33,7 +33,7 @@ def test_user_prompt_submit_injects_status_block(workspace, hook_caller):
     assert rc == 0
     payload = json.loads(stdout)
     block = payload["hookSpecificOutput"]["additionalContext"]
-    assert "spec-mode active" in block
+    assert "specode active" in block
     assert "test-spec" in block
     assert "implementation" in block
 

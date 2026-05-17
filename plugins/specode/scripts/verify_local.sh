@@ -1,5 +1,5 @@
 #!/bin/sh
-# Local end-to-end verification helper for spec-mode.
+# Local end-to-end verification helper for specode.
 #
 # Usage:
 #   sh scripts/verify_local.sh setup     # set up demo state for testing
@@ -11,7 +11,7 @@ set -e
 
 PLUGIN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TODAY=$(date -u +%Y-%m-%d)
-AUDIT="$HOME/.spec-mode/audit/$TODAY.log"
+AUDIT="$HOME/.specode/audit/$TODAY.log"
 
 case "${1:-help}" in
   setup)
@@ -22,15 +22,15 @@ case "${1:-help}" in
     echo "  claude --plugin-dir $PLUGIN_DIR"
     echo ""
     echo "And in another terminal tail the audit log:"
-    echo "  mkdir -p ~/.spec-mode/audit && touch $AUDIT && tail -f $AUDIT"
+    echo "  mkdir -p ~/.specode/audit && touch $AUDIT && tail -f $AUDIT"
     ;;
   status)
     python3 "$PLUGIN_DIR/scripts/spec_state.py" status
     echo ""
     python3 "$PLUGIN_DIR/scripts/spec_sync.py" status 2>/dev/null || true
     echo ""
-    if [ -e "$HOME/.spec-mode/.any-active" ]; then
-      echo "sentinel: present ($HOME/.spec-mode/.any-active)"
+    if [ -e "$HOME/.specode/.any-active" ]; then
+      echo "sentinel: present ($HOME/.specode/.any-active)"
     else
       echo "sentinel: missing (hooks will short-circuit)"
     fi
@@ -47,20 +47,20 @@ case "${1:-help}" in
     python3 "$PLUGIN_DIR/scripts/spec_state.py" sync-sentinel
     ;;
   tail)
-    mkdir -p "$HOME/.spec-mode/audit"
+    mkdir -p "$HOME/.specode/audit"
     touch "$AUDIT"
     tail -f "$AUDIT"
     ;;
   *)
     cat <<USAGE
-spec-mode local verification helper.
+specode local verification helper.
 
 Commands:
   setup      Create a demo spec under document_root and activate it.
              After running this, start Claude Code with --plugin-dir to see
              hooks fire against the active demo.
   status     Print active-spec info, ledger summary, and sentinel state.
-  tail       Tail today's audit log at ~/.spec-mode/audit/<date>.log
+  tail       Tail today's audit log at ~/.specode/audit/<date>.log
   teardown   Deactivate the demo spec and remove the spec dir.
 
 USAGE

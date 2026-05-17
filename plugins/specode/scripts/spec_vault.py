@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-CONFIG_FILE = Path.home() / ".config" / "spec-mode" / "config.json"
+CONFIG_FILE = Path.home() / ".config" / "specode" / "config.json"
 
 
 def _safe_username() -> str:
@@ -96,7 +96,7 @@ def resolve_spec_root() -> tuple[Path | None, str]:
     On first successful Obsidian detection, auto-saves the resolved path to
     config.json so subsequent calls are stable even if Obsidian is not running.
     """
-    env_root = os.environ.get("SPEC_MODE_ROOT")
+    env_root = os.environ.get("SPECODE_ROOT")
     if env_root:
         return Path(env_root).expanduser().resolve(), "env"
 
@@ -117,7 +117,7 @@ def resolve_spec_root() -> tuple[Path | None, str]:
 
 
 def configured_spec_root() -> tuple[Path | None, str]:
-    """Return the spec root explicitly recorded by spec-mode config.json."""
+    """Return the spec root explicitly recorded by specode config.json."""
     cfg = read_config()
     if cfg.get("obsidianRoot"):
         return Path(cfg["obsidianRoot"]).expanduser().resolve(), "config"
@@ -240,8 +240,8 @@ def command_get(args: argparse.Namespace) -> int:
         return 0
 
     source_labels = {
-        "env": "SPEC_MODE_ROOT 环境变量",
-        "config": "spec-mode 配置文件",
+        "env": "SPECODE_ROOT 环境变量",
+        "config": "specode 配置文件",
         "obsidian": "Obsidian 自动检测",
         "not_found": "未配置",
     }
@@ -269,7 +269,7 @@ def command_get(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Obsidian vault detection and spec-mode root configuration.",
+        description="Obsidian vault detection and specode root configuration.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -284,7 +284,7 @@ def main() -> int:
 
     get_p = sub.add_parser("get", help="显示当前解析到的 spec 文档根目录。")
     get_p.add_argument("--json", action="store_true")
-    get_p.add_argument("--configured-only", action="store_true", help="只读取 spec-mode config.json 中记录的根目录，不自动检测或回退。")
+    get_p.add_argument("--configured-only", action="store_true", help="只读取 specode config.json 中记录的根目录，不自动检测或回退。")
     get_p.set_defaults(func=command_get)
 
     args = parser.parse_args()

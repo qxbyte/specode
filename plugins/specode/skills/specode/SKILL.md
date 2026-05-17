@@ -1,6 +1,6 @@
 ---
-name: spec-mode
-description: Specification-driven workflow for requirements, technical design, task lists, implementation, acceptance, and ongoing spec iteration. Use when the user explicitly invokes /spec, explicitly says to use spec mode, or the current conversation has an active persistent spec-mode session that has not been ended. Do not use for ordinary coding, planning, requirements, design, or documentation requests unless spec mode is explicitly requested or already active.
+name: specode
+description: Specification-driven workflow for requirements, technical design, task lists, implementation, acceptance, and ongoing spec iteration. Use when the user explicitly invokes /spec, explicitly says to use spec mode, or the current conversation has an active persistent specode session that has not been ended. Do not use for ordinary coding, planning, requirements, design, or documentation requests unless spec mode is explicitly requested or already active.
 ---
 
 # Spec Mode
@@ -19,15 +19,15 @@ This skill is opt-in only. Activate **only** when the user's current message con
 
 **Hard rules:**
 
-1. `/spec` always activates the spec workflow — even when the requested work is to inspect or modify the `spec-mode` skill itself.
+1. `/spec` always activates the spec workflow — even when the requested work is to inspect or modify the `specode` skill itself.
 2. **Command compliance**: when any spec command is triggered, follow the corresponding workflow exactly. Do not skip phases, phase gates, or confirmation steps for any reason. Commands are absolute; the assistant's judgment cannot override a command.
-3. **Persistent session exception**: if a persistent spec-mode session is active for the current conversation, route follow-up messages through this skill until the user runs `/end`.
+3. **Persistent session exception**: if a persistent specode session is active for the current conversation, route follow-up messages through this skill until the user runs `/end`.
 
 Do **not** activate for ordinary coding, planning, requirements, design, task lists, bugfixes, implementation, or documentation requests. In those cases, work normally — do not create spec folders.
 
 ## ⛔ Iron Rules — Top of Mind
 
-These rules are checked at **every turn** of every spec-mode session. Never violate them. Never defer them. If the user pushes back, acknowledge — then comply with the rule first, discuss after.
+These rules are checked at **every turn** of every specode session. Never violate them. Never defer them. If the user pushes back, acknowledge — then comply with the rule first, discuss after.
 
 1. ⛔ **Document-first.** Any change to requirements / design / tasks discussed in chat MUST be written to the corresponding spec document **in the same turn**, *before* further discussion or implementation. Verbal-only changes are invisible to the next session and silently drift from the persisted spec.
 
@@ -72,8 +72,8 @@ Before generating `requirements.md` / `bugfix.md`: evaluate whether the user's r
 
 Three-tier resolution. **No project fallback, no home fallback.**
 
-1. `--root` argument or `SPEC_MODE_ROOT` env (highest)
-2. `~/.config/spec-mode/config.json` → `obsidianRoot`
+1. `--root` argument or `SPECODE_ROOT` env (highest)
+2. `~/.config/specode/config.json` → `obsidianRoot`
 3. Auto-detect Obsidian vault → `<vault>/spec-in/<os>-<user>/specs` (and persist)
 
 All three miss → **hard stop**, output guidance, exit. `/spec` and `/continue` use the **same** resolution. Never create `<project>/specs` or `~/new project/specs`.
@@ -162,3 +162,5 @@ If the user's requirement is in English, generated spec documents may use Englis
 - `references/obsidian.md` — vault 检测、目录树、config.json 生命周期
 - `references/templates.md` — 文档模板与样式约定
 - `references/help-output.md` — 帮助文本原文（hook 拦截输出源）
+- `references/task-swarm.md` — 任务执行阶段可选委派给 task-swarm（多角色 agent 并发；按阶段聚合 coder/reviewer/validator；防"自我认可"）
+- `references/task-swarm-example.md` — task-swarm 模式的 tasks.md 完整示例

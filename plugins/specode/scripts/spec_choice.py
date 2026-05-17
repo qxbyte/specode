@@ -50,8 +50,8 @@ def choose_numbered(title: str, options: list[Option], default: int) -> int:
         # plus a machine-readable sentinel on stdout, and exit 0.
         # The agent must relay the stdout block to the user verbatim and end the turn.
         sys.stdout.write("\n")
-        sys.stdout.write("[spec-mode:non-interactive] 选项已就绪：请把上方选项原样转发给用户，并在对话中等待编号回复。\n")
-        sys.stdout.write("[spec-mode:non-interactive] AWAITING_USER_CHOICE\n")
+        sys.stdout.write("[specode:non-interactive] 选项已就绪：请把上方选项原样转发给用户，并在对话中等待编号回复。\n")
+        sys.stdout.write("[specode:non-interactive] AWAITING_USER_CHOICE\n")
         sys.stdout.flush()
         raise SystemExit(0)
     if not value and default >= 0:
@@ -98,7 +98,7 @@ def choose_curses(title: str, options: list[Option], default: int) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Interactive selector for spec-mode confirmations.")
+    parser = argparse.ArgumentParser(description="Interactive selector for specode confirmations.")
     parser.add_argument("--title", required=True)
     parser.add_argument("--option", action="append", required=True, help="label::description::recommended")
     parser.add_argument("--json", action="store_true", help="Print selected option as JSON.")

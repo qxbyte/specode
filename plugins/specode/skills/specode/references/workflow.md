@@ -30,7 +30,7 @@ Intake rules:
 
 Persistent command rules:
 
-- `/spec <requirement>` — one-shot. Runs the workflow without updating `.active-spec-mode.json`.
+- `/spec <requirement>` — one-shot. Runs the workflow without updating `.active-specode.json`.
 - `/spec --persist <requirement>` — persistent. Initializes spec and starts an active session.
 - `/continue [slug]` — resume; multi-window aware (see §9).
 - `/status` — prints current session, spec path, phase, task counts, lock state.
@@ -96,7 +96,7 @@ Spec layout:
 
 ```text
 <document-root>/
-├── .active-spec-mode.json       ← v2 window index, slug-only
+├── .active-specode.json       ← v2 window index, slug-only
 └── <spec-slug>/
     ├── requirements.md or bugfix.md
     ├── design.md
@@ -106,8 +106,8 @@ Spec layout:
 
 Resolution priority (handled by `spec_init.py:resolve_document_root` / `spec_vault.resolve_spec_root`):
 
-1. `--root` or `SPEC_MODE_ROOT`
-2. `~/.config/spec-mode/config.json` → `obsidianRoot`
+1. `--root` or `SPECODE_ROOT`
+2. `~/.config/specode/config.json` → `obsidianRoot`
 3. Auto-detect Obsidian vault → `<vault>/spec-in/<os>-<user>/specs`
 
 **No further fallback.** All three miss → hard stop with guidance (see SKILL.md §Document Root Resolution).
@@ -175,6 +175,18 @@ Task markers:
 [ ] pending      [~] in progress    [x] completed
 [-] skipped      [*] optional
 ```
+
+### 7.1 可选：委派给 task-swarm（多 agent 并发）
+
+如果用户在"任务执行"selector 选择 `用 task-swarm 多 agent 并发`，specode 主会话**仍然是 orchestrator**（持锁、回写 tasks.md），但**实际编码**委派给 task-swarm skill：
+
+1. 校验 `~/.claude/skills/task-swarm/` 存在；不存在则降级到默认 required tasks 模式
+2. 调用 task-swarm skill，传入 `<spec-dir>/tasks.md`，附 `--specode` 提示（task-swarm 也会自动嗅探）
+3. task-swarm 按一级阶段聚合派发 coder/reviewer/validator 子 agent
+4. 每个阶段完成后，**主会话**用 `verify-lock` 守卫后回写 tasks.md 的 `[x]`（INV-4 不触发，因为不改 requirements/bugfix）
+5. 全部完成后回到 §8 Acceptance 流程，与传统执行无差异
+
+→ 协议详情见 `references/task-swarm.md`
 
 ## 8. Acceptance
 
@@ -312,7 +324,7 @@ If user asks for one-pass generation, still show paths, summaries, key changes p
 
 ## Interactive Selectors (Reference)
 
-Run at each decision point. In a TTY the script offers ↑/↓ + Enter. In a non-TTY shell (Claude Code Bash, CI) it prints the option block + `[spec-mode:non-interactive] AWAITING_USER_CHOICE` sentinel on stdout and exits 0; agent forwards the stdout block to the user and ends the turn. Do not invent your own option text — always run the script first.
+Run at each decision point. In a TTY the script offers ↑/↓ + Enter. In a non-TTY shell (Claude Code Bash, CI) it prints the option block + `[specode:non-interactive] AWAITING_USER_CHOICE` sentinel on stdout and exits 0; agent forwards the stdout block to the user and ends the turn. Do not invent your own option text — always run the script first.
 
 All selector command blocks live in `references/prompts.md` — copy-paste them verbatim:
 

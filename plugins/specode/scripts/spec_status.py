@@ -57,7 +57,7 @@ def _collect_tasks(spec_dir: Path) -> tuple[dict[str, int], list[dict[str, str]]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Summarize spec-mode status.")
+    parser = argparse.ArgumentParser(description="Summarize specode status.")
     parser.add_argument("spec_dir", type=Path, nargs="?")
     parser.add_argument("--root", help="Document root. Required when spec_dir is omitted.")
     parser.add_argument("--session", help="Window/thread/session id. Defaults to $TERM_SESSION_ID or 'default'.")

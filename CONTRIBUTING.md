@@ -68,6 +68,106 @@ its truth via `spec_state.sync_any_active_sentinel()` — never write it
 ad-hoc. If you add a code path that activates or deactivates a spec, call
 sync after.
 
+## Release
+
+Public release procedure for plugin maintainers. Not for contributors who
+are only sending PRs — wait for a maintainer to cut the release that
+includes your change.
+
+### Version manifests (must agree)
+
+Two manifests both carry `version`. They MUST match or `claude plugin tag`
+refuses to operate:
+
+- `plugins/specode/.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
+- `.claude-plugin/marketplace.json` → `plugins[0].version: "X.Y.Z"`
+
+### Picking the next version (semver)
+
+For this plugin, "API" = the slash command set, hook contract, agent names,
+and persisted-state schema (anything users see or that their stored data
+depends on).
+
+| Bump | When | Examples |
+| --- | --- | --- |
+| **major** (1.0.0 → 2.0.0) | A user feels a breaking change after `claude plugin update` | rename a slash command; rename `~/.specode/sessions/` schema; rename a subagent's `name` field; remove a hook event |
+| **minor** (0.1.0 → 0.2.0) | Backwards-compatible new capability | new slash command; new subagent; new optional `@swarm:*` label; new selector option |
+| **patch** (0.1.0 → 0.1.1) | Bug fix / docs / internal refactor with no surface change | fix a typo in a prompt; fix a `subagent_type` typo; clarify a reference; CI-only |
+
+When in doubt, bump higher. Users can pin to a version; they cannot rewind
+persisted state if a "patch" silently changes a schema.
+
+### Pre-release checklist (do not skip)
+
+```sh
+# 1. All tests pass
+python3 -m pytest plugins/specode/tests/ -v
+
+# 2. CHANGELOG.md has an `## Unreleased` section with concrete entries
+#    (no "TBD" placeholders, no stale "WIP" markers)
+grep -A 1 "^## Unreleased" CHANGELOG.md
+
+# 3. main is clean and up to date
+git status                              # → nothing to commit
+git rev-parse --abbrev-ref HEAD         # → main
+git pull --ff-only
+```
+
+If any step fails: fix before continuing. Never publish a release whose
+tests are red or whose CHANGELOG is empty — installed users have no
+other way to discover what changed.
+
+### Cutting a release
+
+```sh
+# 1. Bump both manifests to the new version
+$EDITOR plugins/specode/.claude-plugin/plugin.json
+$EDITOR .claude-plugin/marketplace.json
+
+# 2. Land CHANGELOG.md: rename `## Unreleased` → `## X.Y.Z (YYYY-MM-DD)`,
+#    then add a fresh empty `## Unreleased` above it for the next cycle
+$EDITOR CHANGELOG.md
+
+# 3. Commit + push (message format: "Bump to X.Y.Z: <one-line summary>")
+git commit -am "Bump to 0.2.0: <summary>"
+git push
+
+# 4. Dry-run the tag first
+claude plugin tag --dry-run plugins/specode
+
+# 5. Create + push the annotated tag
+claude plugin tag plugins/specode --push
+```
+
+Tag format: `specode--v{version}` (annotated, message `specode {version}`).
+Pushed to `origin` by default; override with `--remote`.
+
+The plugin is **not** packaged into a tarball or registry artifact —
+Claude Code and CodeBuddy fetch the marketplace manifest directly from
+GitHub and resolve plugins by git tag. **Pushing the tag IS the release.**
+
+### Re-tagging the same version
+
+Only safe if no user has installed it yet:
+
+```sh
+git tag -d specode--vX.Y.Z
+git push --delete origin specode--vX.Y.Z
+claude plugin tag plugins/specode --push      # re-create
+```
+
+Once a release is in user hands, prefer a new patch version.
+
+### Verifying after release
+
+```sh
+claude plugin marketplace update specode
+claude plugin install specode@specode         # or `update`
+claude plugin list | grep specode             # confirm new version
+```
+
+CodeBuddy users follow the same procedure substituting `codebuddy`.
+
 ## Decision history
 
 Two non-obvious design calls are encoded in the rules:

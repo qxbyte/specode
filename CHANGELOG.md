@@ -4,6 +4,100 @@
 
 _no entries yet_
 
+## 0.3.0 (2026-05-18)
+
+### Added
+
+- **Task-Swarm control inversion (CLI-driven orchestrator)**: the main model
+  no longer drives the state machine in long context — it now follows a tiny
+  `init → loop(next → fork → parse → advance) → writeback → done` protocol
+  while all determinism (round counting, convergence, dead-loop detection,
+  outbox parsing, tasks.md write-back) lives in Python scripts.
+  - New CLI: `scripts/task_swarm.py` with 7 sub-commands
+    (`init` / `next` / `parse` / `advance` / `writeback` / `status` / `resolve`).
+  - New modules: `task_swarm_state.py` (state machine + round tracking),
+    `task_swarm_parse_md.py` (stage-aggregated dispatch from tasks.md),
+    `task_swarm_outbox.py` (schema-checked result/review/validation parsing),
+    `task_swarm_prompt.py` (pre-rendered subagent prompts), and
+    `task_swarm_writeback.py` (line-safe tasks.md edits — checkbox toggle +
+    `> ` notes only).
+  - Per-run workspace under `.task-swarm/runs/<run_id>/` with predictable
+    `agents/stage-N-{role}[-rN]/` layout — easy to inspect, replay, or clean.
+- **INV-7 / INV-8 / INV-9 / INV-10** hooks (task-swarm period only):
+  - **INV-7** — `Task` calls must use `subagent_type` prefixed with
+    `specode:task-swarm-`; otherwise the hook denies (prevents accidental
+    fall-back to `general-purpose`, which would bypass tool-whitelist
+    isolation).
+  - **INV-8** — subagents may only write files declared in their `@writes`
+    block (or under their own `outbox/`); any out-of-bound write is denied.
+  - **INV-9** — during a task-swarm run, edits to `tasks.md` must go through
+    the `writeback` sub-command; direct `Edit`/`Write` is diffed and rejected
+    unless the change is purely checkbox toggles + `> ` annotations.
+  - **INV-10** — subagent outbox files must pass a schema check (required
+    sections, `STATUS:` line, judgment field); `parse` surfaces a
+    `schema-error` which the orchestrator handles by retrying instead of
+    advancing on garbage.
+  - Hook implementation: `scripts/task_swarm_guard.py` + extensions in
+    `scripts/spec_guard.py`. Matcher now also covers the `Task` tool.
+- **Independent reviewer / validator rounds**: `--reviewer-rounds N` (default
+  **1**) and `--validator-rounds N` (default **3**). Rationale —
+  reviewer is an LLM reading code (subjective, prone to corrective spirals);
+  validator runs commands (objective failure signal, deserves more retries).
+  `--max-rounds N` remains as a fallback default for both.
+- **Reviewer P0 evidence tags**: every P0 finding must carry one of
+  `[req:x.y]` / `[security]` / `[contract]`. Untagged P0s are auto-downgraded
+  to `advisory_p0` (logged for audit, but do not count toward `p0_count` and
+  do not trigger a coder fix round). If every P0 in a review is untagged, the
+  judgment flips from `p0` to `approved` and the stage converges directly.
+  This stops cheap-prose reviewers from forcing infinite fix loops.
+- Help-output (`/spec -h`) now surfaces `--freeform` and `--strict`.
+
+### Changed
+
+- Reviewer "exit fix loop" behavior is now **advisory**, not hard-block.
+  When a reviewer round reports the same P0s as the previous round, the
+  orchestrator records the loop signal and stops the stage with a
+  `failed` mark via the same loop-detection path as validator, instead
+  of a separate hard-stop branch. Keeps loop handling symmetric across
+  roles.
+- `references/task-swarm.md` rewritten as a **design spec** (why the
+  state machine exists, how iron rules are upheld) — the runtime model
+  reads `commands/task-swarm.md` for the actual 7-step protocol.
+- `agents/task-swarm-reviewer.md` updated to require P0 evidence tags
+  and the loop-detection self-report convention.
+- `agents/task-swarm-coder.md` clarified the fix-round contract (only
+  touch P0-listed locations or validator-fail repair guidance; no scope
+  creep).
+
+### Fixed
+
+- Long-context drift on round counting: the main model no longer
+  computes round numbers or convergence in prompt — all of that lives
+  in `task_swarm_state.py` and is checked by tests.
+- Outbox format drift: `task_swarm_outbox.py` validates against a
+  schema instead of relying on the main model to "eyeball" review.md /
+  validation.md.
+
+### Tests
+
+- 6 new test files (`test_task_swarm_cli.py`, `test_task_swarm_guard.py`,
+  `test_task_swarm_hook_integration.py`, `test_task_swarm_outbox.py`,
+  `test_task_swarm_parse_md.py`, `test_task_swarm_prompt.py`,
+  `test_task_swarm_state.py`). Total suite now **135 tests**.
+
+### Migration
+
+No user action required — `/task-swarm`, `/spec`, `/continue`, `/status`,
+`/end` slash commands are unchanged; subagent names are unchanged;
+`~/.specode/` state schema is unchanged. The orchestrator protocol is
+**internal** to the plugin: the main model loads it from
+`commands/task-swarm.md` automatically on plugin update.
+
+If you had pinned `0.2.0`, the only behavior change on bumping to
+`0.3.0` is that reviewer P0s without `[req:x.y]` / `[security]` /
+`[contract]` evidence tags will no longer trigger coder fix rounds —
+they become advisory. Audit logs continue to record them.
+
 ## 0.2.0 (2026-05-17)
 
 ### Renamed (breaking-ish — see Migration)

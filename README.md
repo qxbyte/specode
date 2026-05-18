@@ -10,18 +10,32 @@ remember and obey instructions in context.
 
 ## What it enforces
 
-Once a spec is active, these invariants are **harness-enforced**:
+Once a spec is active, these invariants are **harness-checked**. As of 0.4.0
+INVs split into two levels:
 
-| ID | Rule | Hook |
-|---|---|---|
-| **INV-1** | Editing a source file requires either that file being listed in `tasks.md` / `## Affected Files`, or a same-turn edit to `design.md` / `tasks.md` / `bugfix.md`, or `freeform` mode | `PreToolUse` |
-| **INV-2** | A turn that touched source code must touch at least one spec document before stop | `Stop` |
-| **INV-3** | Spec-doc writes are rejected if the session was evicted by another window | `PreToolUse` |
-| **INV-4** | Edits to `requirements.md` / `bugfix.md` require a same-turn update of `tasks.md` (its `## 测试要点` section, derived from the changed SHALL statements) | `Stop` |
-| **INV-5** | Each user turn injects a status block (`spec / phase / lock / turn`) into the model's context | `UserPromptSubmit` |
-| **INV-6** | Source code edits are forbidden in pre-implementation phases (intake / requirements / bugfix / design / tasks) | `PreToolUse` |
+- **Advisory** (process discipline) — violation records a sticky warning on
+  the ledger and surfaces in the next `UserPromptSubmit` status block. The
+  tool call still goes through. Editing any spec doc auto-clears INV-1/2/4;
+  use `/spec --dismiss-advisories` to clear manually.
+- **Enforced** (data / contract protection) — violation hard-denies the
+  tool call (exit 2). These guard against data corruption, evicted writes,
+  bad subagent dispatch, and subagent-boundary breaches.
 
-INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)**.
+| ID | Rule | Hook | Level |
+|---|---|---|---|
+| **INV-1** | Editing a source file requires `tasks.md` coverage, same-turn doc edit, or `freeform` mode | `PreToolUse` | **advisory** |
+| **INV-2** | A turn that touched source code should touch at least one spec document | `Stop` | **advisory** |
+| **INV-3** | Spec-doc writes are rejected if the session was evicted by another window | `PreToolUse` | **enforced** |
+| **INV-4** | `requirements.md` / `bugfix.md` edits should be followed by `tasks.md ## 测试要点` updates same turn | `Stop` | **advisory** |
+| **INV-5** | Each user turn injects a status block (`spec / phase / lock / turn / advisories`) into the model's context | `UserPromptSubmit` | injection |
+| **INV-6** | Source-code edits in pre-implementation phases (intake / requirements / bugfix / design / tasks) | `PreToolUse` | **advisory** |
+| **INV-7** | `Task` tool's `subagent_type` must be prefixed `specode:` when a task-swarm run is active | `PreToolUse` | **enforced** |
+| **INV-8** | Subagent writes outside their `@writes` boundary are blocked | `PreToolUse` | **enforced** |
+| **INV-9** | `tasks.md` edits during a task-swarm run must go through `writeback` (line-safe diff) | `PreToolUse` | **enforced** |
+| **INV-11** | `Bash` commands that block on TTY input (`npm create`, `git commit` no `-m`, `vim`, etc.) are denied with a non-interactive rewrite suggestion; `PostToolUse` also scans tool output for hang-prompt signatures and injects an advisory | `PreToolUse` + `PostToolUse` | **enforced** + advisory |
+
+INV-1 and INV-2 form the **Code-Doc Sync Guard (CDSG)** — advisory since
+0.4.0 (previously hard-deny in 0.3.x).
 
 ## Architecture
 

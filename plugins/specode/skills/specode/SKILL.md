@@ -29,6 +29,8 @@ Do **not** activate for ordinary coding, planning, requirements, design, task li
 
 These rules are checked at **every turn** of every specode session. Never violate them. Never defer them. If the user pushes back, acknowledge — then comply with the rule first, discuss after.
 
+**Enforcement levels (0.4.0+)**: rules 1, 5–9 below are **hard-enforced** by hooks (violation = `exit 2`, tool call denied). Rules 2, 3, 4, 6 are **advisory** — sticky warnings on the ledger, surfaced in the next turn's status block. Advisory does NOT mean optional: a sticky warning that lingers across turns signals real code-doc drift and accumulating risk. Resolve them by writing the missing doc (auto-clears INV-1/2/4) or `/spec --dismiss-advisories` if intentional.
+
 1. ⛔ **New spec via `spec_init.py` only — no manual scaffolding.** Any new spec (one-shot `/spec` or `/spec --persist`) MUST be created by calling `spec_init.py --name <slug> --requirement-name "<显示名>" --source-text "<需求>"`. The script alone resolves the document root (three-tier, see §Document Root Resolution) and writes `.config.json`. You **MUST NOT**:
    - `mkdir` a spec directory anywhere yourself (not in cwd, not under `~/Git/<x>/`, not in any path you constructed)
    - `Write` `requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `.config.json` to a path you chose
@@ -49,6 +51,18 @@ These rules are checked at **every turn** of every specode session. Never violat
 7. ⛔ **Forced writes.** Every config / document mutation must be persisted on the spot. When a write fails (IOError / permission / `lock_lost`), abort the operation — never continue with in-memory unpersisted state.
 
 8. ⛔ **Selector via `spec_choice.py` only — never hand-roll options.** Every phase-gate selector (workflow choice / 文档确认 / 任务执行 / `/continue` 接管 / 验收 / 澄清完成) MUST be produced by running the exact `spec_choice.py` command from `references/prompts.md` and relaying its stdout **verbatim**. You **MUST NOT** type the option list from memory, paraphrase it, drop options, reorder them, or translate the labels. Hand-rolling silently hides newer options the script knows about (e.g. omitting `用 task-swarm 多 agent 并发` from the 任务执行 selector and forcing the user into the default path). If you don't have the exact command in context, Read `references/prompts.md` first — never improvise.
+
+9. ⛔ **Non-interactive Bash (INV-11).** Every `Bash` command runs in a no-TTY harness. Commands that wait on stdin (`Ok to proceed?`, `[Y/n]`, `$EDITOR` open, password prompt) will hang forever. The `bash_guard` hook hard-denies the most common offenders — but you MUST default to non-interactive form yourself:
+   - `npm create xxx -- --yes` / `npx --yes xxx` / `npm init -y` / `yarn create xxx --yes`
+   - `git commit -m "..."` (never bare `git commit` — opens `$EDITOR`)
+   - `apt-get install -y xxx` (or prefix `DEBIAN_FRONTEND=noninteractive`)
+   - `gh pr create --title "..." --body "..."`
+   - `ssh -o BatchMode=yes ...` (fails fast on auth prompt instead of waiting)
+   - **Never** run `vim`/`nano`/`less`/`top` etc. — use Read/Edit tools or pipe to `head`/`cat`
+   - **Never** start bare REPL (`python3` alone, `node` alone) — use `python3 -c '<code>'`
+   - **Never** use `git rebase -i` / `git add -p` / `git add -i`
+   
+   When a Bash run completes with stdout containing a hang signature (`Ok to proceed?`, `[Y/n]`, etc.) or exit 124, a `PostToolUse` advisory is injected into your next turn — **do not retry the same command**; either rewrite to non-interactive form or report to the user with the exact command for them to run manually.
 
 These rules trigger detectable signals (lint, `/continue` ⚠ markers, verify-lock exit codes). Treat any of those signals as a regression on your part, not a tool quirk.
 

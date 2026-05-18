@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bash_guard  # noqa: E402
 import spec_state  # noqa: E402
 import spec_sync   # noqa: E402
 import spec_telemetry  # noqa: E402
@@ -125,6 +126,24 @@ def _emit_violation(inv_id: str, payload: dict, info: Optional[dict], target: Op
     spec_telemetry.emit("inv.violation", **fields)
 
 
+def _advisory(inv_id: str, msg: str, ledger: dict, spec_dir: Path, target: Optional[Path]) -> int:
+    """Record an INV-{1,2,4,6} advisory: write to sticky ledger + warn on stderr, do NOT block.
+
+    Returns ok() so the calling hook does not deny the action. The advisory
+    becomes visible in the next UserPromptSubmit's status block (sticky until
+    spec doc edit auto-dismisses it or user runs /spec --dismiss-advisories).
+    """
+    file_str = str(target) if target else None
+    spec_sync.record_advisory(ledger, inv_id, msg, file=file_str)
+    spec_sync.write_ledger(spec_dir, ledger)
+    # Surface immediately to the model — stderr is the only signal a same-turn
+    # tool result carries back. The sticky queue handles cross-turn visibility.
+    sys.stderr.write(f"⚠ {inv_id} ADVISORY ({'本次操作' if target else '本回合'}已放行)\n")
+    sys.stderr.write(msg + "\n")
+    sys.stderr.write("  (sticky 提醒已写入 ledger; 改任一 spec 文档即自动清除, 或运行 /spec --dismiss-advisories)\n")
+    return ok()
+
+
 def _prefer_session_id() -> str:
     return os.environ.get("TERM_SESSION_ID") or ""
 
@@ -211,11 +230,17 @@ def handle_user_prompt_submit(payload: dict) -> int:
 
     block = spec_state.render_status_block(info)
     if ledger["freeform_mode"]:
-        block += "\nmode:          freeform (INV-1 relaxed, INV-2 still enforced)"
+        block += "\nmode:          freeform (INV-1 silenced; INV-2/4/6 still advisory; INV-3/7/8/9 still enforced)"
     else:
-        block += "\nmode:          strict"
+        block += "\nmode:          strict (INV-1/2/4/6 advisory; INV-3/7/8/9 enforced)"
     block += f"\ntasks_files:   {len(tasks_files)} entries"
     block += f"\nturn:          {ledger['turn_id']}"
+
+    # Sticky advisories from prior turns (cleared by spec-doc edit or
+    # /spec --dismiss-advisories).
+    advisories_block = spec_sync.format_advisories_block(ledger)
+    if advisories_block:
+        block += "\n" + advisories_block
 
     # Task-swarm run state, if a run is active in this project.
     swarm_block = _render_task_swarm_block(project_root)
@@ -284,8 +309,27 @@ def handle_pre_tool_use(payload: dict) -> int:
     else:
         target = _edit_target(payload)
 
-    # ---- INV-7: Task tool subagent_type prefix ----
     tool_name = (payload.get("tool_name") or "").strip()
+
+    # ---- INV-11: Bash interactive-command guard (works without active spec) ----
+    if tool_name == "Bash":
+        command = (payload.get("tool_input") or {}).get("command") or ""
+        result = bash_guard.check_bash_command(command)
+        if result.decision == "deny":
+            _audit("PreToolUse", payload, f"deny-INV-11[{result.rule}]", command[:200])
+            spec_telemetry.emit(
+                "inv.violation",
+                inv="INV-11",
+                rule=result.rule,
+                command=command[:200],
+                tool="Bash",
+                cwd=payload.get("cwd") or os.getcwd(),
+            )
+            return deny(result.message)
+        _audit("PreToolUse", payload, "ok-INV-11", command[:120])
+        return ok()
+
+    # ---- INV-7: Task tool subagent_type prefix ----
     if tool_name == "Task":
         project_root_for_swarm = Path(payload.get("cwd") or os.getcwd()).expanduser()
         if task_swarm_guard.is_task_swarm_active(project_root_for_swarm):
@@ -383,19 +427,17 @@ def handle_pre_tool_use(payload: dict) -> int:
             "file": str(target),
             "at": spec_sync._now(),
         }
-        spec_sync.write_ledger(spec_dir, ledger)
-        _audit("PreToolUse", payload, "deny-INV-6", f"phase={current_phase} target={target}")
+        _audit("PreToolUse", payload, "advisory-INV-6", f"phase={current_phase} target={target}")
         _emit_violation("INV-6", payload, info, target)
-        return deny(msg)
+        return _advisory("INV-6", msg, ledger, spec_dir, target)
 
     # Then INV-1 (relaxable by freeform).
     decision, msg = spec_sync.check_pre_edit(target, spec_dir, project_root, ledger)
     if decision == "deny":
         ledger["last_violation"] = {"id": "INV-1", "file": str(target), "at": spec_sync._now()}
-        spec_sync.write_ledger(spec_dir, ledger)
-        _audit("PreToolUse", payload, "deny-INV-1", str(target))
+        _audit("PreToolUse", payload, "advisory-INV-1", str(target))
         _emit_violation("INV-1", payload, info, target)
-        return deny(msg)
+        return _advisory("INV-1", msg, ledger, spec_dir, target)
 
     _audit("PreToolUse", payload, "ok-code-allowed", str(target))
     return ok()
@@ -403,6 +445,45 @@ def handle_pre_tool_use(payload: dict) -> int:
 
 def handle_post_tool_use(payload: dict) -> int:
     info = spec_state.find_active_spec(prefer_session_id=_prefer_session_id())
+
+    tool_name = (payload.get("tool_name") or "").strip()
+
+    # ---- INV-11: Bash hang signature scan (works without active spec) ----
+    if tool_name == "Bash":
+        tool_input = payload.get("tool_input") or {}
+        command = tool_input.get("command") or ""
+        # tool_response may be a string or dict depending on harness version.
+        tr = payload.get("tool_response")
+        if isinstance(tr, dict):
+            stdout = tr.get("stdout") or tr.get("output") or ""
+            stderr = tr.get("stderr") or ""
+            exit_code = tr.get("exit_code") or tr.get("returncode")
+        else:
+            stdout = tr or ""
+            stderr = ""
+            exit_code = None
+        is_hang, reason = bash_guard.detect_hang(stdout, stderr, exit_code)
+        if is_hang:
+            advisory = bash_guard.format_hang_advisory(reason, command_excerpt=command)
+            _audit("PostToolUse", payload, "advisory-INV-11-hang", reason)
+            spec_telemetry.emit(
+                "inv.violation",
+                inv="INV-11",
+                kind="post-hang",
+                reason=reason,
+                command=command[:200],
+            )
+            output = {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "additionalContext": advisory,
+                }
+            }
+            sys.stdout.write(json.dumps(output, ensure_ascii=False))
+            return ok()
+        _audit("PostToolUse", payload, "ok-Bash", command[:120])
+        return ok()
+
     if info is None:
         spec_state.sync_any_active_sentinel()
         return ok()
@@ -419,6 +500,11 @@ def handle_post_tool_use(payload: dict) -> int:
 
     if cls == "spec-doc":
         spec_sync.append_change(ledger, "doc", str(target), payload.get("tool_name") or "")
+        # Spec doc just got edited — auto-dismiss sticky INV-1/2/4 advisories.
+        # The drift those warned about is being addressed by this very edit.
+        dropped = spec_sync.auto_dismiss_on_doc_change(ledger)
+        if dropped:
+            _audit("PostToolUse", payload, f"advisories-cleared({dropped})", str(target))
     elif cls == "project-code":
         spec_sync.append_change(ledger, "code", str(target), payload.get("tool_name") or "")
     else:
@@ -445,12 +531,24 @@ def handle_stop(payload: dict) -> int:
             "ids": [v["id"] for v in violations],
             "at": spec_sync._now(),
         }
-        spec_sync.write_ledger(spec_dir, ledger)
-        body = "\n\n".join(v["msg"] for v in violations)
-        _audit("Stop", payload, "deny-" + "+".join(v["id"] for v in violations), "")
+        # INV-2 / INV-4 are advisory as of 0.4.0 — record, warn, but do NOT
+        # block the turn. The sticky advisory queue ensures the model sees
+        # it on the next UserPromptSubmit until resolved.
         for v in violations:
+            spec_sync.record_advisory(ledger, v["id"], v["msg"])
             _emit_violation(v["id"], payload, info, None)
-        return deny(body)
+        spec_sync.reset_turn(ledger)
+        spec_sync.write_ledger(spec_dir, ledger)
+        _audit("Stop", payload, "advisory-" + "+".join(v["id"] for v in violations), "")
+        sys.stderr.write(
+            "⚠ Stop ADVISORY (本回合已放行): " + ", ".join(v["id"] for v in violations) + "\n"
+        )
+        for v in violations:
+            sys.stderr.write(v["msg"] + "\n")
+        sys.stderr.write(
+            "  (sticky 提醒已写入 ledger; 下轮起在 status block 提示, 改 spec 文档自动清除)\n"
+        )
+        return ok()
 
     # Pass: reset turn counters (but keep turn_id until next UserPromptSubmit).
     spec_sync.reset_turn(ledger)

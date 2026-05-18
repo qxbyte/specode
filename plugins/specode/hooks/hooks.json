@@ -22,7 +22,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit|Task",
+        "matcher": "Edit|Write|MultiEdit|Task|Bash",
         "hooks": [
           {
             "type": "command",
@@ -33,11 +33,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "[ ! -e \"$HOME/.specode/.any-active\" ] || sh \"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh\" \"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/spec_guard.py\" post-tool-use"
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh\" \"${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/spec_guard.py\" post-tool-use"
           }
         ]
       }

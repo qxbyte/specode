@@ -178,3 +178,78 @@ def test_ledger_turn_lifecycle(tmp_path):
     assert len(ledger["turn_code_changes"]) == 1
     spec_sync.reset_turn(ledger)
     assert ledger["turn_code_changes"] == []
+
+
+# ---- Advisory helpers (0.4.0) ----------------------------------------------
+
+def test_record_advisory_dedupes_same_turn_file(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.start_new_turn(ledger, tmp_path / "project", [])
+    spec_sync.record_advisory(ledger, "INV-1", "msg", file="src/a.py")
+    spec_sync.record_advisory(ledger, "INV-1", "msg", file="src/a.py")  # dup
+    spec_sync.record_advisory(ledger, "INV-1", "msg", file="src/b.py")
+    assert len(ledger["pending_advisories"]) == 2
+
+
+def test_auto_dismiss_drops_inv1_2_4_keeps_inv6(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.record_advisory(ledger, "INV-1", "m", file="x.py")
+    spec_sync.record_advisory(ledger, "INV-2", "m")
+    spec_sync.record_advisory(ledger, "INV-4", "m")
+    spec_sync.record_advisory(ledger, "INV-6", "m", file="y.py")
+    dropped = spec_sync.auto_dismiss_on_doc_change(ledger)
+    assert dropped == 3
+    remaining = {a["id"] for a in ledger["pending_advisories"]}
+    assert remaining == {"INV-6"}
+
+
+def test_dismiss_advisories_all(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.record_advisory(ledger, "INV-1", "m", file="x.py")
+    spec_sync.record_advisory(ledger, "INV-6", "m", file="y.py")
+    dropped = spec_sync.dismiss_advisories(ledger)
+    assert dropped == 2
+    assert ledger["pending_advisories"] == []
+
+
+def test_dismiss_advisories_selective(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.record_advisory(ledger, "INV-1", "m", file="x.py")
+    spec_sync.record_advisory(ledger, "INV-6", "m", file="y.py")
+    dropped = spec_sync.dismiss_advisories(ledger, inv_ids=["INV-1"])
+    assert dropped == 1
+    assert [a["id"] for a in ledger["pending_advisories"]] == ["INV-6"]
+
+
+def test_format_advisories_block_empty(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    assert spec_sync.format_advisories_block(ledger) == ""
+
+
+def test_format_advisories_block_groups_by_inv(tmp_path):
+    import spec_sync
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.record_advisory(ledger, "INV-1", "m1", file="a.py")
+    spec_sync.record_advisory(ledger, "INV-1", "m1", file="b.py")
+    spec_sync.record_advisory(ledger, "INV-2", "m2")
+    out = spec_sync.format_advisories_block(ledger)
+    assert "pending advisories" in out
+    assert "INV-1 × 2" in out
+    assert "INV-2 × 1" in out

@@ -110,6 +110,62 @@ def test_check_stop_inv2_and_inv4():
     assert any(v["id"] == "INV-4" for v in violations)
 
 
+def test_cmd_status_with_spec_dir_bypasses_active_resolver(tmp_path, capsys, monkeypatch):
+    """status --spec-dir should read ledger directly, no active-pointer needed."""
+    spec_dir = tmp_path / "spec"
+    spec_dir.mkdir()
+    ledger = spec_sync.read_ledger(spec_dir)
+    spec_sync.start_new_turn(ledger, tmp_path, ["src/a.py"])
+    spec_sync.write_ledger(spec_dir, ledger)
+
+    # Ensure _resolve_active_spec_dir is NOT consulted: poison it.
+    monkeypatch.setattr(
+        spec_sync, "_resolve_active_spec_dir",
+        lambda: (_ for _ in ()).throw(AssertionError("must not call resolver")),
+    )
+
+    rc = spec_sync.main(["status", "--spec-dir", str(spec_dir)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "(no active spec)" not in out
+    assert str(spec_dir) in out
+    assert "tasks_files:    1 entries" in out
+
+
+def test_cmd_status_with_missing_spec_dir_errors(tmp_path, capsys):
+    rc = spec_sync.main(["status", "--spec-dir", str(tmp_path / "nope")])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "spec_dir does not exist" in err
+
+
+def test_find_active_spec_falls_back_to_default_sid(tmp_path, monkeypatch):
+    """When no env id is supplied, prefer the 'default' session before
+    sorting by lastActivityAt — matches normalize_session_id's fallback."""
+    sys.path.insert(0, str(SCRIPTS_DIR))
+    import spec_state
+
+    monkeypatch.setattr(spec_state, "get_document_root", lambda: tmp_path)
+    monkeypatch.delenv("TERM_SESSION_ID", raising=False)
+    (tmp_path / "older-slug").mkdir()
+    (tmp_path / "older-slug" / ".config.json").write_text('{"specId": "s1"}')
+    (tmp_path / "newer-slug").mkdir()
+    (tmp_path / "newer-slug" / ".config.json").write_text('{"specId": "s2"}')
+    (tmp_path / ".active-specode.json").write_text(
+        '{"version": 2, "sessions": {'
+        '"some-tty": {"specSlug": "newer-slug", "specId": "s2", '
+        '"status": "active", "lastActivityAt": "2099-01-01T00:00:00Z"},'
+        '"default":  {"specSlug": "older-slug", "specId": "s1", '
+        '"status": "active", "lastActivityAt": "2000-01-01T00:00:00Z"}'
+        '}}'
+    )
+
+    info = spec_state.find_active_spec(prefer_session_id=None)
+    assert info is not None
+    assert info["session_id"] == "default"
+    assert info["spec_slug"] == "older-slug"
+
+
 def test_ledger_turn_lifecycle(tmp_path):
     spec_dir = tmp_path / "spec"
     spec_dir.mkdir()

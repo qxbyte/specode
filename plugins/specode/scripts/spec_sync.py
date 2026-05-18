@@ -438,11 +438,17 @@ def _write_spec_config(spec_dir: Path, data: dict) -> None:
     _write_json(_spec_config_path(spec_dir), data)
 
 
-def _cmd_status(_args: argparse.Namespace) -> int:
-    spec_dir = _resolve_active_spec_dir()
-    if not spec_dir:
-        print("(no active spec)")
-        return 0
+def _cmd_status(args: argparse.Namespace) -> int:
+    if getattr(args, "spec_dir", None):
+        spec_dir = Path(args.spec_dir).expanduser().resolve()
+        if not spec_dir.exists():
+            print(f"ERR: spec_dir does not exist: {spec_dir}", file=sys.stderr)
+            return 2
+    else:
+        spec_dir = _resolve_active_spec_dir()
+        if not spec_dir:
+            print("(no active spec)")
+            return 0
     ledger = read_ledger(spec_dir)
     config = _read_spec_config(spec_dir)
     print(f"spec_dir:       {spec_dir}")
@@ -487,7 +493,8 @@ def _cmd_extract(args: argparse.Namespace) -> int:
 def main(argv) -> int:
     p = argparse.ArgumentParser(prog="spec_sync.py")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("status", help="Print ledger summary for active spec")
+    sp_status = sub.add_parser("status", help="Print ledger summary for active spec")
+    sp_status.add_argument("--spec-dir", help="Explicit spec dir; bypass active-pointer lookup")
     sp = sub.add_parser("freeform", help="Toggle freeform mode")
     sp.add_argument("state", choices=["on", "off"])
     sx = sub.add_parser("extract", help="Print tasks_files for a spec")

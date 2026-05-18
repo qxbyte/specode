@@ -89,9 +89,17 @@ def find_active_spec(prefer_session_id: Optional[str] = None) -> Optional[dict]:
     if not candidates:
         return None
 
+    # Mirror spec_session.normalize_session_id's fallback: when no env-derived
+    # id is provided, the writer used "default" — so look that up first before
+    # falling back to lastActivityAt ordering.
+    lookup_sids: list[str] = []
     if prefer_session_id:
+        lookup_sids.append(prefer_session_id)
+    else:
+        lookup_sids.append("default")
+    for target in lookup_sids:
         for sid, entry, spec_dir in candidates:
-            if sid == prefer_session_id:
+            if sid == target:
                 return _build_spec_info(sid, entry, spec_dir)
 
     candidates.sort(key=lambda c: c[1].get("lastActivityAt") or "", reverse=True)

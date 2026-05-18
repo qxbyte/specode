@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+_no entries yet_
+
+## 0.3.1 (2026-05-18)
+
 ### Added
 
 - **Local-only telemetry** (`~/.specode/telemetry.jsonl`): opt-in via

@@ -42,7 +42,7 @@
 | `--persist <req>` | `spec_init.py --persistent`, then start workflow |
 | `--freeform` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py freeform on` |
 | `--strict` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py freeform off` |
-| `--sync-status` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py status` |
+| `--sync-status` | `sh ${CLAUDE_PLUGIN_ROOT}/scripts/run.sh ${CLAUDE_PLUGIN_ROOT}/scripts/spec_sync.py status [--spec-dir <active-spec-dir>]` — 当前会话已知 active spec dir 时务必传 `--spec-dir`，否则脚本会回退到 active-pointer 解析，可能返回 `(no active spec)` |
 
 Sub-flag dispatch 由模型按本表执行，不进入 intake 流程。`-h` / `--vault-status` / `--detect-vault` / `--sync-status` 走 **Fast Path**（详见 SKILL.md §Help Output）—— 单文件读取或单脚本调用，输出 verbatim，不思考、不解释。
 

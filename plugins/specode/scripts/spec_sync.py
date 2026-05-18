@@ -255,6 +255,7 @@ def _new_ledger(spec_dir: Path) -> dict:
         "turn_code_changes": [],
         "turn_doc_changes": [],
         "last_violation": None,
+        "pending_advisories": [],
         "updated_at": None,
     }
 
@@ -415,6 +416,95 @@ def check_stop(ledger: dict) -> list[dict]:
     return violations
 
 
+# --- Advisory infrastructure (INV-1 / INV-2 / INV-4 / INV-6) --------------
+#
+# These INVs are "process discipline" — violating them does NOT corrupt data
+# or break the task-swarm scheduler. As of 0.4.0 they are recorded as sticky
+# advisories on the ledger instead of denying the action.
+#
+# INV-3 / INV-7 / INV-8 / INV-9 remain hard deny because each one protects
+# data integrity (lock ownership, subagent_type contract, write boundary,
+# tasks.md writeback safety) — advisory-only would silently corrupt state.
+
+ADVISORY_INVS = {"INV-1", "INV-2", "INV-4", "INV-6"}
+# Doc edit auto-dismisses these. Touching any spec doc indicates the user is
+# already engaging with documentation; the stale sync warning becomes noise.
+DOC_CHANGE_DISMISSES = {"INV-1", "INV-2", "INV-4"}
+
+
+def record_advisory(ledger: dict, inv_id: str, msg: str, file: str | None = None) -> None:
+    """Append an advisory to the sticky ledger queue (idempotent per turn+inv+file)."""
+    entry = {
+        "id": inv_id,
+        "msg": msg,
+        "file": file,
+        "turn_id": ledger.get("turn_id"),
+        "at": _now(),
+    }
+    pending = ledger.setdefault("pending_advisories", [])
+    # Dedupe: same inv + same file + same turn → don't pile up
+    key = (entry["id"], entry["file"], entry["turn_id"])
+    for existing in pending:
+        if (existing.get("id"), existing.get("file"), existing.get("turn_id")) == key:
+            return
+    pending.append(entry)
+    ledger["updated_at"] = _now()
+
+
+def auto_dismiss_on_doc_change(ledger: dict) -> int:
+    """Called after a spec-doc edit lands. Drop INV-1/2/4 advisories (drift fixed)."""
+    pending = ledger.get("pending_advisories") or []
+    before = len(pending)
+    ledger["pending_advisories"] = [a for a in pending if a.get("id") not in DOC_CHANGE_DISMISSES]
+    after = len(ledger["pending_advisories"])
+    if before != after:
+        ledger["updated_at"] = _now()
+    return before - after
+
+
+def dismiss_advisories(ledger: dict, inv_ids: list[str] | None = None) -> int:
+    """Manual dismiss — drop all advisories or only those matching inv_ids."""
+    pending = ledger.get("pending_advisories") or []
+    before = len(pending)
+    if inv_ids is None:
+        ledger["pending_advisories"] = []
+    else:
+        targets = set(inv_ids)
+        ledger["pending_advisories"] = [a for a in pending if a.get("id") not in targets]
+    after = len(ledger["pending_advisories"])
+    if before != after:
+        ledger["updated_at"] = _now()
+    return before - after
+
+
+def format_advisories_block(ledger: dict) -> str:
+    """Render sticky advisories for injection into UserPromptSubmit status block.
+
+    Empty string when there are none.
+    """
+    pending = ledger.get("pending_advisories") or []
+    if not pending:
+        return ""
+    lines = ["⚠ pending advisories (sticky — 本轮处理或运行 /spec --dismiss-advisories 清除):"]
+    # Group by inv id for readability
+    by_inv: dict[str, list[dict]] = {}
+    for a in pending:
+        by_inv.setdefault(a.get("id", "?"), []).append(a)
+    for inv_id in sorted(by_inv):
+        entries = by_inv[inv_id]
+        head = f"  {inv_id} × {len(entries)}"
+        files = [e.get("file") for e in entries if e.get("file")]
+        if files:
+            sample = files[0] if len(files) == 1 else f"{files[0]} (+{len(files) - 1} more)"
+            head += f": {sample}"
+        lines.append(head)
+        # Show only the first entry's message (others are likely similar)
+        first_msg = entries[0].get("msg", "").split("\n")[0]
+        if first_msg:
+            lines.append(f"    {first_msg}")
+    return "\n".join(lines)
+
+
 # --- CLI -------------------------------------------------------------------
 
 def _resolve_active_spec_dir() -> Optional[Path]:
@@ -461,6 +551,25 @@ def _cmd_status(args: argparse.Namespace) -> int:
     print(f"code changes:   {len(ledger.get('turn_code_changes') or [])}")
     print(f"doc changes:    {len(ledger.get('turn_doc_changes') or [])}")
     print(f"last violation: {ledger.get('last_violation')}")
+    pending = ledger.get("pending_advisories") or []
+    if pending:
+        print(f"advisories:     {len(pending)} pending")
+        for a in pending:
+            print(f"  - [{a.get('id')}] {a.get('file') or '(no file)'} @ turn {a.get('turn_id')}")
+    return 0
+
+
+def _cmd_dismiss_advisories(args: argparse.Namespace) -> int:
+    spec_dir = Path(args.spec_dir).expanduser() if args.spec_dir else _resolve_active_spec_dir()
+    if not spec_dir:
+        print("ERR: no active spec (and no --spec-dir given)", file=sys.stderr)
+        return 2
+    ledger = read_ledger(spec_dir)
+    inv_ids = args.inv.split(",") if args.inv else None
+    dropped = dismiss_advisories(ledger, inv_ids)
+    write_ledger(spec_dir, ledger)
+    scope = f"matching {args.inv}" if inv_ids else "all"
+    print(f"✓ dismissed {dropped} advisory entries ({scope}) for spec '{spec_dir.name}'")
     return 0
 
 
@@ -499,11 +608,15 @@ def main(argv) -> int:
     sp.add_argument("state", choices=["on", "off"])
     sx = sub.add_parser("extract", help="Print tasks_files for a spec")
     sx.add_argument("--spec-dir")
+    sd = sub.add_parser("dismiss-advisories", help="Clear sticky advisories (all or selected INV ids)")
+    sd.add_argument("--spec-dir", help="Explicit spec dir; bypass active-pointer lookup")
+    sd.add_argument("--inv", help="Comma-separated INV ids to clear (e.g. 'INV-1,INV-2'); default: clear all")
     args = p.parse_args(argv)
     return {
         "status": _cmd_status,
         "freeform": _cmd_freeform,
         "extract": _cmd_extract,
+        "dismiss-advisories": _cmd_dismiss_advisories,
     }[args.cmd](args)
 
 

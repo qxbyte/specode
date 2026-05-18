@@ -8,18 +8,25 @@
 
 ## 强制保证（Invariants）
 
-只要 spec 处于激活状态，下列规则即由 **harness 硬强制**：
+只要 spec 处于激活状态，下列规则即由 **harness 检查**。0.4.0 起 INV 分两级：
 
-| ID | 规则 | Hook |
-|---|---|---|
-| **INV-1** | 编辑源文件，必须满足以下任一：该文件被列在 `tasks.md` / `## Affected Files`；或同一轮内编辑了 `design.md` / `tasks.md` / `bugfix.md`；或处于 `freeform` 模式 | `PreToolUse` |
-| **INV-2** | 触碰过源代码的 turn，结束前必须至少触碰一份 spec 文档 | `Stop` |
-| **INV-3** | 当前会话已被其他窗口驱逐时，spec 文档写入被拒绝 | `PreToolUse` |
-| **INV-4** | 编辑 `requirements.md` / `bugfix.md` 必须在同一轮内更新 `tasks.md`（其 `## 测试要点` 节，由 SHALL 衍生） | `Stop` |
-| **INV-5** | 每个用户 turn 自动注入状态块（`spec / phase / lock / turn`）到模型上下文 | `UserPromptSubmit` |
-| **INV-6** | 实现前阶段（intake / requirements / bugfix / design / tasks）绝对禁止源代码编辑 | `PreToolUse` |
+- **advisory**（流程纪律）：违反时在 ledger 写一条 sticky 提醒，下轮 `UserPromptSubmit` 状态块显示；工具调用照样放行。改任一 spec 文档自动清除 INV-1/2/4；手动清除运行 `/spec --dismiss-advisories`。
+- **enforced**（数据/契约保护）：违反时硬拒（exit 2），防止数据丢失、被驱逐覆盖写、subagent 派单错、subagent 越界写。
 
-INV-1 与 INV-2 共同构成 **Code-Doc Sync Guard (CDSG)**。
+| ID | 规则 | Hook | 等级 |
+|---|---|---|---|
+| **INV-1** | 编辑源码需 `tasks.md` 列表覆盖、同轮 doc 编辑、或 `freeform` 模式 | `PreToolUse` | **advisory** |
+| **INV-2** | 触碰源码的 turn 应在结束前至少触碰一份 spec 文档 | `Stop` | **advisory** |
+| **INV-3** | 当前会话已被其他窗口驱逐时，spec 文档写入被拒 | `PreToolUse` | **enforced** |
+| **INV-4** | `requirements.md` / `bugfix.md` 编辑应同轮更新 `tasks.md ## 测试要点` | `Stop` | **advisory** |
+| **INV-5** | 每个用户 turn 注入状态块（`spec / phase / lock / turn / advisories`） | `UserPromptSubmit` | 注入 |
+| **INV-6** | 实现前阶段（intake / requirements / bugfix / design / tasks）禁止源码编辑 | `PreToolUse` | **advisory** |
+| **INV-7** | task-swarm 运行期间 `Task` 工具的 `subagent_type` 必须 `specode:` 前缀 | `PreToolUse` | **enforced** |
+| **INV-8** | subagent 写出 `@writes` 边界的文件被拒 | `PreToolUse` | **enforced** |
+| **INV-9** | task-swarm 期间 `tasks.md` 编辑必须经 `writeback`（line-safe diff） | `PreToolUse` | **enforced** |
+| **INV-11** | 会卡死在 TTY 的 `Bash` 命令（`npm create`、`git commit` 无 `-m`、`vim` 等）被拒，附非交互改写建议；`PostToolUse` 还会扫描输出中的交互提示特征，命中即注入 advisory | `PreToolUse` + `PostToolUse` | **enforced** + advisory |
+
+INV-1 与 INV-2 共同构成 **Code-Doc Sync Guard (CDSG)** —— 0.4.0 起降为 advisory（0.3.x 仍为硬拒）。
 
 ## 项目结构
 

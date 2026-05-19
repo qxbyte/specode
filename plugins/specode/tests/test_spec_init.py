@@ -12,7 +12,6 @@ DOC_FILENAMES = (
     "bugfix.md",
     "design.md",
     "tasks.md",
-    "acceptance-checklist.md",
     "implementation-log.md",
 )
 
@@ -30,7 +29,7 @@ def test_spec_init_creates_full_skeleton(run_script, doc_root, fake_home, make_s
     payload = json.loads(cp.stdout)
     spec_dir = Path(payload["spec_dir"])
     assert spec_dir.exists()
-    # All 6 markdown docs present
+    # All 5 markdown docs present
     for name in DOC_FILENAMES:
         assert (spec_dir / name).exists(), f"{name} missing"
     # .config.json present

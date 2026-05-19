@@ -4,17 +4,18 @@
 仅产出 WARNING；所有 lint 一律 exit 0（不阻断模型流程）。
 
 规则：
-  1. acceptance-checklist.md.mtime < requirements.md.mtime → WARNING
-     （follow-mode 落后；改了需求/bugfix 后未同 turn 重写 checklist）
-  2. tasks.md 中的 `_需求：x.y_` 标签必须在 requirements.md / bugfix.md
+  1. tasks.md 中的 `_需求：x.y_` 标签必须在 requirements.md / bugfix.md
      找到对应 "需求 x" 或 "x.y" 章节标记；找不到 → WARNING
-  3. implementation-log.md 中每个 `## ` 条目正文 < 30 字符或缺
+  2. implementation-log.md 中每个 `## ` 条目正文 < 30 字符或缺
      文件引用 (`.py` / `.md` 等) → WARNING（"空 log 等于没改过"）
-  4. requirements.md 中的 EARS SHALL 行缺动词或缺 trigger
+  3. requirements.md 中的 EARS SHALL 行缺动词或缺 trigger
      （形如 WHEN / IF / WHILE / WHERE 关键字开头）→ WARNING
 
+接入：acceptance phase 进入前由主代理调一次，把 WARNING 列给用户参考
+（详见 SKILL.md §Phase Order 中 acceptance 部分）。
+
 用法：
-  spec_lint.py --spec <spec-dir>        默认 lint 该 spec 目录下 6 份文档
+  spec_lint.py --spec <spec-dir>        lint 该 spec 目录下 5 份文档
 
 stdlib-only。
 """
@@ -46,19 +47,6 @@ def _read(p: Path) -> Optional[str]:
     except Exception:
         return None
     return None
-
-
-def rule_checklist_lag(spec_dir: Path, warnings: list[str]) -> None:
-    req = spec_dir / "requirements.md"
-    chk = spec_dir / "acceptance-checklist.md"
-    if not req.exists() or not chk.exists():
-        return
-    try:
-        if chk.stat().st_mtime < req.stat().st_mtime:
-            _warn(warnings, "checklist-lag",
-                  f"{chk.name} 的修改时间早于 {req.name}；请同 turn 重写 acceptance-checklist。")
-    except Exception:
-        pass
 
 
 def rule_task_traceability(spec_dir: Path, warnings: list[str]) -> None:
@@ -144,7 +132,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0  # lint 不阻断；返回 0
 
     warnings: list[str] = []
-    rule_checklist_lag(spec_dir, warnings)
     rule_task_traceability(spec_dir, warnings)
     rule_log_entries(spec_dir, warnings)
     rule_ears_shall(spec_dir, warnings)

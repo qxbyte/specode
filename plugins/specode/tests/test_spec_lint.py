@@ -1,8 +1,6 @@
-"""Tests for spec_lint.py — 4 lint rules, all warning-only (exit 0)."""
+"""Tests for spec_lint.py — 3 lint rules, all warning-only (exit 0)."""
 from __future__ import annotations
 
-import os
-import time
 from pathlib import Path
 
 import pytest
@@ -15,10 +13,6 @@ def _bootstrap_spec_dir(doc_root: Path, slug: str = "lint-spec") -> Path:
     (sd / "requirements.md").write_text(
         "# 需求文档\n\n## 需求 1\n\n### 需求 1.1\n\n"
         "WHEN 用户登录，THE System SHALL 返回 token。\n",
-        encoding="utf-8",
-    )
-    (sd / "acceptance-checklist.md").write_text(
-        "# 验收清单\n\n- [ ] 登录返回 token (需求 1.1)\n",
         encoding="utf-8",
     )
     (sd / "tasks.md").write_text(
@@ -37,20 +31,6 @@ def test_lint_clean_spec_has_zero_warnings(run_script, doc_root):
     cp = run_script("spec_lint.py", "--spec", str(sd))
     assert cp.returncode == 0
     assert "0 warnings" in cp.stdout
-
-
-def test_lint_checklist_lag_warns(run_script, doc_root):
-    sd = _bootstrap_spec_dir(doc_root, "lagging")
-    # Make checklist older than requirements
-    req = sd / "requirements.md"
-    chk = sd / "acceptance-checklist.md"
-    past = time.time() - 7200
-    now = time.time()
-    os.utime(chk, (past, past))
-    os.utime(req, (now, now))
-    cp = run_script("spec_lint.py", "--spec", str(sd))
-    assert cp.returncode == 0
-    assert "checklist-lag" in cp.stdout
 
 
 def test_lint_trace_warns_for_orphan_tag(run_script, doc_root):
@@ -93,7 +73,7 @@ def test_lint_ears_missing_trigger_warns(run_script, doc_root):
 
 
 def test_lint_always_exit_zero_even_with_many_warnings(run_script, doc_root):
-    """Any/all 4 rules can fire and exit code is still 0."""
+    """Any/all 3 rules can fire and exit code is still 0."""
     sd = _bootstrap_spec_dir(doc_root, "all-bad")
     # Force every rule:
     (sd / "requirements.md").write_text(
@@ -108,13 +88,8 @@ def test_lint_always_exit_zero_even_with_many_warnings(run_script, doc_root):
         "# log\n\n## 2026-01-03 — \n\nshort\n",
         encoding="utf-8",
     )
-    # Make checklist lag
-    past = time.time() - 7200
-    os.utime(sd / "acceptance-checklist.md", (past, past))
-    os.utime(sd / "requirements.md", (time.time(), time.time()))
     cp = run_script("spec_lint.py", "--spec", str(sd))
     assert cp.returncode == 0
-    # Multiple rule names appear
-    rule_hits = sum(1 for r in ("checklist-lag", "trace", "log", "ears")
-                    if r in cp.stdout)
-    assert rule_hits >= 3
+    # All 3 rule names appear
+    rule_hits = sum(1 for r in ("trace", "log", "ears") if r in cp.stdout)
+    assert rule_hits == 3

@@ -447,14 +447,14 @@ questions:
 """,
     "acceptance-gate": """## 选择器节点：验收门
 
-**目的**：acceptance phase；acceptance-checklist.md 已填写，判断是否通过验收进入 iteration，
-或者回到 requirements / design / tasks 继续修改。
+**目的**：acceptance phase；tasks.md 全部 `[x]` 完成、`## 测试要点` 章节已跑过，判断是否通过验收进入 iteration，或者回到 requirements / design / tasks 继续修改。
 
 **上下文**：active spec=<slug>，phase=acceptance。
-已通过：<n_pass>，未通过 / 待复核：<n_fail>。
+任务完成度：<n_done>/<n_total>，测试要点未通过：<n_fail>。
 
 **前置动作（chat 简报，≤3 行）**：
-- 列出已通过 / 未通过 / 待复核计数。
+- 列出 tasks.md 完成度（done/total）与测试要点未通过条数。
+- 调用 `spec_lint.py --spec <spec_dir>` 把 WARNING 列出来（traceability / log / EARS 三类，如有）。
 - n_fail > 0 时简列未通过项（≤3 条）。
 
 **调用 `AskUserQuestion` 工具**：
@@ -465,12 +465,12 @@ questions:
     multiSelect: false
     options:
       - label: "验收通过，进入 iteration（推荐）"
-        description: "所有 SHALL 已满足；如有后续调整走 iteration 子循环。"
+        description: "所有任务完成、所有测试要点跨过、lint 无阻塞 WARNING；如有后续调整走 iteration 子循环。"
       - label: "继续修改"
-        description: "仍有未达标项，回到 requirements / design / tasks 调整。"
+        description: "仍有未完成任务 / 未跨过的测试要点 / lint WARNING 需处理，回到 requirements / design / tasks 调整。"
 
 **约束**：
-- n_fail = 0 时推荐选 1；n_fail > 0 时**移除"（推荐）"标记**。
+- n_fail = 0 且 n_done == n_total 时推荐选 1；否则**移除"（推荐）"标记**。
 - 调用工具后立即 end turn。
 """,
     "iteration-scope": """## 选择器节点：iteration 调整范围（多选）
@@ -544,13 +544,12 @@ active spec：<slug>（phase=<phase>）
 此 spec 的可写文档：
   • requirements.md / bugfix.md
   • design.md
-  • tasks.md
-  • acceptance-checklist.md
+  • tasks.md（含末尾 `## 测试要点` 章节）
   • implementation-log.md（如有）
 
 请评估用户本次输入是否涉及以下变更：
 
-- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`，**同 turn** 重写 `acceptance-checklist.md`
+- 需求 / 验收标准调整 → 先 Edit `requirements.md` 或 `bugfix.md`，**同 turn** 更新 `tasks.md` 末尾 `## 测试要点` 章节（每条 SHALL 对应一行）
 - 架构 / 接口 / 数据模型决策 → 先 Edit `design.md`
 - 任务范围 / 状态推进 → 先 Edit `tasks.md`
 - 实现期间的设计偏离 / 关键决策 → 在 `implementation-log.md` 追加条目
@@ -1169,7 +1168,6 @@ def cmd_list_specs(args: argparse.Namespace) -> int:
         "bugfix.md",
         "design.md",
         "tasks.md",
-        "acceptance-checklist.md",
         "implementation-log.md",
     ]
 

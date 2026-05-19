@@ -4,6 +4,102 @@
 
 _no entries yet_
 
+## 0.9.0 (2026-05-19)
+
+### Removed — `acceptance-checklist.md` retired, test points moved into `tasks.md`
+
+Spec document count dropped from 6 to 5. The standalone
+`acceptance-checklist.md` (which existed to give QA reviewers a
+verification checklist parallel to `tasks.md`) has been folded into
+a new `## 测试要点` section at the end of `tasks.md`. Reasons:
+
+- The checklist file duplicated information that already had a home
+  in `tasks.md` (`_需求：x.y_` traceability tags).
+- Maintaining two parallel docs encouraged drift — one would update
+  while the other lagged, and the `spec_lint` `checklist-lag` rule
+  papered over a symptom rather than fixing the duplication.
+- A single `## 测试要点` section keeps the QA-facing artifact next
+  to the engineering-facing tasks it validates, so changes propagate
+  in one Edit.
+
+Acceptance phase now decides "passed" based on `tasks.md` being all
+`[x]` plus every test-point line in `## 测试要点` being crossed
+(`[x]` or `[-]` with reason), instead of a separate checklist table.
+
+**Changes**:
+
+- `spec_init.py` — drops the `acceptance-checklist.md` template
+  string and its write step; `tasks.md` template now ships with a
+  `## 测试要点` section.
+- `spec_session.py` — `SELECTOR_PROMPTS["acceptance-gate"]`
+  rewritten (lists `n_done/n_total` + `n_fail` instead of pass/fail
+  count, and prompts the model to run `spec_lint.py` first); the
+  6-doc list in `spec_doc_names` (`list-specs`) shrinks to 5; the
+  document-first reminder text drops the checklist line.
+- `spec_lint.py` — `rule_checklist_lag` removed (3 rules remain:
+  traceability / log / EARS).
+- `agents/spec-writer.md` — the "same-turn rewrite of
+  `acceptance-checklist.md`" iron rule becomes "same-turn update of
+  the `## 测试要点` section in `tasks.md`".
+- `SKILL.md` — 6→5 doc list; new line under §Phase Order instructing
+  the model to invoke `spec_lint.py` once when entering acceptance.
+- `references/workflow.md` — §3.2 retitled and rewritten as
+  "tasks.md 测试要点 跟随式更新（铁律）"; acceptance phase steps
+  (§7) now include the `spec_lint` call and reference test-point
+  rows rather than checklist rows.
+- `references/templates.md` — §5 (`acceptance-checklist.md` template)
+  removed entirely; `tasks.md` template (§4) gains the `## 测试要点`
+  section + a new §4.2 with the fill rules; subsequent sections
+  renumbered (§6→§5, §7→§6, …).
+- `references/iteration.md` — iteration-time accumulation rules now
+  describe appending lines to `## 测试要点` instead of rewriting a
+  checklist table.
+- `references/obsidian.md` — spec directory tree drops the
+  checklist file.
+- `references/selectors.md` — A6 `acceptance-gate` constant
+  rewritten to mirror the new `SELECTOR_PROMPTS["acceptance-gate"]`.
+- README / README.zh-CN / DESIGN / IMPLEMENTATION-AUDIT updated to
+  reflect the 5-doc list and the new acceptance criterion.
+
+### Added — `spec_lint.py` wired into acceptance phase
+
+`spec_lint.py` existed as a standalone tool since 0.6.0 but no
+hook/command/agent ever invoked it. Now SKILL.md §Phase Order and
+the `acceptance-gate` selector text both instruct the main agent
+to call it once when entering acceptance and list any
+traceability / log / EARS warnings in the chat preamble. Lint is
+still advisory (`exit 0`), never blocking.
+
+### Removed (cont.)
+
+- `spec_lint.rule_checklist_lag` and the 1 corresponding pytest
+  case in `test_spec_lint.py` (`test_lint_checklist_lag_warns`).
+  5 cases remain: clean-spec + trace + log + ears + all-bad
+  multi-fire.
+- `acceptance-checklist.md` entry from `test_spec_init.py`
+  `DOC_FILENAMES` (6→5).
+
+### Tests
+
+153 pass (down from 154; the deleted `checklist-lag` case is the
+only loss — clean/trace/log/ears/all-bad coverage of the 3
+surviving rules stays).
+
+### Migration
+
+**Existing specs created before 0.9.0** keep their
+`acceptance-checklist.md` file on disk — no auto-delete. Treat
+those as historical artifacts; copy the still-useful lines into
+the new `## 测试要点` section in `tasks.md` and delete the file
+manually if you no longer need it. New specs created from 0.9.0
+onward never get the file.
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.8.1 (2026-05-19)
 
 ### Changed — `references/prompts.md` renamed to `references/selectors.md`

@@ -1,6 +1,6 @@
 # Spec Document Templates
 
-6 份 spec 文档的章节模板与 EARS SHALL 写法。`spec-writer` agent（工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）按本文件生成文档。
+5 份 spec 文档的章节模板与 EARS SHALL 写法。`spec-writer` agent（工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）按本文件生成文档。tasks.md 末尾自带 `## 测试要点` 章节，跟随 requirements/bugfix 同 turn 更新（详见 §4）。
 
 ## 0. 命名约定
 
@@ -9,8 +9,7 @@
 | `requirements.md` | 需求-first / design-first 工作流的需求文档 | 与 `bugfix.md` 互斥 |
 | `bugfix.md` | bugfix 工作流的问题描述 | 与 `requirements.md` 互斥 |
 | `design.md` | 技术设计文档 | — |
-| `tasks.md` | 任务拆分 + 进度 + traceability | — |
-| `acceptance-checklist.md` | 验收检查表（跟随式重写） | 跟随 requirements / bugfix |
+| `tasks.md` | 任务拆分 + 进度 + traceability + 末尾 `## 测试要点`（跟随 requirements / bugfix 同 turn 更新） | — |
 | `implementation-log.md` | 实现记录（可选） | — |
 
 每份文档头部固定四行 metadata：
@@ -18,7 +17,7 @@
 ```text
 Spec Type: <Feature | Bugfix>
 Workflow: <requirements-first | design-first | bugfix>
-Status: <Requirements Draft | Bug Analysis Draft | Design Draft | Tasks Draft | Acceptance Checklist Draft | Implementation Log>
+Status: <Requirements Draft | Bug Analysis Draft | Design Draft | Tasks Draft | Implementation Log>
 Review Status: <unreviewed | reviewed | accepted>
 ```
 
@@ -328,11 +327,20 @@ Review Status: unreviewed
  - [说明]
  - _需求：可选_
 
+## 测试要点
+
+> 跟随 `requirements.md` / `bugfix.md` 同步更新；每行对应一条 SHALL，供测试人员快速了解验证场景。acceptance phase 时主代理逐行跑：通过改 `[x]`、跳过改 `[-]`（附原因）、未通过留 `[ ]`。
+
+- [ ] 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
+- [ ] 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）
+- [ ] 已登录用户访问 /api/user → 返回当前用户信息（需求 2.1）
+
 ## 验收
 
 - [ ] 所有 required 任务完成。
 - [ ] 所有指定验证命令通过。
 - [ ] 未完成或跳过的 optional 任务已记录。
+- [ ] 测试要点全部跨过（`[x]` / `[-]`，无遗留 `[ ]`）。
 - [ ] 用户确认验收。
 ```
 
@@ -358,73 +366,26 @@ Review Status: unreviewed
 - 跳过任务 → `[-]` + 在 chat / log 说明原因。
 - 可选任务：用户选 `开始 required` 时不动；选 `开始 required + optional` 时也走 `[ ] → [~] → [x]` 流程。
 
-## 5. `acceptance-checklist.md`
+### 4.2 `## 测试要点` 章节填充规则
 
-跟随式重写 —— `requirements.md` / `bugfix.md` 改动 → **同 turn** 重写本文档。无独立确认门。
+跟随式更新 —— `requirements.md` / `bugfix.md` 改动 → **同 turn** 更新本章节。无独立确认门。
 
-```markdown
-# 验收操作清单：[需求显示名]（[slug]）
-
-Spec Type: <Feature | Bugfix>
-Workflow: <requirements-first | design-first | bugfix>
-Status: Acceptance Checklist Draft
-Review Status: unreviewed
-
-## 使用说明
-
-面向测试 / 验收人员，逐项执行以下操作，记录实际结果。所有 required 验收项通过后，
-才能确认本次需求功能点全部实现。
-
-## 前置条件
-
-- [ ] 已切换到包含本次实现的分支或环境。
-- [ ] 已完成 `tasks.md` 中 required 任务。
-- [ ] 已准备必要账号、数据、配置或测试输入。
-- [ ] 已确认需要运行的验证命令或手工测试入口。
-
-## 验收步骤
-
-| 序号 | 功能点 | 操作步骤 | 预期结果 | 实际结果 | 结论 |
-| --- | --- | --- | --- | --- | --- |
-| 1 | [需求 1.1 简称] | 1. [测试人员的具体动作]<br>2. [具体动作] | [SHALL 后的期望行为，原文引用] | 待记录 | 待验证 |
-| 2 | [需求 1.2 简称] | 1. [具体动作] | [期望行为] | 待记录 | 待验证 |
-| 3 | [需求 2.1 简称] | 1. [具体动作] | [期望行为] | 待记录 | 待验证 |
-| 4 | 验证命令 | 1. 运行 `pytest tests/test_x.py`<br>2. 记录命令输出摘要 | 所有 required 验证命令通过；如跳过，记录原因和风险 | 待记录 | 待验证 |
-
-## 验收结论
-
-- [ ] 所有 required 功能点已按操作步骤验证。
-- [ ] 所有 required 验证命令已通过，或跳过原因已记录并被接受。
-- [ ] 未完成、失败或跳过的 optional 项已记录。
-- [ ] 用户或验收人员确认通过。
-
-## 问题记录
-
-（验收期间发现的问题、阻塞、需回退到 requirements / design / tasks 的项，逐条记录）
-
-- [问题]
-- [问题]
-```
-
-填充规则：
-
-- 每条 EARS `SHALL` 语句 → 表格一行：
- - **功能点** = 该 SHALL 所属需求编号 / 简称（如 `需求 1.1 密码强度`）。
- - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述；必须可执行）。
+- 每条 EARS `SHALL` 语句 → 一行 `- [ ] 触发场景 → 预期结果（需求 X.Y）`：
+ - **触发场景** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述；必须可执行）。
  - **预期结果** = 直接引用 SHALL 后的期望行为。
- - **实际结果** = `待记录`。
- - **结论** = `待验证`。
-- **禁止保留** templates 里"核心能力 / 异常输入 / 回归行为 / _agent 待填充_"等占位行。
-- 「验证命令」行可保留（从 tasks.md 里的 `验证：xxx` 提取）。
+ - **需求 X.Y** = SHALL 在 requirements.md 的编号，与 tasks 上方 `_需求：x.y_` traceability 标签对齐。
+- **禁止保留** templates 里 `_agent 待填充_` 等占位行。
+- 验证命令行不写在测试要点里——那是 tasks.md 主体子任务的「验证：xxx」小项的事。
 
-跑完后填表：
+acceptance phase 跑完后逐行更新：
 
-- 「实际结果」改为实测值（含命令输出关键行 / 截图说明 / 数据样例）。
-- 「结论」改为 `通过` / `未通过` / `跳过（含原因）`。
+- 通过 → `[x]`
+- 跳过 → `[-]`（在 chat / log 说明原因）
+- 未通过 → 留 `[ ]`，在 chat 说明实际表现 + 在 implementation-log.md 追加条目
 
-iteration 子循环里旧行结论列改为 `已验收（迭代 N-1）`，详见 `references/iteration.md`。
+iteration 子循环里追加新行（对应本轮新增 SHALL），旧行根据需要保留或标记，详见 `references/iteration.md`。
 
-## 6. `implementation-log.md`
+## 5. `implementation-log.md`
 
 ```markdown
 # 实现记录：[需求显示名]（[slug]）
@@ -470,7 +431,7 @@ Review Status: unreviewed
 - 缺关键文件引用（路径 / 行号 / 函数名）→ WARNING。
 - log 是「轻量级补救手段」 —— 如果同 turn 改了代码但实在没法重写 design.md / tasks.md，至少在 log 里记一行；空 log 等于没改过（下一会话看不到）。
 
-## 7. EARS 四种 SHALL 写法
+## 6. EARS 四种 SHALL 写法
 
 ```text
 WHEN [condition/event], THE [system/component] SHALL [expected behavior].
@@ -490,7 +451,7 @@ WHEN [condition], THE [system/component] SHALL CONTINUE TO [existing behavior].
 
 `spec_lint.py` 检查每条 SHALL：缺动词 / 缺 trigger（WHEN/WHILE/IF）→ WARNING。
 
-## 8. traceability 规范（`_需求：x.y_`）
+## 7. traceability 规范（`_需求：x.y_`）
 
 - 写法：`_需求：1.1_`、`_需求：1.1、1.2_`、`_需求：2.3、可选_`。
 - 编号系统 = `requirements.md` / `bugfix.md` 的"需求 1 > 验收标准 1.1"路径。
@@ -498,7 +459,7 @@ WHEN [condition], THE [system/component] SHALL CONTINUE TO [existing behavior].
 - 多需求覆盖一个任务时用全角顿号「、」分隔。
 - `spec_lint.py` 检查每条具体子任务（不含 checkpoint / 顶层任务）：缺 traceability 或编号在 requirements.md 中找不到 → WARNING。
 
-## 9. Document Style 总则
+## 8. Document Style 总则
 
 - 章节结构稳定（见上各模板），不要随意改 H2 / H3 标题。
 - 中文叙述；技术名 / 命令 / 路径 / 函数名 / 变量名保持英文原样。
@@ -506,9 +467,9 @@ WHEN [condition], THE [system/component] SHALL CONTINUE TO [existing behavior].
 - 禁止使用模糊措辞（"大概"、"可能"、"应该差不多"）—— 不确定就走澄清 wizard。
 - iteration 子循环里旧节不动，按规则追加（详见 `references/iteration.md`）。
 
-## 10. 跨文档引用
+## 9. 跨文档引用
 
 - phase 序列与 `doc-confirm-*` 选择器 → `references/workflow.md`。
 - 选择器三种类型与场景常量 → `references/selectors.md`。
 - iteration 子循环的文档累积规则 → `references/iteration.md`。
-- 6 份文档与文档优先纪律的关系 → SKILL.md §Code-Doc Sync Reminders。
+- 5 份文档与文档优先纪律的关系 → SKILL.md §Code-Doc Sync Reminders。

@@ -13,8 +13,8 @@
   1. resolve_doc_root（含 --root / SPECODE_ROOT / config / auto）
   2. 三层全 miss → 输出引导 + exit 3
   3. 在 doc_root 下创建 specs/<slug>/{requirements.md,bugfix.md,design.md,tasks.md,
-                                      acceptance-checklist.md,implementation-log.md,
-                                      .config.json}
+                                      implementation-log.md,.config.json}
+     （tasks.md 末尾自带 `## 测试要点` 章节，由 agent 跟随 requirements/bugfix 同步更新）
   4. 更新 <doc_root>/.active-specode.json
   5. 强制写 ~/.specode/sessions/<session_id>.json （atomic tempfile + os.replace + fsync）
   6. 任一失败 → 回滚已写文件 + exit 1
@@ -112,15 +112,16 @@ Status: Tasks Draft
 
 - [ ] 1. 待规划任务
 
+## 测试要点
+
+> 跟随 `requirements.md` / `bugfix.md` 同步更新；每行对应一条 SHALL，供测试人员快速了解验证场景。
+
+- [ ] _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
+
 ## 验收
 
 - [ ] 所有 required 任务完成。
-""",
-    "acceptance-checklist.md": """# 验收清单：{{name}}（{{slug}}）
-
-> 跟随 `requirements.md` / `bugfix.md` 同步更新；每条 SHALL 一行勾选项。
-
-- [ ] _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
+- [ ] 测试要点全部跨过。
 """,
     "implementation-log.md": """# 实现记录：{{name}}（{{slug}}）
 
@@ -271,7 +272,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         "bugfix.md": _render(_load_template("bugfix.md"), ctx),
         "design.md": _render(_load_template("design.md"), ctx),
         "tasks.md": _render(_load_template("tasks.md"), ctx),
-        "acceptance-checklist.md": _render(_load_template("acceptance-checklist.md"), ctx),
         "implementation-log.md": _render(_load_template("implementation-log.md"), ctx),
     }
 

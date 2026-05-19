@@ -8,8 +8,8 @@ SKILL.md §Phase Order / §Workflow Selection 的运维细节版本。本文件*
 intake ──► requirements / bugfix ──► design ──► tasks ──► implementation ──► acceptance ──► iteration
  │ │ │ │ │ │ │
  │ ▼ ▼ ▼ ▼ ▼ ▼
- │ acceptance-checklist.md doc-confirm-* tasks-execution 推进 [ ] → [~] → [x] acceptance-gate iteration 子循环
- │ 跟随式重写 选择器 选择器 选择器
+ │ tasks.md 测试要点 doc-confirm-* tasks-execution 推进 [ ] → [~] → [x] acceptance-gate iteration 子循环
+ │ 跟随式更新 选择器 选择器 选择器
  │
  ├─ 需求有歧义 → clarification-wizard（类型 B）+ clarification-done（类型 A）
  └─ workflow 不明 → workflow-choice（类型 A）
@@ -56,7 +56,7 @@ python3 plugins/specode/scripts/spec_init.py \
 CLI 行为：
 
 1. 三层文档根目录解析（详见 `references/obsidian.md`）。
-2. 在 `<doc_root>/specs/<slug>/` 写 6 份骨架文档（按 `references/templates.md` 模板）+ `.config.json`（`specId` / `createdAt` / `phase=intake` / `lock` 字段指向 `--session`）。
+2. 在 `<doc_root>/specs/<slug>/` 写 5 份骨架文档（按 `references/templates.md` 模板）+ `.config.json`（`specId` / `createdAt` / `phase=intake` / `lock` 字段指向 `--session`）。
 3. 更新 `<doc_root>/.active-specode.json` active-pointer。
 4. 强制双写 `~/.specode/sessions/<session_id>.json`（mode=active / active_spec_slug / phase=intake / lock_state=ok）。
 5. 三步任一失败 → 回滚 + exit 1（半成功是禁区）。
@@ -110,36 +110,36 @@ CLI 行为：
 
 ### 3.1 phase=requirements
 
-1. fork `spec-writer` agent生成 `requirements.md`。章节模板见 `references/templates.md` §requirements.md。
-2. **同 turn** 重写 `acceptance-checklist.md`（跟随式，无独立确认门，见 §3.2）。
+1. fork `spec-writer` agent 生成 `requirements.md`。章节模板见 `references/templates.md` §requirements.md。
+2. **同 turn** 更新 `tasks.md` 末尾 `## 测试要点` 章节（跟随式，无独立确认门，见 §3.2）。tasks.md 尚未生成时跳过本步，等到 tasks phase 一次性补齐。
 3. 按 SKILL.md §Document Output Brevity 报路径 + 3–8 条变更要点 + 未决问题。
 4. 呈现 `doc-confirm-requirements`（类型 A，推荐选项 1 `确认`）。
 5. End turn 等用户选。
 6. 选 1 `确认` → phase-transition → design；选 2 `查看全文` → 完整 echo 文档后**再次**呈现同一 selector + end turn；选 3 `继续沟通` → 接收用户反馈 → 改文档 → 重出 step 3–4。
 
-### 3.2 acceptance-checklist 跟随式生成（铁律）
+### 3.2 tasks.md 测试要点跟随式更新（铁律）
 
-`acceptance-checklist.md` **没有**独立确认门。它跟随 `requirements.md` / `bugfix.md` 变更，由你在**同一轮 turn 内**重写。
+`tasks.md` 末尾 `## 测试要点` 章节**没有**独立确认门。它跟随 `requirements.md` / `bugfix.md` 变更，由你在**同一轮 turn 内**更新；目的是给测试人员一份始终与最新 SHALL 对齐的验证清单。
 
 填充规则：
 
 - 读 requirements.md / bugfix.md 中每一条 EARS `SHALL` 语句。
-- 每条 SHALL → checklist 表格一行：
- - **功能点** = 该 SHALL 所属的需求名 / 编号。
- - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述）。
+- 每条 SHALL → `## 测试要点` 章节一行 `- [ ] 触发场景 → 预期结果（需求 X.Y）`：
+ - **触发场景** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述）。
  - **预期结果** = 直接引用 SHALL 后的期望行为。
- - **实际结果** = `待记录`。
- - **结论** = `待验证`。
-- 禁止保留 templates.md 里"核心能力 / 异常输入 / 回归行为 / _agent 待填充_"等占位行。
-- 验证命令行可保留（从 tasks.md "验证：xxx" 提取）。
+ - **需求 X.Y** = 该 SHALL 在 requirements.md 中的编号，与 tasks 上方 `_需求：x.y_` traceability 标签对齐。
+- 禁止保留模板里 `_agent 待填充_` 等占位行。
+- 验证命令行不写在测试要点里——那是 tasks.md 主体子任务的"验证：xxx"小项的事。
 
 例：需求"新增密码强度校验"→ 一行：
 
 ```text
-| 1 | 密码强度 | 输入少于 8 位密码点击提交 | 系统提示"密码长度不足" | 待记录 | 待验证 |
+- [ ] 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
 ```
 
-`spec_lint.py` 在 `acceptance-checklist.mtime < requirements.mtime` 时报 WARNING；`spec_session.py load` 加载时显示 `⚠ 落后于 requirements.md`。
+tasks.md 尚未生成时（spec 还在 intake / requirements / design phase），本步**跳过**——测试要点会在 tasks phase 由 spec-writer 一次性补齐。
+
+acceptance phase 验收时，主代理逐行跑测试要点，把每行 `[ ]` 推进到 `[x]`（已跨过）或 `[-]`（跳过；附原因）；任意一行 `[ ]` 留存意味着 acceptance-gate 选 1 "验收通过" 应去掉推荐标记。
 
 ### 3.3 phase=design
 
@@ -167,7 +167,7 @@ CLI 行为：
 
 1. `design.md` first（spec-writer 生成，章节同 §3.3）。问用户做 high-level 还是 low-level design 时合并到一份。
 2. End turn → `doc-confirm-design` → 确认。
-3. 从已 approved 的 design.md 反推 `requirements.md` → **同 turn 重写** acceptance-checklist.md。
+3. 从已 approved 的 design.md 反推 `requirements.md` → **同 turn 更新** tasks.md 末尾 `## 测试要点` 章节（tasks.md 尚未生成时跳过，等到 tasks phase 一次性补齐）。
 4. `doc-confirm-requirements` → 确认。
 5. `tasks.md` 同 §3.4。
 6. `tasks-execution` 同 §3.4。
@@ -176,7 +176,7 @@ CLI 行为：
 
 1. `bugfix.md`（不写 `requirements.md`，二者**互斥**）。章节见 templates.md：
  - 问题摘要 / 复现步骤 / 当前行为（错误行为，WHEN ... THEN ... [错误]） / 期望行为（WHEN ... SHALL [正确]）/ 保持不变的行为（WHEN ... SHALL CONTINUE TO ...）/ 影响范围 / 证据 / 约束 / 待确认问题。
-2. **同 turn** 重写 `acceptance-checklist.md`（按"期望行为"+"保持不变"两类 SHALL 各生成一行）。
+2. **同 turn** 更新 `tasks.md` 末尾 `## 测试要点` 章节（按"期望行为"+"保持不变"两类 SHALL 各生成一行；tasks.md 尚未生成时跳过）。
 3. 调研代码后再断根因 —— 不要凭空断言根因。
 4. `doc-confirm-bugfix` → 确认。
 5. `design.md`：根因 / 修复策略 / 回归风险 / 测试策略。`doc-confirm-design` → 确认。
@@ -222,13 +222,14 @@ CLI 行为：
 
 1. 触发：所有 required 任务标 `[x]`。
 2. phase-transition → acceptance。
-3. 跑 acceptance-checklist.md 的每一行操作步骤，把"实际结果"列从 `待记录` 改为实测值，"结论"列从 `待验证` 改为 `通过` / `未通过` / `跳过（含原因）`。
-4. 跑完后做一份**验收摘要**（chat）：文档清单 / 完成任务清单 / 验证命令与结果 / 跳过的验证 / 余留风险 / 未决问题。
-5. 呈现 `acceptance-gate`（类型 A）：
- - 若全部 required 结论 = `通过` → 推荐选项 1 `验收通过，进入 iteration`。
+3. **先调一次** `spec_lint.py --spec <spec-dir>`（通过 SKILL.md §CLI 调用规约的 run.sh 模板），把 traceability / log / EARS 三类 WARNING 列在 chat 给用户参考。lint 是 advisory，不阻断验收。
+4. 逐行跑 `tasks.md` 末尾 `## 测试要点` 章节里的每一条 `- [ ]`，把通过的改成 `[x]`、跳过的改成 `[-]`（附原因），未通过的留 `[ ]` 并在 chat 说明实际表现。
+5. 跑完后做一份**验收摘要**（chat）：tasks.md 完成度（done/total）/ 测试要点完成度 / 跳过项 / 未通过项 / lint WARNING 列表 / 余留风险 / 未决问题。
+6. 呈现 `acceptance-gate`（类型 A）：
+ - 若 tasks.md 全 `[x]` + 测试要点全 `[x]` → 推荐选项 1 `验收通过，进入 iteration`。
  - 否则 → 无推荐项。
-6. 用户选 1 → 调 `spec_session.py phase-transition --from acceptance --to iteration`（同时 `iterationRound += 1`，记 `iterationHistory`）。
-7. 用户选 2 `继续修改` → 留在 acceptance；视具体未达标项回退到 requirements / design / tasks（**走 phase-transition**，不要手改 `.config.json`）。
+7. 用户选 1 → 调 `spec_session.py phase-transition --from acceptance --to iteration`（同时 `iterationRound += 1`，记 `iterationHistory`）。
+8. 用户选 2 `继续修改` → 留在 acceptance；视具体未达标项回退到 requirements / design / tasks（**走 phase-transition**，不要手改 `.config.json`）。
 
 ## 8. phase=iteration
 
@@ -237,7 +238,7 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 简要：
 
 - 用户提"我想加一个 X 功能" → `spec_session.py iterate <spec-dir>` → 进入 `iteration.requirements` 子 phase → 在 requirements.md 末尾追加 `## 迭代 N 新增需求` 节，走 confirm → design → tasks → implementation → acceptance 子循环 → 回到 iteration。
-- 用户提"改 acceptance 里一条规则" → 直接编辑 acceptance-checklist.md，不走完整子循环。
+- 用户提"改 acceptance 里一条规则" → 直接编辑 tasks.md 末尾 `## 测试要点` 对应行，不走完整子循环。
 - 用户运行 `/specode:end` → 释放锁 + sessions mode=ended，spec 文档保留。
 
 ## 9. `/specode:continue` — 上下文加载 + 多窗口
@@ -292,14 +293,13 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
  requirements.md ← N 条验收标准 | 修改：<time>
  design.md ← | 修改：<time>
- tasks.md ← N/M 已完成，P 待处理 | 修改：<time>
- acceptance-checklist.md ← 验收操作清单 | 修改：<time>
+ tasks.md ← N/M 已完成，P 待处理；测试要点 K 行 | 修改：<time>
 ```
 
 6. 状态行 footer。
 7. **End turn 等用户下一句**。不开始任务、不跑验证、不评估验收。
 
-> ⛔ 从此刻起，本会话进入"已落地 spec 的持续沟通"模式。用户后续任何对需求 / 设计 / 任务的调整 —— 哪怕只是聊一句 —— 都必须**同 turn 写回**对应文档（需求变更同 turn 重写 acceptance-checklist.md）。chat 累积到"下一轮再写"是禁区——next session 看不到。
+> ⛔ 从此刻起，本会话进入"已落地 spec 的持续沟通"模式。用户后续任何对需求 / 设计 / 任务的调整 —— 哪怕只是聊一句 —— 都必须**同 turn 写回**对应文档（需求变更同 turn 更新 tasks.md 末尾 `## 测试要点` 章节）。chat 累积到"下一轮再写"是禁区——next session 看不到。
 
 ## 10. Phase-gate 输出顺序（铁律）
 
@@ -335,7 +335,7 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 | `spec_session.py continue --spec <dir> --session <id>` | 接管 / 恢复 |
 | `spec_session.py end --session <id>` | `/specode:end` 入口 |
 | `spec_session.py status --session <id>` / `read-session --session <id>` | 状态查询（只读） |
-| `spec_lint.py` | acceptance-checklist 落后 / traceability 缺失 / EARS 缺动词 等 WARNING |
+| `spec_lint.py` | traceability 缺失 / log 过短 / EARS 缺动词 等 WARNING（acceptance phase 由主代理调一次）|
 | `spec_status.py` | `/specode:status` 命令入口（聚合输出） |
 
 CLI 退出码语义：0 ok / 1 lock_lost 或写失败 / 3 evicted / not_held / stale_lock 或 vault miss / 4 LockHeld。所有 hook 子命令始终 exit 0（仅注入提示，不阻断）。

@@ -363,7 +363,7 @@ def test_on_session_end_releases_held_lock(
         "specId": "e",
         "slug": "end-spec",
         "phase": "tasks",
-        "pending_selector": "doc-confirm-tasks",
+        "pending_selector": "tasks-execution",
         "lock": {"holder": sid, "acquired_at": "2026-01-01T00:00:00Z",
                  "last_heartbeat_at": "2026-01-01T00:00:00Z"},
     }), encoding="utf-8")

@@ -4,6 +4,98 @@
 
 _no entries yet_
 
+## 0.9.3 (2026-05-20)
+
+### Added — 2 条新 Iron Rule（SKILL.md）
+
+0.9.2 真实跑测时观察到主代理在 `/specode:spec` 后多处违纪：自己 Write
+requirements.md（应该 fork spec-writer）+ 写完后又 Edit 改文档头
+`Status: Requirements Draft → Complete`（不该越权改 phase 状态）。
+现有 6 条 Iron Rule 没有强约束这两点，本版补：
+
+- **Iron Rule 7**：`requirements.md` / `bugfix.md` / `design.md` /
+  `tasks.md` 4 份核心文档必须 fork `spec-writer` subagent 写。主代理
+  用 Write / Edit 直接写这 4 份文档视为流程违规。subagent 的工具白
+  名单（无 Bash）是物理隔离边界，绕过它就是绕过 review/validator
+  兜底。`implementation-log.md` 例外，主代理可以直接追加。
+- **Iron Rule 8**：文档头 `Status` / `Review Status` 字段不允许主代
+  理手改。这些字段反映 phase / 评审状态，由 `phase-transition` CLI
+  与 selector 流程驱动改变。主代理写完 requirements.md 把
+  `Status: Requirements Draft` 改成 `Requirements Complete` 是越权
+  （这是 selector 走完后才该发生的事）；保持模板默认值不动。
+
+### Changed — `doc-confirm-tasks` 合并入 `tasks-execution`（8→7 个选择器）
+
+0.9.2 真实跑测时观察到 tasks phase 走两步选择器（先 doc-confirm-tasks
+确认 tasks.md、再 tasks-execution 选执行方式）冗余且易出错——主代理
+在第一步把标准 3 选项「确认 / 查看全文 / 继续沟通」简化成 2 选项
+「确认，继续 / 需要调整」，漏掉了 task-swarm 路径。
+
+本版合并为一步：
+
+- 废弃 `SELECTOR_PROMPTS["doc-confirm-tasks"]`，把「需要调整」作为
+  `tasks-execution` 的回退出口。tasks-execution 现 4 选项：
+  - 用 task-swarm 多 agent 并发（推荐）
+  - 顺序执行（同时处理 optional）
+  - 需要调整 tasks.md
+  - 暂不 coding
+- 不再区分「开始 required」vs「开始 required + optional」——默认两
+  种执行方式都把 optional 一起跑；要只跑 required 走 Other 输入。
+- `phase=tasks` 的 `pending_selector` 推导从 `"doc-confirm-tasks"`
+  改为 `"tasks-execution"`。
+- 同步：SKILL.md 8 场景表 → 7 场景表；selectors.md §A4
+  `tasks-execution` 模板镜像 + 表格删 doc-confirm-tasks 行；
+  workflow.md §3.3 / §5 流程改一步出图；test_selector_prompts.py
+  删 test_doc_confirm_tasks_snapshot；test_spec_session_hooks.py
+  pending_selector fixture 改 "tasks-execution"。
+
+### Changed — tasks.md 模板统一为 task-swarm 兼容格式
+
+0.9.2 真实跑测时观察到主代理选「用 task-swarm 多 agent 并发」后
+`task_swarm.py init` 报 `tasks.md 中未解析出任何 ## 阶段 N: 段`，
+被迫主代理自己 Write 覆盖 tasks.md（违反新 Iron Rule 7）。根因：
+spec-writer 生成的 tasks.md 用 `- [ ] 1. 阶段标题 / - [ ] 1.1 子任务`
+嵌套格式，但 `task_swarm.py parse_md.py` 期望 `## 阶段 N: 标题` 顶层
+段 + `- [ ] N.M ... @writes:... _需求：x.y_`。两边对不齐。
+
+本版统一为 task-swarm 兼容格式（顺序执行也兼容——task-swarm 标签被
+顺序执行 agent 当作注释忽略）：
+
+- `assets/templates/tasks.md` 完整重写：顶层 `## 阶段 N: ...`
+  + `- [ ] N.M ... @writes:... _需求：x.y_` + 格式约定头部说明。
+- `spec_init.py FALLBACK_TEMPLATES["tasks.md"]` 同步。
+- `references/templates.md §4` 模板示例 + 约束规则改写。
+- `agents/spec-writer.md phase=tasks` 子工作流明示新格式 + 不符合时
+  应回到 `tasks-execution` 选「需要调整」让 spec-writer 重写（**不
+  许主代理 Write 覆盖**，呼应 Iron Rule 7）。
+
+### Changed — `commands/task-swarm.md` 立即调用段澄清
+
+0.9.2 真实跑测时主代理调 `task_swarm.py` 时漏 `init` 子命令、把
+spec 目录传给 `--tasks`（应该传 tasks.md 绝对路径）。立即调用段示例
+原本用 `<abs>` 太抽象，本版改为 `<spec_dir>/tasks.md`，并在「注意」
+块明示：`init` 子命令必传、`--tasks` 是 tasks.md 路径而非 spec 目录、
+不符合格式时回到 selector 让 spec-writer 重写。
+
+### Tests
+
+152 pass（down from 153；删除 `test_doc_confirm_tasks_snapshot`
+随 selector 合并；其余 fixture / 断言同步更新）。
+
+### Migration
+
+无需迁移。`tasks-execution` 推荐项变成「task-swarm 多 agent 并发」，
+但仍保留「顺序执行」「需要调整」「暂不 coding」三个出口。已经写好的
+旧格式 tasks.md（无 `## 阶段 N:` 段）在选 task-swarm 时会报错；主
+代理按新 Iron Rule 7 + tasks-execution 「需要调整」入口让 spec-writer
+重写即可，不要手改。
+
+```sh
+# Adjust the CLI name for whichever host you use (claude / codebuddy).
+claude plugin marketplace update specode
+claude plugin update specode
+```
+
 ## 0.9.2 (2026-05-19)
 
 ### Removed — `DESIGN.md` 与 `IMPLEMENTATION-AUDIT.md` 从仓库移除

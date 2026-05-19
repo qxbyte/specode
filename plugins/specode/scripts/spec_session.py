@@ -358,13 +358,12 @@ questions:
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
 """,
-    "doc-confirm-tasks": """## 选择器节点：tasks.md 文档确认
+    "tasks-execution": """## 选择器节点：任务执行选择（合并 0.9.2 旧 doc-confirm-tasks）
 
-**目的**：tasks.md 已生成 / 更新；让用户确认是否进入 implementation / task-swarm 执行，
-或者先看全文 / 继续修改。
+**目的**：tasks.md 已生成；让用户在一个选择器里同时完成「确认 tasks.md」+「选择执行方式」+「回退（需要调整）」+「暂不 coding」。0.9.3 起废弃单独的 doc-confirm-tasks 选择器，「需要调整 tasks.md」作为本选择器的回退出口。
 
-**上下文**：active spec=<slug>，phase=<phase>。
-刚生成的文档：<spec_dir>/tasks.md
+**上下文**：active spec=<slug>，phase=tasks。
+required 任务数：<n_required>，optional 任务数：<n_optional>。
 
 **前置动作（chat 简报，≤8 行）**：
 - 列出**任务计数**（required N 个，optional M 个）
@@ -374,49 +373,23 @@ questions:
 **调用 `AskUserQuestion` 工具**：
 
 questions:
-  - question: "tasks.md 已生成。下一步？"
-    header: "任务确认"
-    multiSelect: false
-    options:
-      - label: "确认（推荐）"
-        description: "任务清单符合预期，进入执行环节。"
-      - label: "查看全文"
-        description: "在 chat 完整 echo 该文档。"
-      - label: "继续沟通"
-        description: "任务清单需要修改，告诉你具体怎么改。"
-
-**约束**：
-- 调用工具后立即 end turn。
-- 简报必须在工具调用**之前**输出。
-""",
-    "tasks-execution": """## 选择器节点：任务执行选择
-
-**目的**：tasks.md 已确认；选择执行模式（线性 / 含 optional / task-swarm 并发 / 暂不开始）。
-
-**上下文**：active spec=<slug>，phase=tasks。
-required 任务数：<n_required>，optional 任务数：<n_optional>。
-
-**前置动作（chat 简报，≤2 行）**：写一句"tasks.md 已确认（required <N> / optional <M>），请选择执行方式。"
-
-**调用 `AskUserQuestion` 工具**：
-
-questions:
-  - question: "tasks.md 已确认，怎么执行？"
+  - question: "tasks.md 已生成。怎么执行？"
     header: "执行方式"
     multiSelect: false
     options:
-      - label: "开始 required"
-        description: "仅执行 required 任务，逐个推进 [ ] → [~] → [x]。"
-      - label: "开始 required + optional"
-        description: "required 完成后顺带处理 optional 任务。"
-      - label: "用 task-swarm 多 agent 并发"
-        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。"
+      - label: "用 task-swarm 多 agent 并发（推荐）"
+        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。required + optional 一并处理。"
+      - label: "顺序执行（同时处理 optional）"
+        description: "单 agent 逐个推进 required + optional 任务，[ ] → [~] → [x]。如需只跑 required，可在 Other 输入说明。"
+      - label: "需要调整 tasks.md"
+        description: "tasks 不符合预期，告诉你具体怎么改。"
       - label: "暂不 coding"
-        description: "文档已落地但暂不开始实现；随时 /specode:end 关闭会话。"
+        description: "tasks.md 已落地但暂不开始实现；随时 /specode:end 关闭会话。"
 
 **约束**：
-- 4 个选项已占满工具上限；用户若想自定义可用 "Other" 输入。
+- 4 个选项已占满工具上限；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
 - 调用工具后立即 end turn。
+- 简报必须在工具调用**之前**输出。
 """,
     "takeover-options": """## 选择器节点：接管选项
 
@@ -917,7 +890,7 @@ def _auto_pending_selector(phase: str, cfg: dict) -> Optional[str]:
     if phase == "design":
         return "doc-confirm-design"
     if phase == "tasks":
-        return "doc-confirm-tasks"
+        return "tasks-execution"
     if phase == "implementation":
         return None
     if phase == "acceptance":

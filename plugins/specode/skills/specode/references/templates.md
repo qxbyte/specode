@@ -286,6 +286,8 @@ sequenceDiagram
 
 ## 4. `tasks.md`
 
+**0.9.3 起统一为 task-swarm 兼容格式**：顶层 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。这样 spec-writer 生成的 tasks.md 直接能给 task-swarm 用，顺序执行也兼容（task-swarm 标签被顺序执行 agent 当注释忽略）。
+
 ```markdown
 # 实现计划：[需求显示名]（[slug]）
 
@@ -298,34 +300,25 @@ Review Status: unreviewed
 
 [说明实现策略、任务拆分原则、关键风险与依赖。]
 
-## 任务
+## 阶段 1: 数据层
 
-- [ ] 1. [阶段任务标题]
- - [ ] 1.1 [具体子任务]
- - [具体实现点]
- - 文件：`src/foo/bar.py`
- - 验证：`pytest tests/test_bar.py::test_x`
- - _需求：1.1、1.2_
- - [ ] 1.2 [具体子任务]
- - [具体实现点]
- - 文件：`src/foo/baz.py`
- - 验证：`pytest tests/test_baz.py`
- - _需求：1.3_
+- [ ] 1.1 定义 User 模型 @writes:src/models/user.py _需求：1.1_
+- [ ] 1.2 定义 Session 模型 @writes:src/models/session.py _需求：1.2_
+- [ ] 1.3 数据库迁移脚本 @writes:migrations/0001_init.sql @reads:src/models/user.py,src/models/session.py _需求：1.3_
 
-- [ ] 2. 检查点 —— 阶段 1 验证
- - 运行 `pytest tests/test_bar.py tests/test_baz.py`。
- - 如有失败，停止继续执行并修复或向用户确认。
+## 阶段 2: 服务层
 
-- [ ] 3. [阶段任务标题]
- - [ ] 3.1 [具体子任务]
- - 文件：`src/api/login.py`
- - 验证：`pytest tests/test_login.py`
- - _需求：2.1_
+- [ ] 2.1 AuthService 登录/登出 @writes:src/auth/service.py @reads:src/models/user.py,src/models/session.py @depends-on:1 _需求：2.1,2.2_
+- [ ] 2.2 PasswordHasher 工具 @writes:src/auth/hasher.py _需求：2.3_
 
-- [*] 4. [可选任务标题]
- - [ ] 4.1 [可选子任务]
- - [说明]
- - _需求：可选_
+## 阶段 3: API 层
+
+- [ ] 3.1 /login endpoint @writes:src/api/login.py @reads:src/auth/service.py @depends-on:2 _需求：3.1_
+- [*] 3.2 /logout endpoint @writes:src/api/logout.py @reads:src/auth/service.py @depends-on:2 _需求：3.2_
+
+## 阶段 4: 检查点
+
+- [ ] 4.1 检查点 —— 阶段 1-3 测试全过 @reads:tests/ _需求：可选_
 
 ## 测试要点
 
@@ -345,11 +338,15 @@ Review Status: unreviewed
 
 约束：
 
-- 嵌套 checkbox：顶层任务 `1.` / `2.` / `3.`（按阶段拆）；子任务 `1.1` / `1.2` ...；检查点任务单独一条不再嵌子任务。
-- **每条具体子任务必须有 `_需求：x.y_` 或 `_需求：可选_` traceability**。`spec_lint.py` 会检查这点。
-- 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题以「检查点」开头。
-- 文件路径用反引号包裹；验证命令同样。
+- **顶层段落必须用 `## 阶段 N: 标题`** 格式（task-swarm parse_md.py 强制要求；不符合解析器会报错 `tasks.md 中未解析出任何 ## 阶段 N: 段`）。
+- **每条具体任务编号 `N.M`**（不能仅 `N`），任务行末必须带 `_需求：x.y_` 或 `_需求：可选_` traceability。
+- **`@writes`**（task-swarm 据此切 group 避免并发冲突）；**`@reads`** 可选；**`@depends-on:N`** 可选（不写则仅靠 @writes 冲突切 group）。
+- 可选任务把 `[ ]` 改 `[*]`；checkpoint 任务把标题写成 `检查点 —— ...`。
+- 文件路径直接写裸路径（不用反引号；task-swarm parse_md 按裸路径切分）。
 - 「验收」节固定四行（顺序、措辞与上例一致），不要改写。
+- 同一 stage 内多条任务并入 single coder 顺序执行；要拆 coder 必须把它们分到不同 stage（不同 `## 阶段 N: ...` 段）。
+
+详细切 group 规则与 `@depends-on` 语义见 `references/task-swarm-example.md`。
 
 ### 4.1 任务标记语义
 

@@ -8,8 +8,13 @@ argument-hint: "[<spec-dir>/tasks.md] [--max-parallel N] [--max-rounds N]"
 ```sh
 sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
    "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
-   init --tasks <abs> --session <id>
+   init --tasks "<spec_dir>/tasks.md" --session <id>
 ```
+
+注意：
+
+- 必须有 `init` 子命令；`--tasks` 参数是 **tasks.md 的绝对路径**（不是 spec 目录），路径取自 `~/.specode/sessions/<session_id>.json` 的 `active_spec_dir` + `/tasks.md`
+- 调用前 tasks.md 必须使用 task-swarm 兼容格式（`## 阶段 N: 标题` + `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`），spec-writer 在 tasks phase 已按此格式生成；若 init 报 `tasks.md 中未解析出任何 ## 阶段 N: 段` 说明格式不对，**回到 tasks-execution 选「需要调整 tasks.md」让 spec-writer 重写**，不要主代理直接 Write 覆盖（违反 SKILL.md Iron Rule 7）
 
 拿到 `run_id` + `run_dir` 后按下面「7 步循环」`plan → fork → advance → writeback → resolve`，**所有** task_swarm.py 子命令都套同样的 run.sh 包装模板。
 
@@ -25,8 +30,8 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 ## 何时用
 
-- `tasks.md` 已确认并落盘。
-- 任务执行 selector 选了「用 task-swarm 多 agent 并发」。
+- `tasks.md` 已生成并落盘（spec-writer 写的，**task-swarm 兼容格式**——`## 阶段 N:` + `- [ ] N.M ... @writes:... _需求：x.y_`）。
+- `tasks-execution` selector 选了「用 task-swarm 多 agent 并发（推荐）」。
 - spec 锁仍由主会话持有（主会话是唯一持锁者；subagent 不动锁）。
 
 ## 7 步循环（主代理必须遵守）

@@ -78,14 +78,22 @@ model: sonnet
 
 ### phase=tasks
 
-1. Read `assets/templates/tasks.template.md`。
+1. Read `assets/templates/tasks.md` 模板。
 2. Read `design.md` + `requirements.md` / `bugfix.md`。
-3. 拆任务：每条任务带 `@writes` / `@reads` / `_需求：x.y_` traceability；状态用 `[ ]` 初始化。
- - required 任务在前，optional 任务用专门小节归类。
- - 同 group 内的任务 `@writes` 必须不相交（task-swarm 并发要求）。
+3. 拆任务（**0.9.3 起统一为 task-swarm 兼容格式**）：
+ - 顶层段落用 `## 阶段 N: 标题`（task-swarm 据此切 stage 粒度）。
+ - 每条具体任务 `- [ ] N.M 任务描述 @writes:文件路径 @reads:文件路径 @depends-on:N _需求：x.y_`。
+   - `@writes` 必填（task-swarm 据此切 group 避免并发冲突）
+   - `@reads`、`@depends-on:N` 可选
+   - `_需求：x.y_` traceability 必填（链回 requirements/bugfix）
+ - 同一 stage 内多条任务并入 single coder 顺序执行；要拆 coder 必须分到**不同 stage**（不同 `## 阶段 N:` 段）。
+ - required 任务在前，optional 任务把 `[ ]` 改成 `[*]`；checkpoint 任务标题以「检查点」开头。
+ - 文件路径裸写（不用反引号；task-swarm parse_md 按裸路径切分）。
 4. **填末尾 `## 测试要点` 节**：按 requirements.md / bugfix.md 的 SHALL 顺手补几行，格式 `触发场景 → 预期结果（需求 X.Y）`。SHALL 模糊时可留 `_待补充_` 占位；不强求一一对应。这一节是给测试人员的参考清单，不是验收硬条件。
 5. Write `<spec-dir>/tasks.md`。
 6. 输出章节摘要（required N / optional M 计数）+ STATUS 行。
+
+> ⛔ tasks.md 不符合上述格式 → 后续用户选 `tasks-execution` 的「用 task-swarm 多 agent 并发」时 `task_swarm.py init` 会报 `tasks.md 中未解析出任何 ## 阶段 N: 段` 错。**主代理这时必须回到 `tasks-execution` selector 选「需要调整 tasks.md」让你（spec-writer）重写**，绝不允许主代理自己 Write 覆盖（违反 SKILL.md Iron Rule 7）。详见 `references/task-swarm-example.md` 完整示例。
 
 ## 边界异常处理
 

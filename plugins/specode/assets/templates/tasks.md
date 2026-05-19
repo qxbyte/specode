@@ -9,39 +9,25 @@ Review Status: unreviewed
 
 基于已确认的需求与设计，将实现拆分为可执行、可验证的任务。任务执行时必须先更新状态，完成验证后才能标记完成。
 
-## 任务
+**格式约定（task-swarm 兼容）**：
 
-- [ ] 1. 完善需求与设计追踪
-  - [ ] 1.1 确认需求、设计和任务之间的映射
-    - 检查 `requirements.md` 或 `bugfix.md`
-    - 检查 `design.md`
-    - 更新任务与需求编号的映射
-    - 验证：人工 review
-    - _需求：1_
+- 顶层 `## 阶段 N: 标题` 段落对应一个 stage（task-swarm 的 fork 粒度）
+- 每条具体任务 `- [ ] N.M 任务描述 @writes:文件路径 @reads:文件路径 @depends-on:N _需求：x.y_`
+  - `@writes`：本任务写哪些文件（task-swarm 据此切 group 避免冲突）
+  - `@reads`：本任务读哪些文件（可选）
+  - `@depends-on:N`：本 stage 依赖阶段 N（可选；不写则仅靠 @writes 冲突切 group）
+  - `_需求：x.y_`：traceability，链回 requirements.md / bugfix.md 的 SHALL 编号
+- 可选任务把 `[ ]` 写成 `[*]`；checkpoint 任务保留 `[ ]` 但标题以「检查点」开头
 
-- [ ] 2. 实现核心能力
-  - [ ] 2.1 按设计实现最小必要代码变更
-    - 遵循项目既有架构、风格和测试约定
-    - 文件：待确认
-    - 验证：待确认
-    - _需求：1_
+## 阶段 1: 待规划阶段标题
 
-- [ ] 3. 补充测试与回归验证
-  - [ ] 3.1 添加或更新相关测试
-    - 覆盖核心行为、错误路径和回归场景
-    - 文件：待确认
-    - 验证：待确认
-    - _需求：1_
-
-- [ ] 4. 检查点 —— 确保所有测试通过
-  - 运行相关测试和检查。
-  - 如有失败，停止继续执行并修复或向用户确认。
+- [ ] 1.1 待规划任务描述 @writes:src/path/to/file.py _需求：1.1_
 
 ## 测试要点
 
-供测试人员快速了解需要验证的场景。每行对应 `requirements.md` / `bugfix.md` 中的一条 SHALL，需求或 bug 行为变更时由 agent 在同一轮 turn 内同步更新本节。
+供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
 
-- [ ] _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
+- _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
 
 ## 验收
 
@@ -49,9 +35,3 @@ Review Status: unreviewed
 - [ ] 所有指定验证命令通过。
 - [ ] 未完成或跳过的 optional 任务已记录。
 - [ ] 用户确认验收。
-
-## 执行确认
-
-- [ ] 用户确认开始执行 required tasks。
-- [ ] 用户确认开始执行 required and optional tasks。
-- [ ] 用户选择暂不 coding。

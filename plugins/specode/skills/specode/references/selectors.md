@@ -2,7 +2,7 @@
 
 每个 phase-gate 节点必须**调用宿主内置 `AskUserQuestion` 工具**呈现选择器；工具自身渲染 chip-tabs / 选项列表 / 上下键导航 / 回车提交 / ESC 取消 / "Other" 自定义输入 UI。模型只负责传参，**绝不**自己输出 markdown 列表让用户回复编号。
 
-本文件给出全部 8 个固定场景的 (类型 → AskUserQuestion 参数)；spec_session.py 的 `SELECTOR_PROMPTS` 字典是这些模板的运行时常量库。
+本文件给出全部 7 个固定场景的 (类型 → AskUserQuestion 参数)；spec_session.py 的 `SELECTOR_PROMPTS` 字典是这些模板的运行时常量库。0.9.3 起 `doc-confirm-tasks` 被废弃并合并进 `tasks-execution`（详见 §A4）。
 
 ---
 
@@ -63,13 +63,13 @@ questions:
           <对应的另一份 artifact>
 ```
 
-**当前状态**：8 个固定场景**均未启用** A+ 形态；本节是模板留档，待将来出现"让用户视觉对比 artifact"的 phase-gate 时按本骨架填空即可。如果新增固定场景使用 A+，应同步在 `spec_session.py SELECTOR_PROMPTS` 内加常量并补到下方 8 场景表里。
+**当前状态**：7 个固定场景**均未启用** A+ 形态；本节是模板留档，待将来出现"让用户视觉对比 artifact"的 phase-gate 时按本骨架填空即可。如果新增固定场景使用 A+，应同步在 `spec_session.py SELECTOR_PROMPTS` 内加常量并补到下方 8 场景表里。
 
 ---
 
-## 8 个固定场景常量库
+## 7 个固定场景常量库
 
-下列 8 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。
+下列 7 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。
 
 ---
 
@@ -173,47 +173,50 @@ questions:
 - 简报必须在工具调用**之前**输出。
 ```
 
-其余 3 个变体差异：
+其余 2 个变体差异（0.9.3 起 `doc-confirm-tasks` 被废弃，合并进 `tasks-execution`）：
 
 | key | question | header | 简报要点重心 |
 |---|---|---|---|
 | `doc-confirm-bugfix` | "bugfix.md 已生成。下一步？" | 缺陷确认 | Current/Expected/Unchanged 段落增量 + 复现步骤 + 影响范围 |
 | `doc-confirm-design` | "design.md 已生成。下一步？" | 设计确认 | 架构图变化 + 接口签名 + 数据模型字段 + 风险 / 偏离 |
-| `doc-confirm-tasks` | "tasks.md 已生成。下一步？" | 任务确认 | 任务计数（required / optional）+ 主要阶段 + traceability + 同文件冲突标注 |
 
 ---
 
-### A4 `tasks-execution` — 任务执行选择（类型 A）
+### A4 `tasks-execution` — 任务执行选择（类型 A，合并 0.9.2 旧 doc-confirm-tasks）
 
 ```text
-## 选择器节点：任务执行选择
+## 选择器节点：任务执行选择（合并 0.9.2 旧 doc-confirm-tasks）
 
-**目的**：tasks.md 已确认；选择执行模式（线性 / 含 optional / task-swarm 并发 / 暂不开始）。
+**目的**：tasks.md 已生成；让用户在一个选择器里同时完成「确认 tasks.md」+「选择执行方式」+「回退（需要调整）」+「暂不 coding」。0.9.3 起废弃单独的 doc-confirm-tasks 选择器，「需要调整 tasks.md」作为本选择器的回退出口。
 
 **上下文**：active spec=<slug>，phase=tasks。
 required 任务数：<n_required>，optional 任务数：<n_optional>。
 
-**前置动作（chat 简报，≤2 行）**：写一句"tasks.md 已确认（required <N> / optional <M>），请选择执行方式。"
+**前置动作（chat 简报，≤8 行）**：
+- 列出**任务计数**（required N 个，optional M 个）
+- 列出**主要阶段**与 traceability（`_需求：x.y_` 标签）
+- 标注同文件冲突的 stage（影响 task-swarm group 切分）
 
 **调用 `AskUserQuestion` 工具**：
 
 questions:
-  - question: "tasks.md 已确认，怎么执行？"
+  - question: "tasks.md 已生成。怎么执行？"
     header: "执行方式"
     multiSelect: false
     options:
-      - label: "开始 required"
-        description: "仅执行 required 任务，逐个推进 [ ] → [~] → [x]。"
-      - label: "开始 required + optional"
-        description: "required 完成后顺带处理 optional 任务。"
-      - label: "用 task-swarm 多 agent 并发"
-        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。"
+      - label: "用 task-swarm 多 agent 并发（推荐）"
+        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。required + optional 一并处理。"
+      - label: "顺序执行（同时处理 optional）"
+        description: "单 agent 逐个推进 required + optional 任务，[ ] → [~] → [x]。如需只跑 required，可在 Other 输入说明。"
+      - label: "需要调整 tasks.md"
+        description: "tasks 不符合预期，告诉你具体怎么改。"
       - label: "暂不 coding"
-        description: "文档已落地但暂不开始实现；随时 /specode:end 关闭会话。"
+        description: "tasks.md 已落地但暂不开始实现；随时 /specode:end 关闭会话。"
 
 **约束**：
-- 4 个选项已占满工具上限；用户若想自定义可用 "Other" 输入。
+- 4 个选项已占满工具上限；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
 - 调用工具后立即 end turn。
+- 简报必须在工具调用**之前**输出。
 ```
 
 ---
@@ -421,7 +424,7 @@ questions:
 
 ## 自主判断（hook 失败时）
 
-按上面 8 个场景对照表选 key → 用对应模板直接调 `AskUserQuestion`。hook 是**提醒**而非**触发**——hook 失效时仍要按本文规范走。
+按上面 7 个场景对照表选 key → 用对应模板直接调 `AskUserQuestion`。hook 是**提醒**而非**触发**——hook 失效时仍要按本文规范走。
 
 ---
 

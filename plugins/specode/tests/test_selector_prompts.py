@@ -158,21 +158,14 @@ def test_doc_confirm_design_snapshot(run_script, fake_home, selector_setup):
     assert "继续沟通" in ctx
 
 
-def test_doc_confirm_tasks_snapshot(run_script, fake_home, selector_setup):
-    sid = selector_setup("doc-confirm-tasks", phase="tasks")
-    ctx = _fetch_ctx(run_script, fake_home, sid)
-    assert "tasks.md 文档确认" in ctx
-    assert "确认（推荐）" in ctx
-    assert "查看全文" in ctx
-    assert "继续沟通" in ctx
-
-
 def test_tasks_execution_snapshot(run_script, fake_home, selector_setup):
+    """0.9.3 起 tasks-execution 合并了旧 doc-confirm-tasks，提供 4 选项含「需要调整」回退。"""
     sid = selector_setup("tasks-execution", phase="tasks")
     ctx = _fetch_ctx(run_script, fake_home, sid)
     assert "任务执行选择" in ctx
-    assert "开始 required" in ctx
-    assert "用 task-swarm 多 agent 并发" in ctx
+    assert "用 task-swarm 多 agent 并发（推荐）" in ctx
+    assert "顺序执行（同时处理 optional）" in ctx
+    assert "需要调整 tasks.md" in ctx
     assert "暂不 coding" in ctx
 
 

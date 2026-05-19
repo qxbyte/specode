@@ -108,20 +108,19 @@ Status: Design Draft
 
 Status: Tasks Draft
 
-## 任务
+## 阶段 1: 待规划阶段标题
 
-- [ ] 1. 待规划任务
+- [ ] 1.1 待规划任务描述 @writes:src/path/to/file.py _需求：1.1_
 
 ## 测试要点
 
-> 跟随 `requirements.md` / `bugfix.md` 同步更新；每行对应一条 SHALL，供测试人员快速了解验证场景。
+供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 SHALL 顺手补几行作为参考；非验收硬条件。
 
-- [ ] _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
+- _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
 
 ## 验收
 
 - [ ] 所有 required 任务完成。
-- [ ] 测试要点全部跨过。
 """,
     "implementation-log.md": """# 实现记录：{{name}}（{{slug}}）
 

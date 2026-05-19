@@ -99,7 +99,13 @@ def test_workflow_choice_snapshot(run_script, fake_home, selector_setup):
     assert "Requirements first" in ctx
     assert "Technical Design first" in ctx
     assert "Bugfix" in ctx
-    assert "AWAITING_USER_CHOICE" in ctx
+    # 改为 AskUserQuestion 工具协议
+    assert "AskUserQuestion" in ctx
+    assert "multiSelect" in ctx
+    assert '"label"' in ctx
+    # 显式断言"禁止保留位"措辞存在
+    assert "Type something" in ctx  # 在禁区说明里出现
+    assert "Other" in ctx
 
 
 def test_clarification_wizard_snapshot(run_script, fake_home, selector_setup):

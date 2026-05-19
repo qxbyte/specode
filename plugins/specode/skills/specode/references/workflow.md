@@ -76,11 +76,12 @@ CLI 行为：
 约束摘要：
 
 - 留在 `intake` phase。
-- **一次性** wizard 问完 2–5 个**无依赖**决策点；不要逐 turn 散问。
+- **一次性** wizard 问完 2–4 个**无依赖**决策点；不要逐 turn 散问（`AskUserQuestion` 工具 `questions` 数组上限 4 个）。
 - 子问题必须是"是 / 否 / 选哪条"具体问题；非互斥应拆类型。
-- 末项保留 `Type something`；wizard 整体保留 `Chat about this`。
+- 子问题之间无依赖；每个 question `multiSelect=false`。
+- "Other" 由工具自动提供；不需要手工加 `Type something` 等保留位。
 - inputs 不足以构成决策点 → 不要塞进 wizard。
-- 一个决策点都没有 → 跳到 `clarification-done`，不输出 wizard。
+- 一个决策点都没有 → 跳到 `clarification-done`，不调 wizard 工具。
 
 用户回复后下一轮：
 
@@ -253,14 +254,14 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 1. 调 `spec_vault.py status` 拿当前已配置 root（仅读 config.json，不重新检测）。
  - 无配置 root → 提示用户运行 `/specode:spec --set-vault <path>` 或 `--set-root <path>` 后 end turn。
-2. 列 root 下全部 spec（`spec_session.py list-specs --root <root> --json`）+ 全部 session（`spec_session.py list --root <root> --json`）。
-3. 用"列表 + 用户回复编号"形式（参考 `references/prompts.md` §Plan-mode 部分的非 selector 列表格式）输出：
- - 当前会话块（mode=active 时只一行 / 不存在则保留空标题）
- - 其他窗口块（其他 session 持有的 spec）
- - 可恢复的全部 spec 块（编号 1–N，含 slug / 显示名 / phase / m/n 任务计数 / 锁状态）
-4. 锁状态用固定词：`✓持有锁` / `⚠ 锁定于 <id 前 8 位>` / `○ 空闲` / `（已过期）`。
-5. End turn 让用户回复编号或 slug。
-6. 用户回复后下一轮进入 §9.2 with slug。
+2. 调 `spec_session.py list-specs` 拿 root 下全部 spec（含 slug / phase / lock_state / holder / iterationRound / mtimes）。
+3. 在 chat 写 1-2 行上下文摘要（"找到 N 个可继续 spec，当前 root：<root>，其中 <m> 个锁定 / <n> 个空闲"），然后**调 `AskUserQuestion` 工具**呈现选择器（详见 `references/obsidian.md` §5.1）：
+ - 类型 A 单列单选；`multiSelect=false`。
+ - 选项 ≤ 4 项；超过时按 last_heartbeat_at 取最近 4 个，其余在 chat 引导用户用 `/specode:continue <slug>` 显式指定。
+ - 每个选项 `label=<slug>`，`description` 简述 phase / 迭代 / 锁状态 / 最近修改 mtime。
+4. 锁状态描述用固定词：`持有锁` / `锁定于 <id 前 8 位>` / `空闲` / `已过期`。
+5. 工具返回后下一轮进入 §9.2 with slug。
+6. `list-specs.specs == []` → **不**调工具，直接在 chat 引导用户用 `/specode:spec <需求>` 创建新 spec。
 
 ### 9.2 有 slug 形式
 
@@ -305,15 +306,14 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 每个 phase-gate 的 turn 严格按此顺序：
 
 1. 先做工具调用（Write/Edit 文档 / Read 验证文档）。
-2. 在正文中输出：文档**绝对路径**、简短摘要、3–8 条关键变更要点、未决问题。
+2. 在 chat 正文输出：文档**绝对路径**、简短摘要、3–8 条关键变更要点、未决问题。
 3. 空一行 → 状态行 footer。
-4. 空一行 → 选择器骨架（类型按 §3.7.4 / SKILL.md §Selectors 表查）。
-5. 最后一行：`AWAITING_USER_CHOICE`。
-6. **End turn**。
+4. **调 `AskUserQuestion` 工具**呈现选择器（类型按 SKILL.md §Selectors 表查；具体参数见 `references/prompts.md` §8 场景常量库）。
+5. 工具调用本身就是 turn 终止；不需要 sentinel，不需要在工具调用之后追加任何文本。
 
-用户回复 → 下一轮按用户选项做对应动作；选 `查看全文`（doc-confirm-* 选项 2）就完整 echo 文档后**再次**呈现同一 selector + end turn。
+用户回复（即 `AskUserQuestion` 工具返回值）→ 下一轮按用户选择做对应动作；选 `查看全文`（doc-confirm-* 选项 2）就完整 echo 文档后**再次**调同一选择器工具。
 
-绝不在同一轮里"先 selector 再继续到下一阶段"——选择器是 hard end turn。
+绝不在同一轮里"先调工具再继续到下一阶段"——工具调用结束了本轮，下一阶段在新一轮处理。
 
 ## 11. 与 task-swarm 的交接
 

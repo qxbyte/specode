@@ -4,6 +4,63 @@
 
 _no entries yet_
 
+## 0.7.1 (2026-05-19)
+
+### Changed — selector protocol switched to AskUserQuestion
+
+The 11 entries in `spec_session.py SELECTOR_PROMPTS` have been
+rewritten to instruct the model to call Claude Code's built-in
+**`AskUserQuestion`** tool instead of emitting a markdown list with
+a `AWAITING_USER_CHOICE` sentinel and asking the user to reply with
+a number.
+
+The three selector types map to `AskUserQuestion` parameters as
+follows:
+
+- **Type A (single-select)** — `questions=[1 q]` + `multiSelect=false`
+- **Type B (wizard)** — `questions=[2-4 q]`, each `multiSelect=false`
+  (each question shows as its own chip-tab)
+- **Type C (multi-select)** — `questions=[1 q]` + `multiSelect=true`
+
+Why this changes things:
+
+- The Claude Code tool renders arrow-key navigation + Enter to
+  submit + ESC to cancel + auto-provided "Other" for free-text
+  input. The user never types a number.
+- The historical reserved positions `Type something` / `Chat about
+  this` / `Submit` are deleted from the selector text — "Other" and
+  ESC are provided by the tool.
+- The `AWAITING_USER_CHOICE` sentinel is removed everywhere it
+  drove turn termination — calling the `AskUserQuestion` tool is
+  itself a turn terminator.
+- `references/prompts.md`, `SKILL.md` §Selectors, and the
+  multi-vault selector in `references/obsidian.md` §3 all now
+  describe selectors as `AskUserQuestion(questions=[...])`
+  invocations with explicit Python-style parameter blocks.
+- `references/workflow.md` §9.1 (`/specode:continue` with no slug)
+  and §10 (phase-gate output order) updated; the model no longer
+  outputs a numbered list and waits for a reply — it calls the
+  tool.
+
+The historical wording (`AWAITING_USER_CHOICE` / "请回复编号" /
+`Type something` / `Chat about this`) is now listed as **forbidden
+phrasing** in `references/prompts.md`'s compat section so the model
+can recognize and reject it if encountered in older docs.
+
+### Tests
+
+- `tests/test_selector_prompts.py::test_workflow_choice_snapshot`
+  updated to assert `AskUserQuestion` / `multiSelect` / `"label"`
+  fields appear, and that `Type something` / `Other` appear in the
+  forbidden-list section.
+- All 152 tests pass (75 v0.6 + 77 task-swarm = 152; no new tests
+  introduced in 0.7.1).
+
+### Migration
+
+No state migration needed. Existing `~/.specode/sessions/<id>.json`
+files are unaffected. Hooks behavior is otherwise unchanged.
+
 ## 0.7.0 (2026-05-19)
 
 ### Added

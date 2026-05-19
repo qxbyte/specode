@@ -4,6 +4,91 @@
 
 _no entries yet_
 
+## 0.7.0 (2026-05-19)
+
+### Added
+
+- **task-swarm multi-agent orchestrator** (was originally targeted at
+  a separate v0.7). Six new scripts:
+  - `task_swarm.py` (1333 lines) — CLI: `init` / `status` / `plan` /
+    `advance` / `writeback` / `heartbeat` / `resolve`.
+  - `task_swarm_state.py` — StateMachine + `state.json` atomic
+    persistence + deadloop detection (3 consecutive same fail
+    signatures → group failed-deadloop, no infinite loop).
+  - `task_swarm_parse_md.py` — `tasks.md` parser + group splitting
+    by `@writes` file-conflict (no two stages in the same group
+    touch overlapping files).
+  - `task_swarm_outbox.py` — strict schema validators for coder
+    `result.md` / reviewer `review.md` (with evidence tags) /
+    validator `validation.md` (with fix targets).
+  - `task_swarm_writeback.py` — line-safe `tasks.md` writeback;
+    refuses any diff outside `[ ] → [x]` checkbox toggle + `> `
+    annotation block append.
+  - `task_swarm_prompt.py` — prerendered prompts for coder /
+    reviewer / validator subagents at every phase / round.
+- **`on-task-completed` hook (PostToolUse matcher=Task)** — when a
+  subagent returns during a task-swarm run, calls
+  `task_swarm.py plan` and injects the next-step advice into
+  `additionalContext` (9 state matrix per §11.6). Never blocks.
+- **`on-heartbeat-quiet` hook (UserPromptSubmit, second handler)** —
+  silently renews the spec lock on every user turn when
+  `mode=active`. Never injects `additionalContext`.
+- **`on-pre-tool-use` hook (PreToolUse matcher=Edit|Write|MultiEdit)** —
+  when in a task-swarm run and the target is the active spec's
+  `tasks.md`, injects an advisory reminding the model to go through
+  `task_swarm.py writeback` instead of direct edits. Never blocks.
+- **`spec_session.py list-specs --root <path>`** — replaces the
+  removed `spec_choice.py` discovery flow for `/specode:continue`
+  with no slug; returns a JSON of all specs in the doc root with
+  lock state / phase / mtime so the model can present a
+  numbered-list selector without Grep'ing the project directory.
+- **`spec-writer` agent** (already in 0.6) and **four task-swarm
+  agents** (planner / coder / reviewer / validator, already
+  shipping; tool isolation unchanged).
+- **References** added: `task-swarm.md` (full protocol incl.
+  §11.1–§11.7 spec) and `task-swarm-example.md` (3-stage / 8-task
+  worked example showing group split + traceability + annotation
+  block format).
+- **77 new tests** for the task-swarm pipeline; **152 tests total**
+  (75 v0.6 + 77 v0.7) all passing.
+
+### Changed
+
+- **`SKILL.md` slimmed from ~335 lines to ~194 lines** — heavy
+  detail moved to references; SKILL.md is now an activation contract
+  + dispatch table, not a manual.
+- **`/specode:continue` flow corrected** — model is now explicitly
+  forbidden from Grep'ing the project directory; must go through
+  `spec_vault.py status` → `spec_session.py list-specs`. See
+  `references/obsidian.md` §5.1.
+- **Multi-vault selection UI** now follows §3.7.1 Type A skeleton
+  with `AWAITING_USER_CHOICE` sentinel and `Type something` /
+  `Chat about this` reserved positions (was a freer list before).
+- **All version-difference wording removed** from runtime docs
+  (commands / agents / skills / references) — features are
+  documented as "what works", not "what is new in vX".
+
+### Removed
+
+Nothing further. All deletions from 0.5.0 remain: `spec_guard.py`,
+`spec_sync.py`, `bash_guard.py`, `task_swarm_guard.py`, all INV-1
+through INV-11, `spec_choice.py`, sentinel short-circuit, audit
+log, telemetry.
+
+### Hook inventory (final)
+
+| Event | Handler | Behavior |
+|---|---|---|
+| `SessionStart` | `on-session-start` | Initializes sessions file; emits session_id reminder |
+| `UserPromptSubmit` | `on-user-prompt` | Fast-path / selector / doc-first / status-footer / mode reminder |
+| `UserPromptSubmit` | `on-heartbeat-quiet` | Silently renews lock on every active turn |
+| `PreToolUse` | `on-pre-tool-use` | Reminds (never blocks) on direct `tasks.md` edits during task-swarm runs |
+| `Stop` | `on-stop` | Code-doc sync reminder + spec-mode continuation reminder |
+| `PostToolUse` (matcher=Task) | `on-task-completed` | task-swarm next-step advice |
+| `SessionEnd` | `on-session-end` | Writes mode=ended + releases lock as fallback |
+
+All hooks `exit 0`. `SPECODE_GUARD=off` short-circuits all of them.
+
 ## 0.6.0 (2026-05-19)
 
 ### Added — full re-implementation on the 0.5.0 skeleton

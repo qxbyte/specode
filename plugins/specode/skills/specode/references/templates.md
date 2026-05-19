@@ -221,10 +221,10 @@ Review Status: unreviewed
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant System
-    User->>System: Request
-    System-->>User: Response
+ participant User
+ participant System
+ User->>System: Request
+ System-->>User: Response
 ```
 
 ## 错误处理
@@ -302,31 +302,31 @@ Review Status: unreviewed
 ## 任务
 
 - [ ] 1. [阶段任务标题]
-  - [ ] 1.1 [具体子任务]
-    - [具体实现点]
-    - 文件：`src/foo/bar.py`
-    - 验证：`pytest tests/test_bar.py::test_x`
-    - _需求：1.1、1.2_
-  - [ ] 1.2 [具体子任务]
-    - [具体实现点]
-    - 文件：`src/foo/baz.py`
-    - 验证：`pytest tests/test_baz.py`
-    - _需求：1.3_
+ - [ ] 1.1 [具体子任务]
+ - [具体实现点]
+ - 文件：`src/foo/bar.py`
+ - 验证：`pytest tests/test_bar.py::test_x`
+ - _需求：1.1、1.2_
+ - [ ] 1.2 [具体子任务]
+ - [具体实现点]
+ - 文件：`src/foo/baz.py`
+ - 验证：`pytest tests/test_baz.py`
+ - _需求：1.3_
 
 - [ ] 2. 检查点 —— 阶段 1 验证
-  - 运行 `pytest tests/test_bar.py tests/test_baz.py`。
-  - 如有失败，停止继续执行并修复或向用户确认。
+ - 运行 `pytest tests/test_bar.py tests/test_baz.py`。
+ - 如有失败，停止继续执行并修复或向用户确认。
 
 - [ ] 3. [阶段任务标题]
-  - [ ] 3.1 [具体子任务]
-    - 文件：`src/api/login.py`
-    - 验证：`pytest tests/test_login.py`
-    - _需求：2.1_
+ - [ ] 3.1 [具体子任务]
+ - 文件：`src/api/login.py`
+ - 验证：`pytest tests/test_login.py`
+ - _需求：2.1_
 
 - [*] 4. [可选任务标题]
-  - [ ] 4.1 [可选子任务]
-    - [说明]
-    - _需求：可选_
+ - [ ] 4.1 [可选子任务]
+ - [说明]
+ - _需求：可选_
 
 ## 验收
 
@@ -347,8 +347,8 @@ Review Status: unreviewed
 ### 4.1 任务标记语义
 
 ```
-[ ] pending      [~] in progress    [x] completed
-[-] skipped      [*] optional
+[ ] pending [~] in progress [x] completed
+[-] skipped [*] optional
 ```
 
 推进规则：
@@ -409,11 +409,11 @@ Review Status: unreviewed
 填充规则：
 
 - 每条 EARS `SHALL` 语句 → 表格一行：
-  - **功能点** = 该 SHALL 所属需求编号 / 简称（如 `需求 1.1 密码强度`）。
-  - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述；必须可执行）。
-  - **预期结果** = 直接引用 SHALL 后的期望行为。
-  - **实际结果** = `待记录`。
-  - **结论** = `待验证`。
+ - **功能点** = 该 SHALL 所属需求编号 / 简称（如 `需求 1.1 密码强度`）。
+ - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述；必须可执行）。
+ - **预期结果** = 直接引用 SHALL 后的期望行为。
+ - **实际结果** = `待记录`。
+ - **结论** = `待验证`。
 - **禁止保留** templates 里"核心能力 / 异常输入 / 回归行为 / _agent 待填充_"等占位行。
 - 「验证命令」行可保留（从 tasks.md 里的 `验证：xxx` 提取）。
 
@@ -464,9 +464,9 @@ Review Status: unreviewed
 - 自由式格式；每条记录 **≥30 字**（`spec_lint.py` 检查；过短报 WARNING）。
 - 按日期分节（`## YYYY-MM-DD`），每天追加。
 - 记录三类内容：
-  1. **任务进度**：任务 x.y 完成 / blocker。
-  2. **设计偏离**：实现期间偏离 design.md 的决策（必须同 turn Edit design.md 同步）。
-  3. **关键决策**：选型 / 安全性 / 性能取舍。
+ 1. **任务进度**：任务 x.y 完成 / blocker。
+ 2. **设计偏离**：实现期间偏离 design.md 的决策（必须同 turn Edit design.md 同步）。
+ 3. **关键决策**：选型 / 安全性 / 性能取舍。
 - 缺关键文件引用（路径 / 行号 / 函数名）→ WARNING。
 - log 是「轻量级补救手段」 —— 如果同 turn 改了代码但实在没法重写 design.md / tasks.md，至少在 log 里记一行；空 log 等于没改过（下一会话看不到）。
 

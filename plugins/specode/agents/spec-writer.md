@@ -56,8 +56,8 @@ model: sonnet
 1. Read `assets/templates/requirements.template.md`。
 2. Read 已有 `bugfix.md`（如有，互斥，理论上不会同时存在）。
 3. 把澄清结果 / 源需求映射成 EARS SHALL：
-   - 每条 SHALL 带编号（x.y），明确 trigger / actor / behavior / acceptance criteria。
-   - 验收条件挂到具体 SHALL 上。
+ - 每条 SHALL 带编号（x.y），明确 trigger / actor / behavior / acceptance criteria。
+ - 验收条件挂到具体 SHALL 上。
 4. Write `<spec-dir>/requirements.md`。
 5. **同 turn 重写** `<spec-dir>/acceptance-checklist.md`，逐条对应 requirements 章节，留空待 acceptance phase 填。
 6. 输出章节摘要（标题 / SHALL 编号清单）+ STATUS 行。
@@ -75,7 +75,7 @@ model: sonnet
 1. Read `assets/templates/design.template.md`。
 2. Read `requirements.md` 或 `bugfix.md` 取需求清单。
 3. 按模板章节填：架构 / 模块边界 / 接口契约 / 数据模型 / 关键决策。
-   - 每个设计决策末尾标 `_需求：x.y_` 链回到 SHALL。
+ - 每个设计决策末尾标 `_需求：x.y_` 链回到 SHALL。
 4. Write `<spec-dir>/design.md`。
 5. 输出章节摘要 + STATUS 行。
 
@@ -84,8 +84,8 @@ model: sonnet
 1. Read `assets/templates/tasks.template.md`。
 2. Read `design.md` + `requirements.md` / `bugfix.md`。
 3. 拆任务：每条任务带 `@writes` / `@reads` / `_需求：x.y_` traceability；状态用 `[ ]` 初始化。
-   - required 任务在前，optional 任务用专门小节归类。
-   - 同 group 内的任务 `@writes` 必须不相交（为 v0.7 的 task-swarm 并发预留）。
+ - required 任务在前，optional 任务用专门小节归类。
+ - 同 group 内的任务 `@writes` 必须不相交（task-swarm 并发要求）。
 4. Write `<spec-dir>/tasks.md`。
 5. 输出章节摘要（required N / optional M 计数）+ STATUS 行。
 

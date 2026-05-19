@@ -997,6 +997,144 @@ def cmd_read_session(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_list_specs(args: argparse.Namespace) -> int:
+    """列出当前 doc_root 下所有 spec 的状态摘要。
+
+    输出 JSON:
+      {ok, root, source, specs: [...], reason?}
+    每个 spec 元素：
+      {slug, dir, specId, displayName, phase, iterationRound,
+       lock_state, holder, last_heartbeat_at, pending_selector,
+       mtimes: {...}}
+    """
+    import datetime as _dt
+    try:
+        import spec_vault  # type: ignore
+    except Exception as e:
+        _emit_json({
+            "ok": False,
+            "reason": f"spec_vault_import_failed: {e}",
+            "root": None,
+            "source": "error",
+            "specs": [],
+        })
+        return 0
+
+    override = args.root
+    try:
+        root, source = spec_vault.resolve_doc_root(override)
+    except Exception as e:
+        _emit_json({
+            "ok": False,
+            "reason": f"resolve_doc_root_failed: {e}",
+            "root": None,
+            "source": "error",
+            "specs": [],
+        })
+        return 0
+
+    if root is None:
+        _emit_json({
+            "ok": False,
+            "reason": "no_doc_root",
+            "root": None,
+            "source": source,
+            "specs": [],
+        })
+        return 0
+
+    specs_dir = Path(root) / "specs"
+    if not specs_dir.exists() or not specs_dir.is_dir():
+        _emit_json({
+            "ok": True,
+            "root": str(root),
+            "source": source,
+            "specs": [],
+        })
+        return 0
+
+    spec_doc_names = [
+        "requirements.md",
+        "bugfix.md",
+        "design.md",
+        "tasks.md",
+        "acceptance-checklist.md",
+        "implementation-log.md",
+    ]
+
+    entries: list[dict] = []
+    try:
+        children = sorted(specs_dir.iterdir(), key=lambda p: p.name)
+    except Exception:
+        children = []
+
+    for child in children:
+        if not child.is_dir():
+            continue
+        cfg_path = child / ".config.json"
+        if not cfg_path.exists():
+            continue
+        try:
+            with cfg_path.open("r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+            if not isinstance(cfg, dict):
+                continue
+        except Exception:
+            continue
+
+        lock = cfg.get("lock") or {}
+        # 业务侧实际字段名是 holder；保留 claude_session_id 兜底以兼容文档表述
+        holder_id = (
+            lock.get("holder") or lock.get("claude_session_id")
+            if isinstance(lock, dict) else None
+        )
+        if holder_id:
+            if _is_lock_stale(lock):
+                lock_state = "stale"
+            else:
+                lock_state = "held"
+        else:
+            lock_state = "free"
+        holder_short = holder_id[:8] if isinstance(holder_id, str) and holder_id else None
+
+        mtimes: dict[str, str] = {}
+        for name in spec_doc_names:
+            doc_path = child / name
+            try:
+                if doc_path.exists():
+                    ts = doc_path.stat().st_mtime
+                    mtimes[name] = (
+                        _dt.datetime.utcfromtimestamp(ts)
+                        .strftime("%Y-%m-%dT%H:%M:%SZ")
+                    )
+            except Exception:
+                continue
+
+        display_name = cfg.get("displayName") or cfg.get("requirementName")
+
+        entries.append({
+            "slug": cfg.get("slug") or child.name,
+            "dir": str(child),
+            "specId": cfg.get("specId"),
+            "displayName": display_name,
+            "phase": cfg.get("phase"),
+            "iterationRound": cfg.get("iterationRound", 0),
+            "lock_state": lock_state,
+            "holder": holder_short,
+            "last_heartbeat_at": lock.get("last_heartbeat_at") if isinstance(lock, dict) else None,
+            "pending_selector": cfg.get("pending_selector"),
+            "mtimes": mtimes,
+        })
+
+    _emit_json({
+        "ok": True,
+        "root": str(root),
+        "source": source,
+        "specs": entries,
+    })
+    return 0
+
+
 # -------------------------------------------------------------------------
 # Hook 子命令
 # -------------------------------------------------------------------------
@@ -1361,26 +1499,258 @@ def hook_on_session_end(args: argparse.Namespace) -> None:
     # 不输出 additionalContext
 
 
-# ---- v0.7/v0.8 占位 hook（exit 0 noop） ----
+# ---- v0.7 on-task-completed（task-swarm 节点提醒） ----
+
+TASK_COMPLETED_TRAILER = "\n\n本提醒仅供参考；fork 谁、是否 fork、何时 writeback 仍由你判断；可忽略。"
+
+
+def _run_task_swarm_plan(run_id: str) -> Optional[dict]:
+    """调子进程 task_swarm.py plan --run <run_id>，解析 stdout JSON 返回 dict。
+
+    任何失败（exit != 0、JSON 解析失败、子进程异常）返回 None。
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(THIS_DIR / "task_swarm.py"), "plan", "--run", run_id],
+            capture_output=True, text=True, timeout=10,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    out = (proc.stdout or "").strip()
+    if not out:
+        return None
+    try:
+        obj = json.loads(out)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        return None
+    return None
+
+
+def _format_plan_context(plan: dict) -> str:
+    """按 §11.6 hook 提醒矩阵把 plan dict 渲染成 additionalContext 文本。"""
+    phase = str(plan.get("phase") or "?")
+    action = str(plan.get("action") or "")
+    group = plan.get("group")
+    rnd = plan.get("round")
+    in_flight = plan.get("in_flight") or []
+    fork = plan.get("fork") or []
+    msg = str(plan.get("message") or "")
+    n_fork = len(fork) if isinstance(fork, list) else 0
+    n_in_flight = len(in_flight) if isinstance(in_flight, list) else 0
+
+    # 选择具体建议文本（§11.6 9 种状态）
+    if action == "deadloop" or phase == "error":
+        body = (
+            f"⚠️ 死循环检测：g{group} 已连续 3 轮同一 fail 签名。\n"
+            "建议停止本 group，向用户报告 `failed-deadloop`，让用户介入。"
+        )
+    elif action == "all-done" or phase == "done":
+        body = (
+            "全部 group 已完成。请按 SKILL.md 退出 task-swarm 模式，"
+            "回到 spec-mode acceptance phase。"
+        )
+    elif phase == "coding" and action == "coding-waiting":
+        body = (
+            f"coding phase 还在等 {n_in_flight} 个 subagent；"
+            "无需 fork 新 agent，等齐后再判断。"
+        )
+    elif phase == "coding" and action == "coding-fork":
+        body = (
+            f"本 group 开始 coding。请按下面 {n_fork} 个 coder agent_key fork"
+            "（同 message 内并发）。"
+        )
+    elif phase == "review" and action == "review-fork":
+        body = (
+            "本 group coder 已全部返回。请 fork **1 个** `task-swarm-reviewer`，"
+            "prompt 已生成。"
+        )
+    elif phase == "p0-fix" and action == "p0-fix-fork":
+        body = (
+            f"reviewer 提了带证据 P0。请按 P0 涉及文件 fork **{n_fork}** 个 "
+            "`task-swarm-coder`（p0-fix），prompt 已生成。\n"
+            "提醒：reviewer 修复**只触发一次**，不 re-review。"
+        )
+    elif phase == "p0-fix" and action == "p0-fix-waiting":
+        body = f"p0-fix 仍有 {n_in_flight} 个 coder 未返回，等齐后再判断。"
+    elif phase == "validation" and action == "validation-fork":
+        body = (
+            "reviewer 无带证据 P0（或全部降级为 advisory）。"
+            "请 fork **1 个** `task-swarm-validator`，prompt 已生成。"
+        )
+    elif phase == "validation" and action == "validation-fork-after-p0":
+        body = (
+            "p0-fix coder 已返回。请 fork **1 个** `task-swarm-validator`，"
+            "prompt 已生成。"
+        )
+    elif phase == "validation" and action == "validation-after-vfix":
+        body = (
+            "v-fix coder 已返回。请 fork **1 个** `task-swarm-validator` 验证。"
+        )
+    elif phase == "writeback" and action == "writeback":
+        body = (
+            "validator pass。请调 `task_swarm.py writeback "
+            f"--run <run_id> --group {group}` 回写 tasks.md，然后进入下一 group。"
+        )
+    elif phase == "v-fix" and action == "v-fix-fork":
+        body = (
+            f"validator fail。请按 validation.md 的 fix_targets 各文件 "
+            f"fork **{n_fork}** 个 `task-swarm-coder`（v-fix）。\n"
+            "注意：validator fail 循环修复直到 pass。"
+            f"本轮是 g{group}-r{rnd}。"
+        )
+    elif phase == "v-fix" and action == "v-fix-waiting":
+        body = f"v-fix 仍有 {n_in_flight} 个 coder 未返回，等齐后再判断。"
+    else:
+        body = msg or f"phase={phase} action={action}（详见 plan 输出）"
+
+    header = (
+        f"## task-swarm 节点提醒（phase={phase}, "
+        f"group={group if group is not None else '?'}, "
+        f"round={rnd if rnd is not None else '?'}）\n\n"
+    )
+    return header + body + TASK_COMPLETED_TRAILER
+
 
 @_safe_hook
 def hook_on_task_completed(args: argparse.Namespace) -> None:
-    # v0.7 实现；v0.6 占位
-    _ = _read_stdin_payload()
-    return
+    payload = _read_stdin_payload()
+    session_id = (
+        payload.get("session_id")
+        or payload.get("sessionId")
+        or args.session_override
+    )
+    if not session_id:
+        return
+    sess = read_session(session_id)
+    if sess is None:
+        return
+    run_id = sess.get("task_swarm_run_id")
+    if not run_id:
+        return
 
+    plan = _run_task_swarm_plan(run_id)
+    if isinstance(plan, dict):
+        text = _format_plan_context(plan)
+    else:
+        # plan 调用失败 → 兜底文本
+        text = (
+            "## task-swarm 节点提醒\n\n"
+            f"无法自动获取 task-swarm run `{run_id}` 的下一步建议——"
+            "请手动调用：\n\n"
+            "```bash\n"
+            f"task_swarm.py plan --run {run_id}\n"
+            "```\n\n"
+            "拿到输出后再判断 fork 谁 / 是否 writeback。"
+            + TASK_COMPLETED_TRAILER
+        )
+    _emit_hook_additional_context(text, hook_event_name="PostToolUse")
+
+
+# ---- v0.8 on-heartbeat-quiet（静默续锁） ----
 
 @_safe_hook
 def hook_on_heartbeat_quiet(args: argparse.Namespace) -> None:
-    # v0.8；v0.6 占位
-    return
+    payload = _read_stdin_payload()
+    session_id = (
+        payload.get("session_id")
+        or payload.get("sessionId")
+        or args.session_override
+    )
+    if not session_id:
+        return
+    sess = read_session(session_id)
+    if sess is None:
+        return
+    if sess.get("mode") != "active":
+        return
+    spec_dir_str = sess.get("active_spec_dir")
+    if not spec_dir_str:
+        return
+    spec_dir = Path(spec_dir_str)
+    if not spec_dir.exists():
+        return
+    cfg = read_spec_config(spec_dir)
+    if cfg is None:
+        return
+    lock = cfg.get("lock") or {}
+    if not isinstance(lock, dict):
+        return
+    holder = lock.get("claude_session_id") or lock.get("holder")
+    if holder != session_id:
+        return
 
+    now = _now_iso()
+    lock["last_heartbeat_at"] = now
+    cfg["lock"] = lock
+    try:
+        write_spec_config_atomic(spec_dir, cfg)
+    except Exception:
+        return
+    sess["last_activity_at"] = now
+    with contextlib.suppress(Exception):
+        write_session_atomic(session_id, sess)
+    # 不输出 additionalContext
+
+
+# ---- v0.8 on-pre-tool-use（tasks.md 直写提醒） ----
 
 @_safe_hook
 def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
-    # v0.8；v0.6 占位
-    _ = _read_stdin_payload()
-    return
+    payload = _read_stdin_payload()
+    session_id = (
+        payload.get("session_id")
+        or payload.get("sessionId")
+        or args.session_override
+    )
+    if not session_id:
+        return
+    sess = read_session(session_id)
+    if sess is None:
+        return
+    if sess.get("mode") != "active":
+        return
+    run_id = sess.get("task_swarm_run_id")
+    if not run_id:
+        return
+    spec_dir_str = sess.get("active_spec_dir")
+    if not spec_dir_str:
+        return
+
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return
+    file_path = tool_input.get("file_path") or ""
+    if not file_path or not isinstance(file_path, str):
+        return
+
+    try:
+        edited = Path(file_path).resolve()
+    except Exception:
+        return
+    try:
+        tasks_md = (Path(spec_dir_str) / "tasks.md").resolve()
+    except Exception:
+        return
+
+    if edited != tasks_md:
+        return
+
+    text = (
+        "## ⚠ 检测到正在直接 Edit/Write `tasks.md`\n\n"
+        f"task-swarm run `{run_id}` 进行中。直接编辑 `tasks.md` 会破坏 "
+        "line-safe diff 约束，并让主代理 / state.json 之间的同步失效。\n\n"
+        "请放弃当前编辑，改走：\n\n"
+        "```bash\n"
+        f"task_swarm.py writeback --run {run_id} --group <N>\n"
+        "```\n\n"
+        "本提醒**不阻断**当前工具调用——是否继续由你判断；"
+        "若坚持直写，请准备好向用户解释 writeback CLI 的回写日志为何出现 diff 越界。"
+    )
+    _emit_hook_additional_context(text, hook_event_name="PreToolUse")
 
 
 # -------------------------------------------------------------------------
@@ -1432,6 +1802,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("read-session")
     p.add_argument("--session", required=True)
 
+    p = sub.add_parser("list-specs")
+    p.add_argument("--root", default=None,
+                   help="doc root override；缺省按三层 resolve_doc_root")
+
     # hook 子命令（无必需参数；从 stdin 拿 session_id）
     for name in (
         "on-session-start",
@@ -1462,6 +1836,7 @@ COMMANDS = {
     "end": cmd_end,
     "status": cmd_status,
     "read-session": cmd_read_session,
+    "list-specs": cmd_list_specs,
     "on-session-start": hook_on_session_start,
     "on-user-prompt": hook_on_user_prompt,
     "on-stop": hook_on_stop,

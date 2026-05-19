@@ -132,7 +132,7 @@ AssertionError: expected status 423 LOCKED, got 401 UNAUTHORIZED
 
 ## 给 coder 的修复指引（必填）
 - 文件: src/api/login.py
-- 位置: login() 函数失败分支
+- 位置: login 函数失败分支
 - 问题: 没有调用 lockout 计数器，第 5 次失败应返回 423 并写 Redis 锁
 - 建议: 引入 src/auth/lockout.py（如 _需求：5.1_ 中描述），在失败分支调用 record_failure(user_id)，返回 423 当 count >= 5
 - 涉及需求: _需求：1.3_、_需求：5.1_

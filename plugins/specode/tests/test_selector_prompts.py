@@ -159,7 +159,7 @@ def test_tasks_execution_snapshot(run_script, fake_home, selector_setup):
     ctx = _fetch_ctx(run_script, fake_home, sid)
     assert "任务执行选择" in ctx
     assert "开始 required" in ctx
-    assert "用 task-swarm 多 agent 并发（v0.7+）" in ctx
+    assert "用 task-swarm 多 agent 并发" in ctx
     assert "暂不 coding" in ctx
 
 

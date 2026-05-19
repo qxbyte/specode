@@ -13,24 +13,24 @@
 
 ```json
 {
-  "specId": "uuid-of-spec",
-  "currentPhase": "tasks",
-  "workflow": "requirements",
-  "lock": {
-    "claude_session_id": "abc-def-1234-...",
-    "acquired_at": "2026-05-19T10:00:00Z",
-    "last_heartbeat_at": "2026-05-19T10:25:00Z",
-    "agent": "claude-code",
-    "pid": 12345
-  },
-  "evicted_sessions": [
-    {
-      "claude_session_id": "old-session-id",
-      "evicted_at": "2026-05-19T10:30:00Z",
-      "evicted_by": "abc-def-1234-...",
-      "reason": "force_acquire"
-    }
-  ]
+ "specId": "uuid-of-spec",
+ "currentPhase": "tasks",
+ "workflow": "requirements",
+ "lock": {
+ "claude_session_id": "abc-def-1234-...",
+ "acquired_at": "2026-05-19T10:00:00Z",
+ "last_heartbeat_at": "2026-05-19T10:25:00Z",
+ "agent": "claude-code",
+ "pid": 12345
+ },
+ "evicted_sessions": [
+ {
+ "claude_session_id": "old-session-id",
+ "evicted_at": "2026-05-19T10:30:00Z",
+ "evicted_by": "abc-def-1234-...",
+ "reason": "force_acquire"
+ }
+ ]
 }
 ```
 
@@ -59,7 +59,7 @@
 - 默认 `lock.last_heartbeat_at` 超过 **1800 秒（30 分钟）** → 视为 stale。
 - 下一次 `acquire` 静默接管（不抛 LockHeld，evicted_sessions reason=`stale`）。
 - 通过环境变量 `SPECODE_LOCK_STALE_SECONDS` 覆盖。
-- v0.8 起 `UserPromptSubmit` 的 `on-heartbeat-quiet` hook 每轮静默续约；v0.6 / v0.7 仍由主会话显式触发。
+- `UserPromptSubmit` 的 `on-heartbeat-quiet` hook 每轮静默续约（自动）；主会话也可显式调 `spec_session.py heartbeat` 强制刷新。
 
 ## 4. 心跳触发点（主会话行为契约）
 
@@ -67,7 +67,7 @@
 
 1. **每次写 spec 文档前**（Edit / Write 工具调用之前一行）。
 2. **每次回答用户消息前**，如果距上次心跳超过 5 分钟。
-3. **每次完成一个 task-swarm subagent 后**（v0.7+）。
+3. **每次完成一个 task-swarm subagent 后**。
 
 只读命令（`spec_status.py` / `spec_lint.py` / `load --json` / `read-session` / `verify-lock`）**不**触发心跳。
 
@@ -87,16 +87,16 @@
 
 ```
 用户：/specode:continue <slug>
-     │
-     ▼
+ │
+ ▼
 1. 解析 spec_dir
-     │
-     ▼
+ │
+ ▼
 2. spec_session.py acquire --spec <dir> --session <id>
-     │
-     ├── exit 0 → 持锁成功 → 走 §6.1 后续步骤
-     │
-     └── exit 4 LockHeld → 走 §6.2 接管三选项
+ │
+ ├── exit 0 → 持锁成功 → 走 §6.1 后续步骤
+ │
+ └── exit 4 LockHeld → 走 §6.2 接管三选项
 ```
 
 ### 6.1 持锁成功
@@ -126,7 +126,7 @@
 ```text
 ⚠ 你的会话已被 session <newId 前 8 位> 强制接管。
 当前 spec 在此窗口已转为只读。继续工作请用
-  /specode:continue <slug>
+ /specode:continue <slug>
 选择"强制接管"恢复可写。
 ```
 
@@ -152,34 +152,34 @@
 ## 9. 锁状态机（汇总）
 
 ```
-                                  ┌──────────┐
-                                  │   null    │ (lock=null, 空闲)
-                                  └────┬─────┘
-                                       │ acquire
-                                       ▼
-              ┌─── force_acquire ──► ┌──────┐ ──── stale ────► (下一次 acquire 静默接管)
-              │                     │  ok  │
-              │ ◄── release/end ────└──┬───┘
-              │                        │
-              │                        │ 他人 force_acquire
-              │                        ▼
-        ┌────────────┐ verify-lock ┌──────────┐
-        │  evicted   │ ◄────────── │ evicted? │
-        └────┬───────┘             └──────────┘
-             │ /specode:continue 强制接管
-             ▼
-           ok（新会话）
+ ┌──────────┐
+ │ null │ (lock=null, 空闲)
+ └────┬─────┘
+ │ acquire
+ ▼
+ ┌─── force_acquire ──► ┌──────┐ ──── stale ────► (下一次 acquire 静默接管)
+ │ │ ok │
+ │ ◄── release/end ────└──┬───┘
+ │ │
+ │ │ 他人 force_acquire
+ │ ▼
+ ┌────────────┐ verify-lock ┌──────────┐
+ │ evicted │ ◄────────── │ evicted? │
+ └────┬───────┘ └──────────┘
+ │ /specode:continue 强制接管
+ ▼
+ ok（新会话）
 
 侧路：
-  - heartbeat 在 ok 状态下刷新 last_heartbeat_at
-  - not_held = lock=null 或被别人持有；verify-lock 路径
-  - readonly = 只读模式（lock 字段不变，仅 sessions/<id>.json.mode=readonly）
+ - heartbeat 在 ok 状态下刷新 last_heartbeat_at
+ - not_held = lock=null 或被别人持有；verify-lock 路径
+ - readonly = 只读模式（lock 字段不变，仅 sessions/<id>.json.mode=readonly）
 ```
 
 ## 10. 原子性保证
 
 - 所有 `.config.json` 读改写序列被 `_file_lock(config_path)`（`fcntl.flock` / `msvcrt.locking`）保护。
-- 写入用 `tempfile.NamedTemporaryFile` → `os.replace()` → `os.fsync()`，crash-safe。
+- 写入用 `tempfile.NamedTemporaryFile` → `os.replace` → `os.fsync`，crash-safe。
 - 同时写 `<spec-dir>/.config.json` + `~/.specode/sessions/<id>.json` 时 CLI 必须两边都成功才算成功；任一失败 → 回滚已写字段 + exit 1。
 - `_file_lock` 在不支持平台（罕见）静默退化为无锁原子写入（仍不会出半文件，但极端竞争下可能出现 lost update —— 已知风险）。
 

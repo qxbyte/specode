@@ -6,13 +6,13 @@ SKILL.md §Phase Order / §Workflow Selection 的运维细节版本。本文件*
 
 ```
 intake ──► requirements / bugfix ──► design ──► tasks ──► implementation ──► acceptance ──► iteration
-   │             │                      │          │             │                 │              │
-   │             ▼                      ▼          ▼             ▼                 ▼              ▼
-   │      acceptance-checklist.md   doc-confirm-*  tasks-execution  推进 [ ] → [~] → [x]  acceptance-gate  iteration 子循环
-   │      跟随式重写                 选择器         选择器                                  选择器
-   │
-   ├─ 需求有歧义 → clarification-wizard（类型 B）+ clarification-done（类型 A）
-   └─ workflow 不明 → workflow-choice（类型 A）
+ │ │ │ │ │ │ │
+ │ ▼ ▼ ▼ ▼ ▼ ▼
+ │ acceptance-checklist.md doc-confirm-* tasks-execution 推进 [ ] → [~] → [x] acceptance-gate iteration 子循环
+ │ 跟随式重写 选择器 选择器 选择器
+ │
+ ├─ 需求有歧义 → clarification-wizard（类型 B）+ clarification-done（类型 A）
+ └─ workflow 不明 → workflow-choice（类型 A）
 ```
 
 phase 切换永远走 `spec_session.py phase-transition --spec <dir> --session <id> --from <p> --to <p>`。**不要**手动改 `<spec-dir>/.config.json.currentPhase`。
@@ -32,12 +32,12 @@ phase 切换永远走 `spec_session.py phase-transition --spec <dir> --session <
 `<需求文本>` 解析步骤：
 
 1. **名称前缀解析**：检测前 30 字符内是否含 `<名称>：<内容>`（全角 `：`）或 `<名称>: <内容>`（半角 `:` 必须有空格）。命中：
-   - 左半部分 → 显示名（中文允许；保留为 `requirementName`）
-   - 右半部分 → 源需求文本（`--source-text`）
-   - 不对路径 / URL / 无冒号输入做拆分
+ - 左半部分 → 显示名（中文允许；保留为 `requirementName`）
+ - 右半部分 → 源需求文本（`--source-text`）
+ - 不对路径 / URL / 无冒号输入做拆分
 2. **slug 推导**（由你负责，CLI 不会从中文推 slug）：
-   - 读完用户需求后，给一个**短 + 语义 + 英文 + 小写 + 连字符** ≤64 字符 slug
-   - 例：`login-password-rule`、`undo-redo`、`dark-mode`、`api-rate-limit`
+ - 读完用户需求后，给一个**短 + 语义 + 英文 + 小写 + 连字符** ≤64 字符 slug
+ - 例：`login-password-rule`、`undo-redo`、`dark-mode`、`api-rate-limit`
 3. **文件路径模式**：若 `<需求>` 是一个可读文件路径，先 Read 该文件，把内容当成源文本继续走前两步。
 4. 提取根目录提示（`--root`）、工作流提示（如用户已说"做个 bugfix"）、约束、验证期望。
 
@@ -45,12 +45,12 @@ phase 切换永远走 `spec_session.py phase-transition --spec <dir> --session <
 
 ```bash
 python3 plugins/specode/scripts/spec_init.py \
-  --name <slug> \
-  --requirement-name "<中文显示名>" \
-  --source-text "<原始需求文本>" \
-  --session <claude_session_id> \
-  [--root <override>] \
-  [--detect-vault]
+ --name <slug> \
+ --requirement-name "<中文显示名>" \
+ --source-text "<原始需求文本>" \
+ --session <claude_session_id> \
+ [--root <override>] \
+ [--detect-vault]
 ```
 
 CLI 行为：
@@ -109,7 +109,7 @@ CLI 行为：
 
 ### 3.1 phase=requirements
 
-1. fork `spec-writer` agent（v0.6 引入；工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）生成 `requirements.md`。章节模板见 `references/templates.md` §requirements.md。
+1. fork `spec-writer` agent生成 `requirements.md`。章节模板见 `references/templates.md` §requirements.md。
 2. **同 turn** 重写 `acceptance-checklist.md`（跟随式，无独立确认门，见 §3.2）。
 3. 按 SKILL.md §Document Output Brevity 报路径 + 3–8 条变更要点 + 未决问题。
 4. 呈现 `doc-confirm-requirements`（类型 A，推荐选项 1 `确认`）。
@@ -124,11 +124,11 @@ CLI 行为：
 
 - 读 requirements.md / bugfix.md 中每一条 EARS `SHALL` 语句。
 - 每条 SHALL → checklist 表格一行：
-  - **功能点** = 该 SHALL 所属的需求名 / 编号。
-  - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述）。
-  - **预期结果** = 直接引用 SHALL 后的期望行为。
-  - **实际结果** = `待记录`。
-  - **结论** = `待验证`。
+ - **功能点** = 该 SHALL 所属的需求名 / 编号。
+ - **操作步骤** = 测试人员可执行的**具体动作**（禁止"触发该能力"这种泛化叙述）。
+ - **预期结果** = 直接引用 SHALL 后的期望行为。
+ - **实际结果** = `待记录`。
+ - **结论** = `待验证`。
 - 禁止保留 templates.md 里"核心能力 / 异常输入 / 回归行为 / _agent 待填充_"等占位行。
 - 验证命令行可保留（从 tasks.md "验证：xxx" 提取）。
 
@@ -150,17 +150,17 @@ CLI 行为：
 ### 3.4 phase=tasks
 
 1. fork spec-writer 生成 `tasks.md`。要求：
-   - 嵌套 checkbox（顶层任务 / 子任务 / 检查点任务）。
-   - 每条具体任务**必须**带 `_需求：x.y_` 或 `_需求：可选_` traceability 标签。
-   - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
-   - 验收节固定四行：所有 required 任务完成 / 所有验证命令通过 / 跳过 optional 已记录 / 用户确认验收。
+ - 嵌套 checkbox（顶层任务 / 子任务 / 检查点任务）。
+ - 每条具体任务**必须**带 `_需求：x.y_` 或 `_需求：可选_` traceability 标签。
+ - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
+ - 验收节固定四行：所有 required 任务完成 / 所有验证命令通过 / 跳过 optional 已记录 / 用户确认验收。
 2. 报路径 + 摘要（任务总数 / required 数 / optional 数）。
 3. `doc-confirm-tasks` 选择器 → 用户确认。
 4. 确认后立即呈现 `tasks-execution` 选择器（类型 A）：
-   - 选 1 `开始 required` → phase-transition → implementation，逐个推进 required。
-   - 选 2 `开始 required + optional` → phase-transition → implementation，required 后顺带 optional。
-   - 选 3 `用 task-swarm 多 agent 并发`（v0.7+）→ v0.6 不可用；告知用户回退选 1 / 2。
-   - 选 4 `暂不 coding` → 留在 tasks phase；告知用户随时 `/specode:end` 或后续 `/specode:continue` 继续。
+ - 选 1 `开始 required` → phase-transition → implementation，逐个推进 required。
+ - 选 2 `开始 required + optional` → phase-transition → implementation，required 后顺带 optional。
+ - 选 3 `用 task-swarm 多 agent 并发`→ 调 `task_swarm.py init --tasks <spec_dir>/tasks.md --session <id>` 切到 task-swarm 编排模式；详见 `references/task-swarm.md`。
+ - 选 4 `暂不 coding` → 留在 tasks phase；告知用户随时 `/specode:end` 或后续 `/specode:continue` 继续。
 
 ## 4. Technical-design-first Flow
 
@@ -174,7 +174,7 @@ CLI 行为：
 ## 5. Bugfix Flow
 
 1. `bugfix.md`（不写 `requirements.md`，二者**互斥**）。章节见 templates.md：
-   - 问题摘要 / 复现步骤 / 当前行为（错误行为，WHEN ... THEN ... [错误]） / 期望行为（WHEN ... SHALL [正确]）/ 保持不变的行为（WHEN ... SHALL CONTINUE TO ...）/ 影响范围 / 证据 / 约束 / 待确认问题。
+ - 问题摘要 / 复现步骤 / 当前行为（错误行为，WHEN ... THEN ... [错误]） / 期望行为（WHEN ... SHALL [正确]）/ 保持不变的行为（WHEN ... SHALL CONTINUE TO ...）/ 影响范围 / 证据 / 约束 / 待确认问题。
 2. **同 turn** 重写 `acceptance-checklist.md`（按"期望行为"+"保持不变"两类 SHALL 各生成一行）。
 3. 调研代码后再断根因 —— 不要凭空断言根因。
 4. `doc-confirm-bugfix` → 确认。
@@ -213,8 +213,8 @@ CLI 行为：
 ### 6.4 任务标记语义
 
 ```
-[ ] pending      [~] in progress    [x] completed
-[-] skipped      [*] optional
+[ ] pending [~] in progress [x] completed
+[-] skipped [*] optional
 ```
 
 ## 7. phase=acceptance
@@ -224,8 +224,8 @@ CLI 行为：
 3. 跑 acceptance-checklist.md 的每一行操作步骤，把"实际结果"列从 `待记录` 改为实测值，"结论"列从 `待验证` 改为 `通过` / `未通过` / `跳过（含原因）`。
 4. 跑完后做一份**验收摘要**（chat）：文档清单 / 完成任务清单 / 验证命令与结果 / 跳过的验证 / 余留风险 / 未决问题。
 5. 呈现 `acceptance-gate`（类型 A）：
-   - 若全部 required 结论 = `通过` → 推荐选项 1 `验收通过，进入 iteration`。
-   - 否则 → 无推荐项。
+ - 若全部 required 结论 = `通过` → 推荐选项 1 `验收通过，进入 iteration`。
+ - 否则 → 无推荐项。
 6. 用户选 1 → 调 `spec_session.py phase-transition --from acceptance --to iteration`（同时 `iterationRound += 1`，记 `iterationHistory`）。
 7. 用户选 2 `继续修改` → 留在 acceptance；视具体未达标项回退到 requirements / design / tasks（**走 phase-transition**，不要手改 `.config.json`）。
 
@@ -252,12 +252,12 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 步骤：
 
 1. 调 `spec_vault.py status` 拿当前已配置 root（仅读 config.json，不重新检测）。
-   - 无配置 root → 提示用户运行 `/specode:spec --set-vault <path>` 或 `--set-root <path>` 后 end turn。
+ - 无配置 root → 提示用户运行 `/specode:spec --set-vault <path>` 或 `--set-root <path>` 后 end turn。
 2. 列 root 下全部 spec（`spec_session.py list-specs --root <root> --json`）+ 全部 session（`spec_session.py list --root <root> --json`）。
 3. 用"列表 + 用户回复编号"形式（参考 `references/prompts.md` §Plan-mode 部分的非 selector 列表格式）输出：
-   - 当前会话块（mode=active 时只一行 / 不存在则保留空标题）
-   - 其他窗口块（其他 session 持有的 spec）
-   - 可恢复的全部 spec 块（编号 1–N，含 slug / 显示名 / phase / m/n 任务计数 / 锁状态）
+ - 当前会话块（mode=active 时只一行 / 不存在则保留空标题）
+ - 其他窗口块（其他 session 持有的 spec）
+ - 可恢复的全部 spec 块（编号 1–N，含 slug / 显示名 / phase / m/n 任务计数 / 锁状态）
 4. 锁状态用固定词：`✓持有锁` / `⚠ 锁定于 <id 前 8 位>` / `○ 空闲` / `（已过期）`。
 5. End turn 让用户回复编号或 slug。
 6. 用户回复后下一轮进入 §9.2 with slug。
@@ -272,27 +272,27 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 1. 解析 `spec_dir = <root>/specs/<slug>`。
 2. `spec_session.py acquire --spec <dir> --session <id>`：
-   - exit 0 → 持锁成功，进入 step 3。
-   - exit 4 `LockHeld` → 输出锁状态摘要 → 呈现 `takeover-options` 选择器（详见 SKILL.md §Multi-Window + Lock）→ end turn。
-     - 选 1 `强制接管` → `acquire --force` → 继续 step 3。
-     - 选 2 `只读查看` → 跳 acquire，调 `load` 拿数据，写 `sessions/<id>.json.mode=readonly` → 进 step 5。
-     - 选 3 `取消` → 退出。
+ - exit 0 → 持锁成功，进入 step 3。
+ - exit 4 `LockHeld` → 输出锁状态摘要 → 呈现 `takeover-options` 选择器（详见 SKILL.md §Multi-Window + Lock）→ end turn。
+ - 选 1 `强制接管` → `acquire --force` → 继续 step 3。
+ - 选 2 `只读查看` → 跳 acquire，调 `load` 拿数据，写 `sessions/<id>.json.mode=readonly` → 进 step 5。
+ - 选 3 `取消` → 退出。
 3. `spec_session.py load --spec <dir>` → 拿 phase / iteration round / tasks 计数 / 文档 mtime。
 4. `spec_session.py continue --spec <dir> --session <id>` → 绑定 sessions + 写 active-pointer（只读模式跳过这步）。
 5. 输出"已加载 spec"报告：
 
 ```text
 已加载 spec：<slug>
-  specId：<id>
-  phase：<phase>
-  iteration：第 N 轮（若 > 0）
-  session：<session 前 8 位>（active / readonly）
-  lock：本会话持有 | ⚠ 锁定于 <other 前 8 位> | 空闲
+ specId：<id>
+ phase：<phase>
+ iteration：第 N 轮（若 > 0）
+ session：<session 前 8 位>（active / readonly）
+ lock：本会话持有 | ⚠ 锁定于 <other 前 8 位> | 空闲
 
-  requirements.md           ← N 条验收标准  |  修改：<time>
-  design.md                 ←               |  修改：<time>
-  tasks.md                  ← N/M 已完成，P 待处理  |  修改：<time>
-  acceptance-checklist.md   ← 验收操作清单  |  修改：<time>
+ requirements.md ← N 条验收标准 | 修改：<time>
+ design.md ← | 修改：<time>
+ tasks.md ← N/M 已完成，P 待处理 | 修改：<time>
+ acceptance-checklist.md ← 验收操作清单 | 修改：<time>
 ```
 
 6. 状态行 footer。
@@ -315,11 +315,11 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 绝不在同一轮里"先 selector 再继续到下一阶段"——选择器是 hard end turn。
 
-## 11. 与 task-swarm 的交接（v0.7 引用方向）
+## 11. 与 task-swarm 的交接
 
-v0.6 中 `tasks-execution` 选项 3 `用 task-swarm 多 agent 并发` **不可用**，告诉用户回退选 1 / 2。
+`tasks-execution` 选项 3 `用 task-swarm 多 agent 并发` 由 `task_swarm.py` 编排器实现。
 
-v0.7 起选 3 → 主会话切到 task-swarm 编排模式（按 `commands/specode:task-swarm.md` 协议），所有 group 完成后回到 implementation → acceptance 通路。详见 `references/task-swarm.md`（v0.7 新增，v0.6 暂缺）。
+选 3 → 主会话切到 task-swarm 编排模式（按 `commands/task-swarm.md` 协议），所有 group 完成后回到 implementation → acceptance 通路。详见 `references/task-swarm.md`。
 
 ## 12. CLI 命令参考
 

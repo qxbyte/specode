@@ -4,6 +4,20 @@
 
 _no entries yet_
 
+## 0.10.1 (2026-05-20)
+
+### Changed — `/specode:spec -h` help 文本
+
+`plugins/specode/scripts/spec_session.py` 内 `HELP_OUTPUT_TEXT` 改为模板：
+
+- 版本号不再硬编码为 `v0.6`，改为运行时从 `.claude-plugin/plugin.json`
+  读 `version` 注入（失败降级 `unknown`），后续 bump 不再需要手动改 help。
+- 新增「会话日志（v0.10.0+）」段，简述 logs/ 默认行为、env / config
+  双开关优先级、`spec_log.py status / replay` 用法，作为新用户从 help
+  入口直达日志能力的导航。
+
+无业务行为变化；纯文档/渲染层调整。
+
 ## 0.10.0 (2026-05-20)
 
 ### Added — Session 日志收集（默认开启，可关）

@@ -591,7 +591,19 @@ spec=<slug>, phase=<phase>, mode=readonly
 # 帮助 fast-path 文本（hook emit verbatim）
 # -------------------------------------------------------------------------
 
-HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow
+def _get_plugin_version() -> str:
+    """读 plugin.json 的 version；失败时返回 'unknown'。"""
+    try:
+        plugin_json = THIS_DIR.parent / ".claude-plugin" / "plugin.json"
+        with plugin_json.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        v = data.get("version")
+        return str(v) if v else "unknown"
+    except Exception:
+        return "unknown"
+
+
+HELP_OUTPUT_TEMPLATE = """specode v$version — Specification-driven workflow
 
 命令一览：
 
@@ -615,8 +627,23 @@ HELP_OUTPUT_TEXT = """specode v0.6 — Specification-driven workflow
   intake → workflow 选择 → requirements / bugfix / design → tasks → implementation
         → acceptance → iteration（可循环）
 
+会话日志（v0.10.0+）：
+  默认开启。所有 hook / CLI 调用写入 ~/.specode/logs/<session_id>.jsonl
+  （敏感字段自动脱敏；长字符串截断到 500 字符）。
+  开关优先级：env > config > 默认开启
+    - 临时关闭：export SPECODE_LOG=off   （Windows: set SPECODE_LOG=off）
+    - 临时打开：export SPECODE_LOG=on
+    - 持久关闭：在 ~/.config/specode/config.json 写 {"logging": false}
+  查看 / 回放：
+    python3 <plugin>/scripts/spec_log.py status
+    python3 <plugin>/scripts/spec_log.py replay --session <id>
+
 更多细节见 plugin 内 skills/specode/SKILL.md 与 references/。
 """
+
+
+def _render_help_text() -> str:
+    return Template(HELP_OUTPUT_TEMPLATE).safe_substitute(version=_get_plugin_version())
 
 HELP_FASTPATH_WRAPPER = """## ⛔ /specode:spec -h fast-path
 
@@ -1412,7 +1439,7 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
 
     # fast-path: help
     if FAST_PATH_HELP.match(prompt):
-        text = _wrap_help_fastpath(HELP_OUTPUT_TEXT.rstrip())
+        text = _wrap_help_fastpath(_render_help_text().rstrip())
         _emit_hook_additional_context(text, hook_event_name="UserPromptSubmit")
         return
 

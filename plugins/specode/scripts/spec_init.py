@@ -25,6 +25,7 @@ stdlib-only。
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -35,6 +36,13 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+# 见 spec_session.py 顶部说明：Windows pipe stdout 默认 cp936/gbk 无法编码 emoji /
+# 部分中文错误消息发到 CodeBuddy / pytest 后变乱码，强制 utf-8 + errors=replace。
+with contextlib.suppress(Exception):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+with contextlib.suppress(Exception):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
 # 复用 spec_vault.py 的解析与原子写
 THIS_DIR = Path(__file__).resolve().parent

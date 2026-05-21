@@ -50,7 +50,7 @@ def test_spec_init_config_json_initial_state(
     assert cp.returncode == 0, cp.stderr
     payload = json.loads(cp.stdout)
     spec_dir = Path(payload["spec_dir"])
-    cfg = json.loads((spec_dir / ".config.json").read_text())
+    cfg = json.loads((spec_dir / ".config.json").read_text(encoding="utf-8"))
     assert cfg["specId"] == payload["specId"]
     assert cfg["slug"] == "beta-spec"
     assert cfg["phase"] == "intake"
@@ -76,7 +76,7 @@ def test_spec_init_writes_sessions_file(
     assert cp.returncode == 0, cp.stderr
     sess_path = fake_home / ".specode" / "sessions" / f"{sid}.json"
     assert sess_path.exists()
-    sess = json.loads(sess_path.read_text())
+    sess = json.loads(sess_path.read_text(encoding="utf-8"))
     assert sess["session_id"] == sid
     assert sess["mode"] == "active"
     assert sess["active_spec_slug"] == "gamma"
@@ -99,7 +99,7 @@ def test_spec_init_updates_active_pointer(
     assert cp.returncode == 0, cp.stderr
     ptr_path = doc_root / ".active-specode.json"
     assert ptr_path.exists()
-    ptr = json.loads(ptr_path.read_text())
+    ptr = json.loads(ptr_path.read_text(encoding="utf-8"))
     assert ptr["active_spec_slug"] == "delta"
     assert ptr["session_id"] == sid
     assert ptr["specId"] == json.loads(cp.stdout)["specId"]
@@ -136,7 +136,7 @@ def test_spec_init_duplicate_slug_refuses(
     )
     assert cp1.returncode == 0, cp1.stderr
     first_cfg = json.loads(
-        (doc_root / "specs" / "dupe" / ".config.json").read_text()
+        (doc_root / "specs" / "dupe" / ".config.json").read_text(encoding="utf-8")
     )
 
     sid2 = make_session_id()
@@ -151,7 +151,7 @@ def test_spec_init_duplicate_slug_refuses(
     assert "已存在" in cp2.stderr
     # The original config is untouched
     again_cfg = json.loads(
-        (doc_root / "specs" / "dupe" / ".config.json").read_text()
+        (doc_root / "specs" / "dupe" / ".config.json").read_text(encoding="utf-8")
     )
     assert again_cfg["specId"] == first_cfg["specId"]
 

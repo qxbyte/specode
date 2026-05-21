@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path("/Users/xueqiang/Git/specode/plugins/specode/scripts")
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
@@ -49,7 +49,7 @@ def test_load_migrates_legacy_claude_session_id(tmp_path):
     import json
     sm = _make_sm(tmp_path)
     state_path = StateMachine.state_path(Path(sm.run_dir))
-    data = json.loads(state_path.read_text())
+    data = json.loads(state_path.read_text(encoding="utf-8"))
     # 模拟老 state.json：删除新 key，回退到老 key
     data.pop("session_id", None)
     data["claude_session_id"] = "legacy-sess-xyz"

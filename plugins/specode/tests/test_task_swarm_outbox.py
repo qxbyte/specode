@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path("/Users/xueqiang/Git/specode/plugins/specode/scripts")
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path("/Users/xueqiang/Git/specode/plugins/specode/scripts")
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
 
 @pytest.fixture
@@ -24,8 +24,11 @@ def run_swarm(tmp_path, monkeypatch):
         env = os.environ.copy()
         env["HOME"] = str(tmp_path / "_home")
         env["USERPROFILE"] = str(tmp_path / "_home")
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         cmd = [sys.executable, str(SCRIPTS_DIR / "task_swarm.py"), *args]
         return subprocess.run(cmd, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace",
                               input=stdin, env=env, timeout=30, cwd=str(tmp_path))
     return _run
 

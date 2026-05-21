@@ -8,11 +8,11 @@ import pytest
 
 
 def _read_sess(fake_home: Path, sid: str) -> dict:
-    return json.loads((fake_home / ".specode" / "sessions" / f"{sid}.json").read_text())
+    return json.loads((fake_home / ".specode" / "sessions" / f"{sid}.json").read_text(encoding="utf-8"))
 
 
 def _read_cfg(spec_dir: Path) -> dict:
-    return json.loads((spec_dir / ".config.json").read_text())
+    return json.loads((spec_dir / ".config.json").read_text(encoding="utf-8"))
 
 
 def _ctx(stdout: str) -> str:

@@ -19,8 +19,8 @@ from typing import Optional
 import pytest
 
 
-REPO_ROOT = Path("/Users/xueqiang/Git/specode")
-SCRIPTS_DIR = REPO_ROOT / "plugins" / "specode" / "scripts"
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
 
 @pytest.fixture
@@ -47,6 +47,11 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     # Pin XDG_CONFIG_HOME under fake home so spec_vault's config never
     # escapes to the real user's ~/.config.
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    # APPDATA / LOCALAPPDATA are read by spec_vault.detect to find Obsidian
+    # on Windows; pin them inside fake_home so a real Obsidian install on
+    # the test machine cannot leak into the assertions.
+    monkeypatch.setenv("APPDATA", str(tmp_path / "AppData" / "Roaming"))
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "AppData" / "Local"))
     monkeypatch.delenv("SPECODE_ROOT", raising=False)
     monkeypatch.delenv("SPECODE_GUARD", raising=False)
     return tmp_path
@@ -95,6 +100,12 @@ def run_script(scripts_dir: Path, fake_home: Path):
         env["HOME"] = str(fake_home)
         env["USERPROFILE"] = str(fake_home)
         env.setdefault("XDG_CONFIG_HOME", str(fake_home / ".config"))
+        # Force Python UTF-8 mode in child: on Windows the default locale is
+        # cp936/gbk which makes pathlib + stderr writes incompatible with the
+        # utf-8 decoding we use here. Tests on macOS/Linux already default to
+        # utf-8, so this is a no-op there.
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
         if extra_env:
             env.update(extra_env)
         cmd = [sys.executable, str(scripts_dir / script_name), *args]
@@ -102,6 +113,8 @@ def run_script(scripts_dir: Path, fake_home: Path):
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             input=stdin if stdin is not None else "",
             env=env,
             timeout=30,

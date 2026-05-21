@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPTS_DIR = Path("/Users/xueqiang/Git/specode/plugins/specode/scripts")
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 
 
 @pytest.fixture
@@ -26,11 +26,14 @@ def fake_env(tmp_path, monkeypatch):
 def _run(script: str, *args: str, stdin: str = "", env_extra: dict = None,
          cwd: Path = None) -> subprocess.CompletedProcess:
     env = os.environ.copy()
+    env.setdefault("PYTHONUTF8", "1")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
         [sys.executable, str(SCRIPTS_DIR / script), *args],
-        capture_output=True, text=True, input=stdin, env=env, timeout=30,
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        input=stdin, env=env, timeout=30,
         cwd=str(cwd) if cwd else None,
     )
 

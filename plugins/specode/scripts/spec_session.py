@@ -37,6 +37,14 @@ from pathlib import Path
 from string import Template
 from typing import Any, Optional
 
+# Windows 子进程 pipe stdout 的 encoding 会 fallback 到 locale（中文 Windows 是 cp936/gbk），
+# 无法编码 emoji 等非 BMP 字符 → emit 时 UnicodeEncodeError 被 _safe_hook 吞掉 → 主代理
+# 收不到任何 hook 注入。强制 utf-8 + errors=replace 兜底。stderr 同步以保证异常 trace 可读。
+with contextlib.suppress(Exception):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+with contextlib.suppress(Exception):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+
 THIS_DIR = Path(__file__).resolve().parent
 
 # spec_log 是兄弟脚本（同目录），通过 sys.path 注入以便 import；失败时降级为 no-op

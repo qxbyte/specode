@@ -69,7 +69,7 @@ def test_on_session_start_new_session_writes_idle(
     assert cp.returncode == 0, cp.stderr
     sess_path = fake_home / ".specode" / "sessions" / f"{sid}.json"
     assert sess_path.exists()
-    sess = json.loads(sess_path.read_text())
+    sess = json.loads(sess_path.read_text(encoding="utf-8"))
     assert sess["mode"] == "idle"
     assert sess["session_id"] == sid
 
@@ -95,7 +95,7 @@ def test_on_session_start_reactivates_ended_session(
                     stdin=json.dumps({"session_id": sid}))
     assert cp.returncode == 0
     sess = json.loads(
-        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text()
+        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text(encoding="utf-8")
     )
     assert sess["mode"] == "idle"  # back to idle from ended
     assert sess["ended_at"] is None
@@ -261,7 +261,7 @@ def test_on_user_prompt_help_fastpath_only_emits_help(
     )
     ctx = _ctx(_parse_hook(cp.stdout))
     assert "fast-path" in ctx
-    assert "specode v0.6" in ctx
+    assert "specode v" in ctx  # accept any version (dynamic since 0.10.1)
     # Workflow-choice selector should NOT leak in
     assert "选择器节点：工作流选择" not in ctx
 
@@ -380,10 +380,10 @@ def test_on_session_end_releases_held_lock(
         stdin=json.dumps({"session_id": sid})
     )
     assert cp.returncode == 0
-    cfg = json.loads((spec_dir / ".config.json").read_text())
+    cfg = json.loads((spec_dir / ".config.json").read_text(encoding="utf-8"))
     assert cfg["lock"] is None
     sess = json.loads(
-        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text()
+        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text(encoding="utf-8")
     )
     assert sess["mode"] == "ended"
     assert sess["ended_at"]
@@ -400,7 +400,7 @@ def test_on_session_end_no_active_spec_is_ok(
     )
     assert cp.returncode == 0
     sess = json.loads(
-        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text()
+        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text(encoding="utf-8")
     )
     assert sess["mode"] == "ended"
 

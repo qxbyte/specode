@@ -84,7 +84,7 @@ def test_set_vault_writes_config_and_status_reflects_config(
     # Now confirm config was written
     cfg_path = fake_home / ".config" / "specode" / "config.json"
     assert cfg_path.exists()
-    cfg = json.loads(cfg_path.read_text())
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
     assert cfg["obsidianRoot"] == str(target.resolve())
     # Status now reports source=config
     cp_status = run_script("spec_vault.py", "status")
@@ -102,7 +102,7 @@ def test_set_root_alias_writes_same_field(run_script, fake_home, monkeypatch):
     cp = run_script("spec_vault.py", "set", "--root", str(target))
     assert cp.returncode == 0, cp.stderr
     cfg = json.loads(
-        (fake_home / ".config" / "specode" / "config.json").read_text()
+        (fake_home / ".config" / "specode" / "config.json").read_text(encoding="utf-8")
     )
     assert cfg["obsidianRoot"] == str(target.resolve())
 

@@ -4,6 +4,37 @@
 
 _no entries yet_
 
+## 0.10.3 (2026-05-21)
+
+### Fixed — `/specode:spec -h` fast-path 被 commands/spec.md 引导旁路
+
+0.10.2 修复了 hook emit `UnicodeEncodeError` 之后，`hook_on_user_prompt`
+能正确向主代理 `additionalContext` 注入完整 fast-path 模板（含 verbatim
+print 指令 + HELP CONTENT BEGIN/END + `specode v0.10.2 ...` 完整 help
+body，验证 stdout 2598 字节，session log 无 `hook_exception`）。但主代理
+**仍然不按 fast-path 走**，而是 `sh ... spec_init.py -h`，把 spec_init.py
+自己的 argparse help 当成 specode help 输出。
+
+根因：`commands/spec.md` 顶部「## 立即调用」标题 + `sh ... spec_init.py ...`
+代码块**视觉优先级压倒**原本藏在底部 bullet 第 3 项的"fast-path 参数由 hook
+拦截"备注。主代理看到 `-h` 时按"立即调用"分支执行，调起 spec_init.py。
+
+修复：把 fast-path 分支前置成「## 第一步」，明确 `-h` / `--help` /
+`--vault-status` / `--detect-vault` / `--sync-status` / `--set-vault` /
+`--set-root` **不要调任何 CLI**，**禁止** `sh ... spec_init.py -h` 等，
+只 verbatim 输出 hook 注入内容；常规需求降为「## 第二步」。
+
+证据链：
+- CodeBuddy 缓存 0.10.2 已正确部署（plugin.json + scripts/utf-8 reconfigure
+  + run.sh alias stub 检测均在位）。
+- 最新 session log（`615f599c-...jsonl`）中 `hook_on_user_prompt` 后再无
+  `hook_exception`（0.10.2 emit 修复有效）。
+- 用真实 session id 跑 `prompt="/specode:spec -h"` → hook stdout 2598 字节
+  完整 fast-path JSON，含 `specode v0.10.2` 完整 help。
+- 主代理 chain-of-thought 截图：先说 "According to the system reminder hook,
+  I should output the help content verbatim ..."，紧接调 `sh spec_init.py -h`
+  ——证明主代理同时收到 hook 注入与 commands 引导，按 commands 走。
+
 ## 0.10.2 (2026-05-21)
 
 ### Fixed — Windows 上 hook 注入彻底失效（两个连续根因）

@@ -4,6 +4,54 @@
 
 _no entries yet_
 
+## 0.10.9 (2026-05-22)
+
+### Fixed — `/specode:spec` 创建后 hallucinate 引导 + 漏状态行 footer
+
+复现：用户跑 `/specode:spec <需求>`，主代理输出 "Spec 已创建成功" 详情后接
+"你可以使用 `/specode:continue` 进入下一阶段继续推进"，且**漏了**状态行
+footer。
+
+证据：
+- `spec_init.py:400-408` 只输出纯 JSON，无任何 "/specode:continue 进入下一阶段"
+  引导（全 repo `grep` "使用 /specode:continue 进入" 命中 0 次）
+- `hook_on_user_prompt` 注入 footer (line 1550)、但只在 user-prompt 提交时跑；
+  用户输 `/specode:spec` 时 session 还是 idle / new，**没**注入 footer 提醒
+- `hook_on_stop` 只 emit `CODE_DOC_SYNC_STOP` + `SPEC_MODE_CONTINUE_REMINDER`
+  （文字提醒"下一 turn 要 footer"），**不 emit `STATUS_FOOTER_TEMPLATE` 本身**
+- → `spec_init.py` 把 session 改成 mode=active + pending_selector=workflow-choice
+  之后，本 turn hook 已经跑过、不会重新注入 footer / selector；commands/spec.md
+  第四步没规定"成功后主代理本 turn 必做 footer + selector + 禁止 hallucinate
+  让用户输命令的引导"——主代理因此漏 footer 又 hallucinate `/specode:continue`
+
+修复（commands 薄 / SKILL 厚原则）：
+
+1. **`commands/spec.md` 第四步加「成功后必做」子节**：明确 `spec_init` exit 0 后
+   本 turn 必做 3 件事——
+   - chat 简报 2-3 行（slug / phase / spec_dir），**禁止**说 "使用
+     `/specode:continue` 进入下一阶段" / "你可以使用 ... 推进" / "下一步请
+     输入 ..." 等让用户再输命令的引导
+   - 输出状态行 footer
+   - 立即调 `AskUserQuestion` 呈现 `workflow-choice` selector
+
+2. **`SKILL.md §Status Footer` 加「新 spec 创建 / 接管的当 turn」子节**：统一
+   覆盖 `/specode:spec`（spec_init 完成）和 `/specode:continue [slug]`
+   （acquire+load+continue 完成）两类首 turn 场景，规定 hook 未刷新时主代理
+   必须主动 chat 简报 + footer + selector，**严禁** "持续流程被打断"类的
+   命令引导。`/specode:spec` 和 `/specode:continue` 是持续流程的入口，进入
+   之后整条 phase 链由 selector + hook + phase-transition 自动推进。
+
+`spec_session.py` / `spec_init.py` 不动，是引导文档层修复。pytest 179/179 通过
+（修改的是 .md 文件，不影响测试）。
+
+audit 同源风险（其他 commands）：
+
+- `continue.md`（0.10.5 重构后）：step 5 已要求 footer；SKILL.md 新子节覆盖
+  主动 selector，无需 commands 再补
+- `end.md`：mode=ended 不输 footer，by-design
+- `status.md`：active 期间应输 footer（SKILL.md §Status Footer），轻微风险
+- `task-swarm.md`：init 后立即 plan→fork，by-design
+
 ## 0.10.8 (2026-05-21)
 
 ### Fixed — `spec-in/<os>-<username>/specs` device 段从未被代码实现

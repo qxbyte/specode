@@ -63,3 +63,14 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 - 三层全 miss → exit 3 + 引导提示；**不**回退到 cwd / ~/specs
 - 详细流程见 SKILL.md §Session Lifecycle / references/obsidian.md
 - 调用模板规约见 SKILL.md §CLI 调用规约（**禁止**裸 `python3 spec_init.py …`）
+
+### 第四步成功后必做（同一 turn，不要 end turn 后等用户再输命令）
+
+`spec_init.py` `exit 0` 后 spec 已经进入 **active 模式**（`sessions/<id>.json.mode=active`，`pending_selector=workflow-choice`）。**`/specode:spec` 是一条持续流程的入口，不需要用户再输任何命令推进**。本 turn 内 hook 还没在 `additionalContext` 刷新 selector / footer 提醒（hook 在下一轮 user-prompt 才注入），所以**必须主代理主动做下面 3 件事**：
+
+1. **chat 简报 2-3 行** 报告 spec 创建结果：slug / phase=intake / spec_dir 关键路径。**禁止**说 "使用 `/specode:continue` 进入下一阶段" / "你可以使用 ... 推进" / "下一步请输入 ..." 等让用户再输命令的引导——spec 已在 active 模式，流程由 selector 推进。
+2. **输出状态行 footer**（紧贴 chat 简报之后、空一行隔开；详见 SKILL.md §Status Footer）：
+   ```text
+   ─── spec-mode ─── spec: <slug> | session: <session_id 前 8 位> | phase: intake | /specode:end 退出
+   ```
+3. **立即调 `AskUserQuestion`** 呈现 `workflow-choice` 选择器（类型 A 单列单选，模板见 `references/selectors.md` §A1）：让用户选 Requirements first / Technical Design first / Bugfix。调用工具后 end turn 等用户选择，下一轮 hook 会自动接上后续 selector 注入。

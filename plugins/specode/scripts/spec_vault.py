@@ -14,6 +14,7 @@ stdlib-only。
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 import platform
@@ -22,6 +23,18 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional, Tuple
+
+
+def _device_segment() -> str:
+    """返回 `<os>-<username>` 设备分段，例如 `windows-qiang` / `macos-alice`。
+
+    用途：让同一 Obsidian vault 在多设备 / 多用户共享时，每个设备的 spec 文档独立
+    存放在 `<vault>/spec-in/<device>/specs/<slug>`，避免锁串扰与文件冲突。
+    详见 references/obsidian.md §0 与 §1。
+    """
+    sys_map = {"Darwin": "macos", "Windows": "windows", "Linux": "linux"}
+    os_name = sys_map.get(platform.system(), platform.system().lower())
+    return f"{os_name}-{getpass.getuser()}"
 
 
 # -------------------------------------------------------------------------
@@ -166,35 +179,46 @@ def _save_specode_config(cfg: dict) -> None:
 # -------------------------------------------------------------------------
 
 def resolve_doc_root(override: Optional[str] = None) -> Tuple[Optional[Path], str]:
-    """三层根目录解析。
+    """三层根目录解析。返回 (Path|None, source)。
 
-    优先级：
-      1. override 参数（--root 或 SPECODE_ROOT 环境变量）
-      2. ~/.config/specode/config.json.obsidianRoot
-      3. 自动 vault 检测（取第一个 exists 且 open 的 vault，或第一个 exists 的）
+    source ∈ {'override', 'env', 'config', 'auto', 'none'}。
 
-    返回 (Path|None, source)。source ∈ {'override', 'env', 'config', 'auto', 'none'}。
+    路径段 `spec-in/<os>-<username>` 由 `_device_segment()` 在以下场景自动追加
+    （让多设备 / 多用户共享同一 vault 时各 device 的 spec 互不串扰）：
+
+    | source   | 来源                                | 追加 device 段？ |
+    |----------|-------------------------------------|------------------|
+    | override | --root 参数                         | 否（用户给什么用什么） |
+    | env      | SPECODE_ROOT 环境变量               | 否               |
+    | config   | config.json.rootOverride            | 否               |
+    | config   | config.json.obsidianRoot / docRoot  | 是               |
+    | auto     | Obsidian auto-detect                | 是               |
+    | none     | 三层全 miss                         | —                |
+
+    详见 references/obsidian.md §1。
     """
-    # 1. override 优先：参数 > 环境变量
+    # 1. override 优先：参数 > 环境变量；用户给什么用什么，不追加 device 段
     if override:
-        p = Path(override).expanduser()
-        return (p, "override")
+        return (Path(override).expanduser(), "override")
 
     env_root = os.environ.get("SPECODE_ROOT")
     if env_root:
         return (Path(env_root).expanduser(), "env")
 
-    # 2. config.json
+    # 2. config.json — rootOverride 优先于 obsidianRoot（显式 set --root 不追加）
     cfg = _load_specode_config()
-    root = cfg.get("obsidianRoot") or cfg.get("docRoot")
-    if root and isinstance(root, str):
-        return (Path(root).expanduser(), "config")
+    override_root = cfg.get("rootOverride")
+    if override_root and isinstance(override_root, str):
+        return (Path(override_root).expanduser(), "config")
+    obs_root = cfg.get("obsidianRoot") or cfg.get("docRoot")
+    if obs_root and isinstance(obs_root, str):
+        return (Path(obs_root).expanduser() / "spec-in" / _device_segment(), "config")
 
-    # 3. auto-detect
+    # 3. auto-detect → vault 根 + 追加 device 段
     vaults = _load_obsidian_vaults()
     for v in vaults:
         if v.get("exists"):
-            return (Path(v["path"]), "auto")
+            return (Path(v["path"]) / "spec-in" / _device_segment(), "auto")
 
     return (None, "none")
 
@@ -250,16 +274,26 @@ def cmd_set(args: argparse.Namespace) -> int:
         sys.stderr.write(f"路径不是目录：{p}\n")
         return 3
     cfg = _load_specode_config()
-    cfg["obsidianRoot"] = str(p)
+    if args.vault:
+        # --vault：写 obsidianRoot；resolve_doc_root 会追加 spec-in/<device>
+        cfg["obsidianRoot"] = str(p)
+        cfg.pop("rootOverride", None)
+    else:
+        # --root：写 rootOverride；resolve_doc_root 不追加（用户给什么用什么）
+        cfg["rootOverride"] = str(p)
+        cfg.pop("obsidianRoot", None)
+    cfg.pop("docRoot", None)  # legacy 字段统一清理
     cfg["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         _save_specode_config(cfg)
     except Exception as e:
         sys.stderr.write(f"写入 {_specode_config_path()} 失败：{e}\n")
         return 1
+    # doc_root 输出用 resolve_doc_root 重算（反映 device 段追加）
+    resolved, _ = resolve_doc_root()
     sys.stdout.write(json.dumps({
         "ok": True,
-        "doc_root": str(p),
+        "doc_root": str(resolved) if resolved else str(p),
         "config_path": str(_specode_config_path()),
     }, ensure_ascii=False, indent=2) + "\n")
     return 0

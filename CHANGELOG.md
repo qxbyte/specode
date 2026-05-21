@@ -4,6 +4,87 @@
 
 _no entries yet_
 
+## 0.10.8 (2026-05-21)
+
+### Fixed — `spec-in/<os>-<username>/specs` device 段从未被代码实现
+
+`references/obsidian.md` §0-§1 + `SKILL.md:158` 明确约定 spec 文档应该落在
+`<vault>/spec-in/<os>-<username>/specs/<slug>`（让同一 vault 在多设备 / 多用户
+共享时各 device 的 spec 互不串扰、避免锁串扰、避免文件冲突），但
+`spec_vault.py:resolve_doc_root` **从未实现 `device_segment`**——`auto` /
+`config-obsidianRoot` 命中后直接返回 vault 根，spec_init 拼出来变成
+`<vault>/specs/<slug>`，少了关键的 `spec-in/<device>/` 整层。
+
+复现：
+
+- `~/.config/specode/config.json` 不存在、`SPECODE_ROOT` 未设
+- `Documents\Notes/.obsidian/` 存在 → auto-detect 命中
+- 跑 `/specode:spec <需求>` → spec_dir 落在 `Documents\Notes\specs\<slug>`
+  而非约定的 `Documents\Notes\spec-in\windows-qiang\specs\<slug>`
+
+修复（`spec_vault.py`）：
+
+1. 加 `_device_segment()` 函数（`platform.system()` + `getpass.getuser()`），
+   返回 `windows-qiang` / `macos-alice` / `linux-bob` 这种规范化串。
+2. `resolve_doc_root` 内部按字段语义分场景追加 `spec-in/<device>` 段：
+
+   | source   | 来源                                | 追加 device 段？ |
+   |----------|-------------------------------------|------------------|
+   | override | `--root` 参数                       | 否（用户给什么用什么） |
+   | env      | `SPECODE_ROOT` 环境变量             | 否               |
+   | config   | `config.json.rootOverride`          | 否               |
+   | config   | `config.json.obsidianRoot`/`docRoot`| **是**           |
+   | auto     | Obsidian auto-detect                | **是**           |
+   | none     | 三层全 miss                         | —                |
+
+3. `cmd_set` 之前 `--vault` 和 `--root` 都写 `obsidianRoot`（导致 `rootOverride`
+   字段在代码里实际从未被使用，文档与运行时不一致）。修正为：
+
+   - `--vault <p>` → 写 `obsidianRoot`（`resolve_doc_root` 追加 device 段）
+   - `--root <p>` → 写 `rootOverride`（不追加）
+   - 互斥：写其中一个字段时清掉另一个 + 清掉 legacy `docRoot`
+   - 输出的 `doc_root` 用 `resolve_doc_root()` 重算，反映 device 段
+
+`spec_init.py` / `spec_session.py list-specs` call site **不动**（仍
+`<doc_root>/specs/<slug>`，但 `doc_root` 现在已含 `spec-in/<device>`，最终
+路径自动变成 `<vault>/spec-in/<device>/specs/<slug>`）。
+
+### Changed — `spec_vault.py` set 字段语义对齐 obsidian.md
+
+`cmd_set` 现在区分 `obsidianRoot` (`--vault`) 与 `rootOverride` (`--root`) 两个
+互斥字段，跟 `references/obsidian.md` §1 描述对齐。已经用旧版本 `set --root`
+写过 config 的用户字段名是 `obsidianRoot`，跑过一次新版 `set --root` 会自动
+迁移成 `rootOverride`（同时清掉旧 `obsidianRoot`）。
+
+### Added — 4 个 doc_root device 段测试
+
+`tests/test_spec_vault.py` 新增覆盖：
+
+- `test_status_with_root_override_no_device_suffix`：`rootOverride` 命中不追加
+- `test_root_override_takes_precedence_over_obsidian_root`：两字段并存时
+  `rootOverride` 胜出
+- `test_set_root_writes_root_override_no_device_suffix`：`set --root` 写
+  `rootOverride` 字段且不追加 device 段
+- `test_set_vault_then_root_replaces_field`：连续 `set --vault` 后 `set --root`
+  字段切换 + 互斥清理
+
+更新现有 3 个测试以反映新 schema（`test_status_with_config_only` /
+`test_set_vault_writes_config_and_status_reflects_config` 现在断言路径含
+`spec-in/<device>` 段）。
+
+pytest 全套 **179/179 PASS**（从 0.10.7 的 176 → 179，3 个净新增）。
+
+### Notes — 升级影响
+
+旧版本生成的 spec 目录（在 `<vault>/specs/<slug>` 下，缺 `spec-in/<device>`）
+**不会被自动迁移**。升级到 0.10.8 后：
+
+- 新 `/specode:spec` 命令会按约定路径创建（`<vault>/spec-in/<device>/specs/<slug>`）
+- `/specode:continue` 调 `list-specs` 时也会看新路径，找不到旧路径下的 spec
+- 如需保留旧 spec 内容，手动 `mv <vault>/specs/<slug>` 到
+  `<vault>/spec-in/<device>/specs/<slug>` 并更新对应 `sessions/<id>.json` 的
+  `active_spec_dir` 与 `<vault>/.active-specode.json` pointer 字段
+
 ## 0.10.7 (2026-05-21)
 
 ### Changed — `/specode:spec -h` help 删去「命令一览」节

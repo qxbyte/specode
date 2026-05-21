@@ -613,19 +613,6 @@ def _get_plugin_version() -> str:
 
 HELP_OUTPUT_TEMPLATE = """specode v$version — Specification-driven workflow
 
-命令一览：
-
-  /specode:spec <需求>                  开始新 spec（持久会话，需要 /specode:end 关闭）
-  /specode:continue [slug]              恢复 / 接管已有 spec（slug 缺省时列出可选）
-  /specode:end                          结束当前 spec 会话（释放锁、停止 hook 提醒）
-  /specode:status                       打印当前 session / spec / phase / lock 状态摘要
-  /specode:task-swarm                   v0.7+：在 tasks 阶段进入多 agent 并发编排
-  /specode:spec --vault-status          打印 doc_root 解析结果（env / config / auto）
-  /specode:spec --detect-vault          扫描三平台 Obsidian vault 配置
-  /specode:spec --set-vault <path>      持久化 vault 根目录到 ~/.config/specode/config.json
-  /specode:spec --set-root  <path>      同上（不强调 vault 概念）
-  /specode:spec -h | --help             显示本帮助
-
 会话与锁：
   每次会话拥有唯一 session_id，hook 会在 additionalContext 中持续注入。
   CLI 调用必须传 --session <id>。当前 spec 锁记录在 <spec-dir>/.config.json。

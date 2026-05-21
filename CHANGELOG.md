@@ -4,6 +4,18 @@
 
 _no entries yet_
 
+## 0.10.7 (2026-05-21)
+
+### Changed — `/specode:spec -h` help 删去「命令一览」节
+
+命令清单在 `SKILL.md` / `commands/*.md` / README 已有详细说明且会随版本演进，
+help 文本内重复列一份反而容易过时（0.10.4 / 0.10.5 加 doc_root 确认步骤、
+task-swarm 前置校验时都需要同步改 help）。help 改为只展示版本号 + 会话与锁 /
+工作流概要 / 日志开关，命令细节让用户查 SKILL.md。
+
+无业务行为变化。`spec_session.py:HELP_OUTPUT_TEMPLATE` 删除 13 行（line 614-628）。
+hook 测试 17/17 通过。
+
 ## 0.10.6 (2026-05-21)
 
 ### Fixed — `references/selectors.md` 与 `SELECTOR_PROMPTS` 漂移

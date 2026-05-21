@@ -4,6 +4,53 @@
 
 _no entries yet_
 
+## 0.10.4 (2026-05-21)
+
+### Fixed — 新建 spec 时 silent fallback 到 Obsidian vault（首次使用确认缺失）
+
+承接 0.10.3 修好 `/specode:spec -h` fast-path 旁路后，又一个 `commands/spec.md`
+引导主代理调 CLI 而 bypass 业务规则的 case：用户在 git repo 下输入
+`/specode:spec 在 git 目录下创建一个项目，用来做一个登录页面`，主代理直接
+`sh ... spec_init.py --name login-page ...`，spec 文档**silent 落到**
+`C:\Users\qiang\Documents\Notes\specs\login-page`（Obsidian vault 自检测命中），
+没有任何确认。
+
+证据：
+- `~/.config/specode/config.json` 不存在，`SPECODE_ROOT` 未设
+- `Documents\Notes\.obsidian/` 存在 → `spec_init.py` 走第 3 层 silent fallback
+- `spec_vault.py status` 返回 `{"source": "auto", "doc_root": "Documents\\Notes"}`
+- 主代理 chain-of-thought 截图：直接解析 slug + 调 CLI，没问 doc_root
+
+根因：与 0.10.3 同源——`commands/spec.md` 旧版第二步「## 立即调用」直接给
+`sh spec_init.py ...` 命令，主代理照执行，**SKILL.md § Document Root Resolution
+只讲了"三层全 miss → exit 3"，没规则约束"第 3 层命中（非全 miss）也应先确认"**。
+spec_init.py 实现是 silent 用了。
+
+修复（双管齐下）：
+
+1. `SKILL.md § Document Root Resolution` 加新子章节
+   **「首次使用 / auto-detect 命中时的确认（强制）」**：明确 `source = auto`
+   或 `none` 时**禁止**直接调 `spec_init.py`，必须先 `AskUserQuestion` 三选
+   （接受检测到的 vault + 持久化 / 改用其他绝对路径 + 持久化 / 中止），
+   用户选定后 `spec_vault.py set --vault <p>` 持久化，下次自动用、不再问。
+
+2. `commands/spec.md` 重构为 **4 步路由**（依次匹配 `$ARGUMENTS` 形态）：
+   - 第一步：fast-path（`-h` / `--help` / `--vault-status` / `--detect-vault` /
+     `--sync-status`，hook 已注入模板）→ verbatim print
+   - 第二步：set 命令（`--set-vault <p>` / `--set-root <p>`，hook **不**拦截）
+     → 调 `spec_vault.py set --vault <p>`，end turn
+   - 第三步：新建 spec 前必做 —— 调 `spec_vault.py status`，按 SKILL.md
+     新规则做 doc_root 确认
+   - 第四步：`spec_init.py` 创建 spec
+
+   修正 0.10.3 commands/spec.md 第一步把 `--set-vault` / `--set-root` 误列入
+   fast-path 旗标的 bug（hook 实际不拦截这俩，主代理按"等 hook"会卡住）。
+   set 命令现在有独立第二步，调 `spec_vault.py set` 后 end turn。
+
+设计原则：commands 薄（路由 + 边界引导）、SKILL 厚（业务规则）。commands 不
+重复 SKILL 里的细则，只在边界 case 指向 SKILL 章节，让业务流程在 SKILL.md
+单一来源维护。
+
 ## 0.10.3 (2026-05-21)
 
 ### Fixed — `/specode:spec -h` fast-path 被 commands/spec.md 引导旁路

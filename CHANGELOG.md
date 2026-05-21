@@ -4,6 +4,48 @@
 
 _no entries yet_
 
+## 0.10.5 (2026-05-21)
+
+### Fixed — `/specode:continue` 跳过 selector 直接 acquire / `/specode:task-swarm` 缺前置校验
+
+承接 0.10.3 / 0.10.4 在 `/specode:spec` 上修好的"commands 直接给 CLI 命令 → 主代理 bypass SKILL 业务规则"反模式，本次 audit 发现 `continue.md` 和 `task-swarm.md` 同源：
+
+**`continue.md`（类型 1，同源 / 高严重度）**
+旧版「## 立即调用」行 22-26 直接给 `acquire --spec <dir> --session <id>` 完整模板，
+主代理见命令就跑，**跳过** `references/workflow.md` §9 要求的 5 步流程
+（list-specs 报告 → `AskUserQuestion` 让用户选 ≤4 项 → LockHeld → `takeover-options`
+selector → acquire → load）。无 slug 时主代理还会 invent `<dir>`。
+
+修复：重写为两步路由
+- 第一步（无 slug）：先确认 doc_root（接 SKILL.md §「首次使用 / auto-detect 命中时的确认」）→ `list-specs` → 空列表引导 `/specode:spec` / 非空 chat 1-2 行摘要 + `AskUserQuestion` 单列单选（≤4，按 `last_heartbeat_at` 取最近）→ 用户选定后转第二步
+- 第二步（有 slug）：解析 `spec_dir` → `acquire`（exit 4 `LockHeld` → **禁止**直接 `--force`，先 `takeover-options` selector 让用户选）→ `load` → `continue` → 报告 + 状态行 footer
+
+**`task-swarm.md`（类型 2，弱同源 / 中严重度）**
+旧版行 8-12「## 立即调用」直接给 `task_swarm.py init --tasks <spec_dir>/tasks.md`，
+`<spec_dir>` 占位符**鼓励主代理 invent 路径**而不去读 `sessions/<id>.json` 拿
+`active_spec_dir`；缺 phase / `pending_selector` 前置校验，用户裸输
+`/specode:task-swarm` 时主代理无前置检查直接 init。
+
+修复：拆 3 步
+- 第一步（前置校验，必做）：先 `read-session` 拿状态，强制满足 `mode=active` /
+  `active_spec_dir` 非空 / `phase=tasks` / `pending_selector=tasks-execution` 且
+  已选 task-swarm 路径
+- 第二步（init）：用 step 1 的 `active_spec_dir + /tasks.md`，禁止 invent
+- 第三步（7 步循环）：保留 sketch，详细规格全部指向 `references/task-swarm.md`
+
+同时 SKILL.md §Task-Swarm 补「`/specode:task-swarm` 前置校验（强制）」小节，
+是 commands/task-swarm.md 第一步引用的业务规则单一来源。
+
+### Changed — commands/task-swarm.md 大幅精简（commands 薄 / references 厚）
+
+原 task-swarm.md 132 行重复了 `references/task-swarm.md` 的 5 段内容（Phase 状态机
+ASCII 图 / 7 步循环展开 / 文件冲突 / 详细异常处理 / 命令调用样例）。精简到 ~70 行，
+只保留 commands 路由层职责（前置校验 / init / 7 步 sketch + heartbeat / 异常出口
+摘要），详细规格全部 link 到 `references/task-swarm.md` §1-§9 单一来源。
+
+设计原则延续 0.10.4：commands 薄（路由 + 边界引导）、SKILL / references 厚（业务规则
++ 协议详解）。commands 不重复细节，边界 case 指章节，业务流程改动只动 SKILL / references。
+
 ## 0.10.4 (2026-05-21)
 
 ### Fixed — 新建 spec 时 silent fallback 到 Obsidian vault（首次使用确认缺失）

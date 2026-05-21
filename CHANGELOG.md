@@ -2,7 +2,49 @@
 
 ## Unreleased
 
-_no entries yet_
+### Fixed — Windows 上 hook 注入彻底失效（两个连续根因）
+
+1. **Launcher 命中 Microsoft Store alias stub**（commit `fb2ef14`）——
+   `plugins/specode/scripts/run.sh` / `run.cmd` 探测 `python3` 时会命中
+   `%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe`（0 字节 App Execution
+   Alias stub，跑起来只打印 "Python was not found" 并 exit 49），
+   `spec_session.py` 根本没被执行 → CodeBuddy 启动报
+   `Hook SessionStart [warning]`，后续所有 hook 全部空跑。
+   修复：`run.sh` 新增 alias stub 路径检测跳过；`run.cmd` 优先级改成
+   `py → python3 → python`（`py.exe` 不受 alias 影响）。
+
+2. **emit 阶段 UnicodeEncodeError 被 `_safe_hook` 吞并**（commit `6b0a06f`）——
+   Windows pipe stdout 默认 fallback 到 locale 编码（中文 Windows 为
+   `cp936/gbk`），无法编码 emoji `📝/🪧/⛔`（来自
+   `DOC_PRIORITY_REMINDER_ACTIVE` / `STATUS_FOOTER_TEMPLATE` /
+   `SPEC_MODE_CONTINUE_REMINDER` 模板）。`_emit_hook_additional_context`
+   写入时抛 `UnicodeEncodeError`，被 `_safe_hook` 装饰器的
+   `except BaseException` 吞掉 → hook exit 0、stdout 空 → CodeBuddy 拿不到
+   `additionalContext` → 主代理收不到 fast-path / session_id / selector /
+   footer / 文档优先提醒。
+   修复：`spec_session.py` / `spec_init.py` 顶部
+   `sys.stdout / stderr.reconfigure(encoding="utf-8", errors="replace")`，
+   绕过 text-mode encoding。
+
+### Fixed — 测试套件跨平台支持（Windows pytest 165/165）
+
+测试代码硬编码 macOS 路径、`.read_text()` 默认 locale 解码、`subprocess.run`
+不指定 encoding、`fake_home` 未隔离 `APPDATA` 等多个跨平台问题：
+
+- `tests/conftest.py` + 6 个 `tests/test_task_swarm_*.py`：`SCRIPTS_DIR`
+  从硬编码 `/Users/xueqiang/Git/specode/...` 改成
+  `Path(__file__).resolve().parents[1] / "scripts"`。
+- `conftest.run_script` + `test_task_swarm_cli.py` + `test_task_swarm_hook.py`：
+  `subprocess.run` 加 `encoding="utf-8"`，env 设 `PYTHONUTF8=1` /
+  `PYTHONIOENCODING=utf-8`，让子进程 pathlib 与 stdio 同时 utf-8。
+- `conftest.fake_home`：monkeypatch `APPDATA` / `LOCALAPPDATA` 到
+  `tmp_path`，防止用户真实 Obsidian 安装漏到 `spec_vault.detect` 测试。
+- 6 个 test 文件的 `.read_text()` 加 `encoding="utf-8"`：解决 utf-8 写入的
+  `.config.json` / `sessions/*.json` 被默认 cp936 解码失败。
+- `test_spec_session_hooks::test_on_user_prompt_help_fastpath`：
+  `"specode v0.6"` 断言改成 `"specode v"`，兼容 0.10.1+ 动态版本号。
+
+无业务行为变化。Windows 上 `pytest` 从 109 fail → 165/165 全过。
 
 ## 0.10.1 (2026-05-20)
 

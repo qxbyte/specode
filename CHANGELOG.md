@@ -4,6 +4,39 @@
 
 _no entries yet_
 
+## 0.10.6 (2026-05-21)
+
+### Fixed — `references/selectors.md` 与 `SELECTOR_PROMPTS` 漂移
+
+Audit 发现 selector 模板有 3 处真 drift：
+- `workflow-choice`：selectors.md 缺 "**调用 `AskUserQuestion` 工具**" 后的
+  "**，参数完全按下列结构（直接传入，不要翻译/重写选项）**" 子句；约束段
+  "立即 end turn" 缺 "等待用户选择"、"工具" 缺 "宿主"、"ESC" 缺 "取消"。
+- `doc-confirm-bugfix` / `doc-confirm-design`：selectors.md §A3 把这两个变体
+  压缩成表格列差异（line 178-181），没给完整 `\`\`\`text` 块，结果文档跟运行时
+  无法逐字对比；spec_session.py 实际模板的简报句格式也跟表格描述对不齐。
+- §A3 H3 标题里残留 `doc-confirm-tasks`（0.9.3 起已废弃合并进 `tasks-execution`）。
+
+修法：selectors.md 跟运行时（`spec_session.py SELECTOR_PROMPTS`）对齐——
+- 补 `workflow-choice` 缺失措辞
+- §A3 重构为「H3 分组介绍 + H4 三个 key 各带完整 `\`\`\`text` 块」结构
+  （`doc-confirm-requirements` / `doc-confirm-bugfix` / `doc-confirm-design`）
+- H3 标题去掉 `tasks` 残留
+
+`spec_session.py` 不动（运行时是注入的实际真相，selectors.md 跟它走）。
+
+### Added — `test_selectors_drift.py` 防回归
+
+`plugins/specode/tests/test_selectors_drift.py` 在 pytest 阶段自动比对两边：
+- `test_keys_match`：runtime selector key 集合必须与 selectors.md `### / ####`
+  反引号标题命中的 key 集合一致；orphan（一边有一边没）直接 fail
+- `test_byte_identical[<key>]`：parametrize 10 个 selector，每个 key 的
+  `\`\`\`text` 块内容必须与 `SELECTOR_PROMPTS[key]` `strip()` 后逐字相等
+
+跑了一遍：11/11 passed，全套 pytest 176/176 passed（165 + 11 新增）。
+
+未来改 selector 措辞 / 增删 selector，pytest 自动 fail 提醒同步两边。
+
 ## 0.10.5 (2026-05-21)
 
 ### Fixed — `/specode:continue` 跳过 selector 直接 acquire / `/specode:task-swarm` 缺前置校验

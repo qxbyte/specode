@@ -85,7 +85,7 @@ questions:
 
 **前置动作（chat 简报，≤2 行）**：写一句"接到需求《<source_text_head>...》，请选择工作流。"
 
-**调用 `AskUserQuestion` 工具**：
+**调用 `AskUserQuestion` 工具**，参数完全按下列结构（直接传入，不要翻译/重写选项）：
 
 questions:
   - question: "工作流选择 —— 决定走哪条 spec 流程？"
@@ -100,9 +100,9 @@ questions:
         description: "缺陷修复 / 回归测试：用 bugfix.md（Current/Expected/Unchanged）替代 requirements.md。"
 
 **约束**：
-- 调用工具后立即 end turn。
+- 调用工具后立即 end turn 等待用户选择。
 - 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
-- 工具自动提供 "Other" + ESC，**禁止**自己加 "Type something" / "Chat about this" 保留位。
+- 宿主工具自动提供 "Other" + ESC 取消，**禁止**自己加 "Type something" / "Chat about this" 保留位。
 ```
 
 ---
@@ -138,9 +138,13 @@ questions:
 
 ---
 
-### A3 `doc-confirm-{requirements,bugfix,design,tasks}` — 文档确认（类型 A，4 个变体共享结构）
+### A3 `doc-confirm-{requirements,bugfix,design}` — 文档确认（类型 A，3 个变体）
 
-`<filename>` / `<phase>` / 简报要点根据变体替换，骨架完全一致。下面以 `doc-confirm-requirements` 为例：
+3 个变体骨架一致，只 `<filename>` / question / header / 简报要点重心 / 文档路径不同；运行时按 `pending_selector` 命中对应 key 选模板。0.9.3 起 `doc-confirm-tasks` 已废弃，合并进 `tasks-execution`（§A4）。
+
+下面给出 3 份完整模板，与 `spec_session.py SELECTOR_PROMPTS` **逐字一致**。
+
+#### `doc-confirm-requirements`
 
 ```text
 ## 选择器节点：requirements.md 文档确认
@@ -173,12 +177,71 @@ questions:
 - 简报必须在工具调用**之前**输出。
 ```
 
-其余 2 个变体差异（0.9.3 起 `doc-confirm-tasks` 被废弃，合并进 `tasks-execution`）：
+#### `doc-confirm-bugfix`
 
-| key | question | header | 简报要点重心 |
-|---|---|---|---|
-| `doc-confirm-bugfix` | "bugfix.md 已生成。下一步？" | 缺陷确认 | Current/Expected/Unchanged 段落增量 + 复现步骤 + 影响范围 |
-| `doc-confirm-design` | "design.md 已生成。下一步？" | 设计确认 | 架构图变化 + 接口签名 + 数据模型字段 + 风险 / 偏离 |
+```text
+## 选择器节点：bugfix.md 文档确认
+
+**目的**：bugfix.md 已生成 / 更新；让用户确认是否进入 design phase，
+或者先看全文 / 继续修改。
+
+**上下文**：active spec=<slug>，phase=<phase>。
+刚生成的文档：<spec_dir>/bugfix.md
+
+**前置动作（chat 简报，≤8 行）**：列出 3-8 条关键变更要点
+（Current / Expected / Unchanged 段落增量 + 复现步骤 + 影响范围）。
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "bugfix.md 已生成。下一步？"
+    header: "缺陷确认"
+    multiSelect: false
+    options:
+      - label: "确认（推荐）"
+        description: "文档内容符合预期，进入下一 phase。"
+      - label: "查看全文"
+        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+      - label: "继续沟通"
+        description: "文档需要修改，告诉你具体怎么改。"
+
+**约束**：
+- 调用工具后立即 end turn。
+- 简报必须在工具调用**之前**输出。
+```
+
+#### `doc-confirm-design`
+
+```text
+## 选择器节点：design.md 文档确认
+
+**目的**：design.md 已生成 / 更新；让用户确认是否进入 tasks phase，
+或者先看全文 / 继续修改。
+
+**上下文**：active spec=<slug>，phase=<phase>。
+刚生成的文档：<spec_dir>/design.md
+
+**前置动作（chat 简报，≤8 行）**：列出 3-8 条关键变更要点
+（架构图变化 + 接口签名 + 数据模型字段 + 风险 / 偏离）。
+
+**调用 `AskUserQuestion` 工具**：
+
+questions:
+  - question: "design.md 已生成。下一步？"
+    header: "设计确认"
+    multiSelect: false
+    options:
+      - label: "确认（推荐）"
+        description: "文档内容符合预期，进入下一 phase。"
+      - label: "查看全文"
+        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+      - label: "继续沟通"
+        description: "文档需要修改，告诉你具体怎么改。"
+
+**约束**：
+- 调用工具后立即 end turn。
+- 简报必须在工具调用**之前**输出。
+```
 
 ---
 

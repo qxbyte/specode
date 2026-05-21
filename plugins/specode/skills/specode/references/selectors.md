@@ -103,6 +103,17 @@ questions:
 - 调用工具后立即 end turn 等待用户选择。
 - 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
 - 宿主工具自动提供 "Other" + ESC 取消，**禁止**自己加 "Type something" / "Chat about this" 保留位。
+
+**用户选定后流程（同一 turn 内继续，不要 end turn 让用户输命令）**
+
+拿到 AskUserQuestion 选项后**本 turn 内**按选项继续：
+
+- 选 "Requirements first" → 调 `phase-transition --from intake --to requirements` → fork `spec-writer` 生成 `requirements.md` → 报路径 + 3-8 条变更要点 → 立即调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector → end turn 等用户对文档做决策
+- 选 "Technical Design first" → 同上但 `--to design` + 生成 `design.md` + 呈现 `doc-confirm-design`
+- 选 "Bugfix" → 同上但 `--to bugfix` + 生成 `bugfix.md` + 呈现 `doc-confirm-bugfix`
+- "Other"（用户文字输入）→ 按用户文字调整，必要时重新呈现 selector
+
+详细 phase 链见 `references/workflow.md` §2-§5。
 ```
 
 ---
@@ -134,6 +145,11 @@ questions:
 **约束**：
 - 调用工具后立即 end turn。
 - 不要复述选项 / 不要让用户回复编号。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "进入下一阶段" → 按 spec workflow（看 `<spec-dir>/.config.json.workflow`）调 `phase-transition --from intake --to <requirements|design|bugfix>` → fork `spec-writer` 生成对应文档 → 报路径+摘要 → 立即呈现 `doc-confirm-<phase>` selector
+- 选 "继续澄清" → 重新调 `AskUserQuestion` 呈现 `clarification-wizard` 收新一轮澄清点
 ```
 
 ---
@@ -175,6 +191,12 @@ questions:
 **约束**：
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "确认" → 调 `phase-transition --from requirements --to design` → fork `spec-writer` 生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
+- 选 "查看全文" → 在 chat 完整 echo `requirements.md`（无任何额外解释）→ 重新调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector
+- 选 "继续沟通" → end turn 等用户文字反馈 → 下一 turn 按反馈 Edit `requirements.md` → 报变更要点 → 重新呈现 `doc-confirm-requirements`
 ```
 
 #### `doc-confirm-bugfix`
@@ -208,6 +230,12 @@ questions:
 **约束**：
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "确认" → 调 `phase-transition --from bugfix --to design` → fork `spec-writer` 生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
+- 选 "查看全文" → 在 chat 完整 echo `bugfix.md` → 重新呈现 `doc-confirm-bugfix`
+- 选 "继续沟通" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `bugfix.md` → 重新呈现 `doc-confirm-bugfix`
 ```
 
 #### `doc-confirm-design`
@@ -241,6 +269,12 @@ questions:
 **约束**：
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "确认" → 调 `phase-transition --from design --to tasks` → fork `spec-writer` 生成 `tasks.md`（task-swarm 兼容格式：`## 阶段 N:` + `- [ ] N.M ... @writes:... _需求：x.y_`）→ 报路径 + 任务计数 + 主要阶段摘要 → 立即呈现 `tasks-execution` selector
+- 选 "查看全文" → 在 chat 完整 echo `design.md` → 重新呈现 `doc-confirm-design`
+- 选 "继续沟通" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `design.md` → 重新呈现 `doc-confirm-design`
 ```
 
 ---
@@ -280,6 +314,13 @@ questions:
 - 4 个选项已占满工具上限；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "用 task-swarm 多 agent 并发" → 走 `/specode:task-swarm` 第二步 `init` + 第三步 7 步循环（详见 `commands/task-swarm.md` + `references/task-swarm.md`）
+- 选 "顺序执行" → 调 `phase-transition --from tasks --to implementation` → 单 agent 按 `tasks.md` checkbox 顺序逐个推进 required + optional（如 "Other" 说"只跑 required" 跳过 optional）
+- 选 "需要调整 tasks.md" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `tasks.md` → 重新呈现 `tasks-execution` selector
+- 选 "暂不 coding" → 在 chat 简报 "tasks.md 已落地，留在 tasks phase；随时 `/specode:end` 退出或后续 `/specode:continue <slug>` 续接" → end turn（这是合理的"让用户决定何时继续"出口）
 ```
 
 ---
@@ -313,6 +354,12 @@ questions:
 **约束**：
 - **不给"（推荐）"标记**——让用户根据对方是否仍活跃自己判断。
 - 调用工具后立即 end turn。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "强制接管" → 调 `acquire --force --spec <dir> --session <id>` → `load` → `continue` → 报告 "已强制接管：<slug>" + 状态行 footer
+- 选 "只读查看" → **跳** `acquire`（不持锁）→ `load --spec <dir>` 拿数据 → 写 `sessions/<id>.json.mode=readonly` → 报告 "已只读加载：<slug>（持锁者：<other_id>）" + footer（含 `[只读]` 标记）
+- 选 "取消" → end turn，不调任何 CLI
 ```
 
 ---
@@ -347,6 +394,11 @@ questions:
 **约束**：
 - n_done == n_total 时推荐选 1；否则**移除"（推荐）"标记**。
 - 调用工具后立即 end turn。
+
+**用户选定后流程（同一 turn 内继续）**
+
+- 选 "验收通过，进入 iteration" → 调 `phase-transition --from acceptance --to iteration` → 立即调 `AskUserQuestion` 呈现 `iteration-scope` selector
+- 选 "继续修改" → end turn 等用户文字反馈 → 下一 turn 根据反馈判断回到哪个 phase：改需求 → `phase-transition --to requirements`；改设计 → `--to design`；改任务 → `--to tasks`；改实现 → 留 implementation phase Edit 代码 + 更新 `tasks.md`
 ```
 
 ---
@@ -395,6 +447,14 @@ questions:
 - inputs 不足以构成阻塞决策点 → **不调本工具**，直接进 `clarification-done`。
 - 工具自动提供 "Other"，**不要**手工加 "Type something" / "Chat about this" 保留位。
 - 调用工具后立即 end turn。
+
+**用户选定后流程（同一 turn 内继续）**
+
+收齐子问题答案后**本 turn 内**：
+
+- 在 chat 简报 "已记录用户 N 个澄清回答"
+- 立即调 `AskUserQuestion` 呈现 `clarification-done` selector 判断是否进入 requirements/bugfix 生成
+- end turn 等 `clarification-done` 决策
 ```
 
 具体示例（登录页 spec 的 3 个澄清点）：
@@ -462,6 +522,16 @@ questions:
 - multiSelect=true（**唯一**使用类型 C 复选框的场景）。
 - 允许用户全不选（视为本轮 iteration 取消）；ESC 等价。
 - 调用工具后立即 end turn。
+
+**用户选定后流程（同一 turn 内继续）**
+
+iteration-scope 是多选（multiSelect=true），用户可勾选 1-4 项或全不选。按 phase 序列从前往后依次处理勾选项（同一 turn 内串行 phase-transition + 文档生成 + 对应 `doc-confirm-*` selector）：
+
+- 勾 "改 requirements" → `phase-transition --from iteration --to requirements` → fork `spec-writer` 修订 `requirements.md` → 呈现 `doc-confirm-requirements`（修订版）
+- 勾 "改 design" → `--to design` + 修 `design.md` → 呈现 `doc-confirm-design`
+- 勾 "改 tasks" → `--to tasks` + 修 `tasks.md` → 呈现 `tasks-execution`
+- 勾 "重跑测试" → 留 iteration phase，执行 `tasks.md` 末尾验证命令 / `## 测试要点` 节中的检查项 + 报告结果
+- 全不选 / ESC → 视为本轮 iteration 取消，留 acceptance phase，告知用户随时 `/specode:end` 或再次进入 acceptance-gate
 ```
 
 ---

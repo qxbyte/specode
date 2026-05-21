@@ -39,7 +39,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 ```
 
 - `--tasks` 是 **tasks.md 的绝对路径**（不是 spec 目录），用 step 1 的 `active_spec_dir + /tasks.md`
-- init 报 `tasks.md 中未解析出任何 ## 阶段 N: 段` → 格式不对，**回到 `tasks-execution` 选「需要调整 tasks.md」**让 spec-writer 重写（不要主代理直接 Write 覆盖，违反 SKILL.md Iron Rule 7）
+- init 报 `tasks.md 中未解析出任何 ## 阶段 N: 段` → 格式不对，**回到 `tasks-execution` 选「需要调整 tasks.md」**让主代理按 SKILL.md §「Spec 文档生成」重写
 - 拿到 `{run_id, run_dir, groups}` 后转第三步
 
 ## 第三步：7 步循环（plan → fork → advance → writeback → resolve）

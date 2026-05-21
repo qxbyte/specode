@@ -25,7 +25,7 @@ Review Status: unreviewed
 
 ## 测试要点
 
-供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
+供测试人员快速了解需要验证的场景。主代理 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
 
 - _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
 

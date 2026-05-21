@@ -108,7 +108,7 @@ questions:
 
 拿到 AskUserQuestion 选项后**本 turn 内**按选项继续：
 
-- 选 "Requirements first" → 调 `phase-transition --from intake --to requirements` → fork `spec-writer` 生成 `requirements.md` → 报路径 + 3-8 条变更要点 → 立即调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector → end turn 等用户对文档做决策
+- 选 "Requirements first" → 调 `phase-transition --from intake --to requirements` → 按 SKILL.md §「Spec 文档生成」生成 `requirements.md` → 报路径 + 3-8 条变更要点 → 立即调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector → end turn 等用户对文档做决策
 - 选 "Technical Design first" → 同上但 `--to design` + 生成 `design.md` + 呈现 `doc-confirm-design`
 - 选 "Bugfix" → 同上但 `--to bugfix` + 生成 `bugfix.md` + 呈现 `doc-confirm-bugfix`
 - "Other"（用户文字输入）→ 按用户文字调整，必要时重新呈现 selector
@@ -148,7 +148,7 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "进入下一阶段" → 按 spec workflow（看 `<spec-dir>/.config.json.workflow`）调 `phase-transition --from intake --to <requirements|design|bugfix>` → fork `spec-writer` 生成对应文档 → 报路径+摘要 → 立即呈现 `doc-confirm-<phase>` selector
+- 选 "进入下一阶段" → 按 spec workflow（看 `<spec-dir>/.config.json.workflow`）调 `phase-transition --from intake --to <requirements|design|bugfix>` → 按 SKILL.md §「Spec 文档生成」生成对应文档 → 报路径+摘要 → 立即呈现 `doc-confirm-<phase>` selector
 - 选 "继续澄清" → 重新调 `AskUserQuestion` 呈现 `clarification-wizard` 收新一轮澄清点
 ```
 
@@ -194,7 +194,7 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "确认" → 调 `phase-transition --from requirements --to design` → fork `spec-writer` 生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
+- 选 "确认" → 调 `phase-transition --from requirements --to design` → 按 SKILL.md §「Spec 文档生成」生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
 - 选 "查看全文" → 在 chat 完整 echo `requirements.md`（无任何额外解释）→ 重新调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector
 - 选 "继续沟通" → end turn 等用户文字反馈 → 下一 turn 按反馈 Edit `requirements.md` → 报变更要点 → 重新呈现 `doc-confirm-requirements`
 ```
@@ -233,7 +233,7 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "确认" → 调 `phase-transition --from bugfix --to design` → fork `spec-writer` 生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
+- 选 "确认" → 调 `phase-transition --from bugfix --to design` → 按 SKILL.md §「Spec 文档生成」生成 `design.md` → 报路径+摘要 → 立即呈现 `doc-confirm-design` selector
 - 选 "查看全文" → 在 chat 完整 echo `bugfix.md` → 重新呈现 `doc-confirm-bugfix`
 - 选 "继续沟通" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `bugfix.md` → 重新呈现 `doc-confirm-bugfix`
 ```
@@ -272,7 +272,7 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "确认" → 调 `phase-transition --from design --to tasks` → fork `spec-writer` 生成 `tasks.md`（task-swarm 兼容格式：`## 阶段 N:` + `- [ ] N.M ... @writes:... _需求：x.y_`）→ 报路径 + 任务计数 + 主要阶段摘要 → 立即呈现 `tasks-execution` selector
+- 选 "确认" → 调 `phase-transition --from design --to tasks` → 按 SKILL.md §「Spec 文档生成」生成 `tasks.md`（task-swarm 兼容格式：`## 阶段 N:` + `- [ ] N.M ... @writes:... _需求：x.y_`）→ 报路径 + 任务计数 + 主要阶段摘要 → 立即呈现 `tasks-execution` selector
 - 选 "查看全文" → 在 chat 完整 echo `design.md` → 重新呈现 `doc-confirm-design`
 - 选 "继续沟通" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `design.md` → 重新呈现 `doc-confirm-design`
 ```
@@ -527,7 +527,7 @@ questions:
 
 iteration-scope 是多选（multiSelect=true），用户可勾选 1-4 项或全不选。按 phase 序列从前往后依次处理勾选项（同一 turn 内串行 phase-transition + 文档生成 + 对应 `doc-confirm-*` selector）：
 
-- 勾 "改 requirements" → `phase-transition --from iteration --to requirements` → fork `spec-writer` 修订 `requirements.md` → 呈现 `doc-confirm-requirements`（修订版）
+- 勾 "改 requirements" → `phase-transition --from iteration --to requirements` → 按 SKILL.md §「Spec 文档生成」修订 `requirements.md` → 呈现 `doc-confirm-requirements`（修订版）
 - 勾 "改 design" → `--to design` + 修 `design.md` → 呈现 `doc-confirm-design`
 - 勾 "改 tasks" → `--to tasks` + 修 `tasks.md` → 呈现 `tasks-execution`
 - 勾 "重跑测试" → 留 iteration phase，执行 `tasks.md` 末尾验证命令 / `## 测试要点` 节中的检查项 + 报告结果

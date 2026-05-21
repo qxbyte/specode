@@ -130,7 +130,7 @@ Status: Tasks Draft
 
 ## 测试要点
 
-供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 SHALL 顺手补几行作为参考；非验收硬条件。
+供测试人员快速了解需要验证的场景。主代理在 tasks phase 按 SHALL 顺手补几行作为参考；非验收硬条件。
 
 - _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
 

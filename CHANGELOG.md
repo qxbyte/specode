@@ -4,6 +4,59 @@
 
 _no entries yet_
 
+## 0.10.11 (2026-05-22)
+
+### Removed — `spec-writer` subagent；4 份核心 spec 文档改由主代理直接生成
+
+复现：用户跑 `/specode:spec 在 git 目录做登录页面` → 走到 requirements phase →
+主代理 fork `spec-writer` agent 写 requirements.md → spec-writer 各种 Glob/Read
+找不到 `assets/templates/` 模板（实际找的是不存在的 `.template.md` 后缀）→
+hallucinate 18 条通用登录页面 SHALL + 408 行 design.md（JWT/HTTPS/CSRF/2FA），
+跟用户原始需求"在 git 目录做登录页面"完全脱节。
+
+根因：subagent 设计反模式 —— 每个 subagent 是独立 LLM 调用 + 新 context window，
+**拿不到主代理上下文**（不读 SKILL.md / 不知道用户原始 `source_text` / 不知道
+流程状态）。即使模板路径正确，subagent 仍按通用模板填空，内容不贴合用户具体
+需求。主代理本身就有完整 SKILL + 流程上下文 + source_text，直接写质量更高。
+
+修复（用户授权我自决方案）：
+
+1. **删除** `plugins/specode/agents/spec-writer.md`
+2. **`SKILL.md` 加 §「Spec 文档生成」（单一规则来源）**：主代理 Read
+   `${CLAUDE_PLUGIN_ROOT}/assets/templates/<phase>.md` 作骨架 + 按
+   `<spec-dir>/.config.json.source_text` 填空 + Write 到 `<spec-dir>/<phase>.md`
+3. **`SKILL.md` Iron Rule 7 改写**：移除 "必须 fork spec-writer subagent" 约束
+4. **31 处 `fork spec-writer` 引用全部替换** 成 "主代理按 SKILL.md §「Spec 文档生成」走"：
+   - `spec_session.py SELECTOR_PROMPTS` 6 selector 的「用户选定后流程」段
+   - `references/selectors.md` 同步 6 处（byte-identical，drift test cover）
+   - `references/workflow.md` 4 处 phase 流程
+   - `references/templates.md` 顶部说明 + 6 处分散提及
+   - `commands/task-swarm.md` 1 处 cross-ref
+   - `scripts/spec_init.py` 1 处 docstring
+   - `assets/templates/tasks.md` 1 处 ## 测试要点 说明
+5. **`assets/templates/` 4 份模板（requirements.md / bugfix.md / design.md / tasks.md）保留**
+   作为主代理 Read 的骨架来源
+
+### Changed — `commands/spec.md` + `commands/continue.md` 进一步变薄（commands 薄 / SKILL 厚）
+
+按用户指导原则 "命令中不要设置过多流程，只列关键必要内容，让模型与 skill 对接流程"：
+
+- **`spec.md` 第四步「成功后必做」**：从 3 件事详细描述压缩成「按 SKILL.md
+  §Status Footer「新 spec 创建/接管的当 turn」走」一句话引用 + 保留关键
+  禁止项（"严禁 hallucinate '请下一轮输入 /specode:continue'"）
+- **`continue.md`** 大幅瘦身：删除详细 5 步描述，改成「按 `references/workflow.md`
+  §9.1 / §9.2 走 N 步」+ 关键禁止项（"禁止跳过 selector 直接 acquire"、"禁止
+  Grep 项目目录"、"LockHeld 禁止直接 --force"）
+
+commands 现在只列入口路由 + 关键不可漏的约束（hallucinate 防御）；业务流程
+全部 link 到 SKILL.md / `references/workflow.md`。模型从入口跳到 SKILL 拿详
+细规则，避免 commands 跟 SKILL 双份维护漂移。
+
+### 测试
+
+- drift test 11/11 PASS（selectors.md 与 SELECTOR_PROMPTS byte-identical）
+- 全套 pytest **179/179 PASS**
+
 ## 0.10.10 (2026-05-22)
 
 ### Fixed — selector 选定后流程缺失 + 主代理 hallucinate "退出 spec 模式" / invent 简化 selector

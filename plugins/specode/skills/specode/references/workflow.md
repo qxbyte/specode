@@ -110,7 +110,7 @@ CLI 行为：
 
 ### 3.1 phase=requirements
 
-1. fork `spec-writer` agent 生成 `requirements.md`。章节模板见 `references/templates.md` §requirements.md。
+1. **主代理**按 SKILL.md §「Spec 文档生成」生成 `requirements.md`（Read `${CLAUDE_PLUGIN_ROOT}/assets/templates/requirements.md` 模板 + 按 `source_text` 填空）。章节模板见 `references/templates.md` §requirements.md。
 2. 按 SKILL.md §Document Output Brevity 报路径 + 3–8 条变更要点 + 未决问题。
 3. 呈现 `doc-confirm-requirements`（类型 A，推荐选项 1 `确认`）。
 4. End turn 等用户选。
@@ -118,14 +118,14 @@ CLI 行为：
 
 ### 3.2 phase=design
 
-1. fork spec-writer 生成 `design.md`（章节见 templates.md）。
+1. **主代理**按 SKILL.md §「Spec 文档生成」生成 `design.md`（章节见 templates.md）。
 2. 报路径 + 摘要。
 3. `doc-confirm-design` 选择器。
 4. End turn 等确认 → 通过则 phase-transition → tasks。
 
 ### 3.3 phase=tasks
 
-1. fork spec-writer 生成 `tasks.md`。要求：
+1. **主代理**按 SKILL.md §「Spec 文档生成」生成 `tasks.md`。要求：
  - 嵌套 checkbox（顶层任务 / 子任务 / 检查点任务）。
  - 每条具体任务**必须**带 `_需求：x.y_` 或 `_需求：可选_` traceability 标签。
  - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
@@ -139,7 +139,7 @@ CLI 行为：
 
 ## 4. Technical-design-first Flow
 
-1. `design.md` first（spec-writer 生成，章节同 §3.2）。问用户做 high-level 还是 low-level design 时合并到一份。
+1. `design.md` first（**主代理**按 SKILL.md §「Spec 文档生成」生成，章节同 §3.2）。问用户做 high-level 还是 low-level design 时合并到一份。
 2. End turn → `doc-confirm-design` → 确认。
 3. 从已 approved 的 design.md 反推 `requirements.md`。
 4. `doc-confirm-requirements` → 确认。

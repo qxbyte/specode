@@ -1,6 +1,6 @@
 # Spec Document Templates
 
-5 份 spec 文档的章节模板与 EARS SHALL 写法。`spec-writer` agent（工具白名单 `Read, Write, Edit, Grep, Glob`，无 Bash）按本文件生成文档。tasks.md 末尾自带 `## 测试要点` 节，spec-writer 在 tasks phase 按 SHALL 补几行作为测试人员参考。
+5 份 spec 文档的章节模板与 EARS SHALL 写法。**主代理**按本文件 + `${CLAUDE_PLUGIN_ROOT}/assets/templates/<phase>.md` 模板骨架直接生成文档（0.10.11 起删除 `spec-writer` subagent，详见 SKILL.md §「Spec 文档生成」）。tasks.md 末尾自带 `## 测试要点` 节，主代理在 tasks phase 按 SHALL 补几行作为测试人员参考。
 
 ## 0. 命名约定
 
@@ -9,7 +9,7 @@
 | `requirements.md` | 需求-first / design-first 工作流的需求文档 | 与 `bugfix.md` 互斥 |
 | `bugfix.md` | bugfix 工作流的问题描述 | 与 `requirements.md` 互斥 |
 | `design.md` | 技术设计文档 | — |
-| `tasks.md` | 任务拆分 + 进度 + traceability + 末尾 `## 测试要点`（spec-writer tasks phase 按 SHALL 顺手补充，给测试人员参考） | — |
+| `tasks.md` | 任务拆分 + 进度 + traceability + 末尾 `## 测试要点`（主代理 tasks phase 按 SHALL 顺手补充，给测试人员参考） | — |
 | `implementation-log.md` | 实现记录（可选） | — |
 
 每份文档头部固定四行 metadata：
@@ -286,7 +286,7 @@ sequenceDiagram
 
 ## 4. `tasks.md`
 
-**0.9.3 起统一为 task-swarm 兼容格式**：顶层 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。这样 spec-writer 生成的 tasks.md 直接能给 task-swarm 用，顺序执行也兼容（task-swarm 标签被顺序执行 agent 当注释忽略）。
+**0.9.3 起统一为 task-swarm 兼容格式**：顶层 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。这样 主代理 生成的 tasks.md 直接能给 task-swarm 用，顺序执行也兼容（task-swarm 标签被顺序执行 agent 当注释忽略）。
 
 ```markdown
 # 实现计划：[需求显示名]（[slug]）
@@ -322,7 +322,7 @@ Review Status: unreviewed
 
 ## 测试要点
 
-供测试人员快速了解需要验证的场景。spec-writer 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
+供测试人员快速了解需要验证的场景。主代理 在 tasks phase 按 requirements.md / bugfix.md 的 SHALL 顺手补几行，每行关联 SHALL 编号。非验收硬条件，acceptance phase 时主代理把这一节简述给用户作参考即可。
 
 - 输入少于 8 位密码点击提交 → 系统提示"密码长度不足"（需求 1.1）
 - 连续 5 次错误密码登录 → 账号锁定 15 分钟（需求 1.2）
@@ -364,14 +364,14 @@ Review Status: unreviewed
 
 ### 4.2 `## 测试要点` 节填充提示
 
-spec-writer 在 tasks phase 生成 tasks.md 时，按 requirements.md / bugfix.md 的 SHALL **顺手**补几行：
+主代理 在 tasks phase 生成 tasks.md 时，按 requirements.md / bugfix.md 的 SHALL **顺手**补几行：
 
 - 每行格式 `触发场景 → 预期结果（需求 X.Y）`（不带 checkbox；这一节是参考清单而非任务清单）
 - **触发场景**：测试人员可执行的具体动作
 - **预期结果**：SHALL 后的期望行为
 - **需求 X.Y**：requirements.md 的 SHALL 编号
 
-非硬纪律——SHALL 模糊或 spec-writer 一时拿不准时可以留 `_待补充_` 占位；后续 acceptance 时主代理也可以补。不要把这一节当成验收门——验收只看 tasks.md 是否全 `[x]`。
+非硬纪律——SHALL 模糊或 主代理 一时拿不准时可以留 `_待补充_` 占位；后续 acceptance 时主代理也可以补。不要把这一节当成验收门——验收只看 tasks.md 是否全 `[x]`。
 
 iteration 子循环按需追加新行，详见 `references/iteration.md`。
 

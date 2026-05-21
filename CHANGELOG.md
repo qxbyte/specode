@@ -4,6 +4,77 @@
 
 _no entries yet_
 
+## 0.10.10 (2026-05-22)
+
+### Fixed — selector 选定后流程缺失 + 主代理 hallucinate "退出 spec 模式" / invent 简化 selector
+
+承接 0.10.9 修好 `/specode:spec` 创建后引导 hallucinate 之后，又发现两类同源问题：
+
+**1. selector 选定后流程缺失**
+
+复现：用户跑 `/specode:spec <需求>` → workflow-choice 选 "Requirements first"
+→ 主代理只 chat 一句 "已选择 Requirements first" + "请下一轮输入
+`/specode:continue` 继续，或直接提出你的需求细节" → end turn。**没**调
+`phase-transition` / **没** fork spec-writer / **没**生成 requirements.md /
+**没**呈现 doc-confirm-requirements selector。
+
+证据：
+- `references/workflow.md` §2:105 明确说 "用户选完 → 调 phase-transition
+  → 进入对应 phase"；§3.1 写了 fork spec-writer → 生成 requirements.md →
+  呈现 doc-confirm-requirements 4 步
+- selector 模板末尾约束段都是 "调用工具后立即 end turn 等待用户选择" —— 这条
+  历史措辞误导主代理：把 `AskUserQuestion` 当作 "end turn 触发器"，拿到 user
+  选项后只 chat ack 一句就 end turn 让用户输新命令推进
+- 但 `AskUserQuestion` 是**同步阻塞工具**——它返回 user 选项作为 tool result，
+  主代理在**同一 turn 内**继续处理，**不应该** end turn
+
+**2. 主代理 hallucinate "退出 spec 模式" + invent 简化 selector**
+
+复现：tasks 完成后主代理输出 "Spec 流程完成！现在退出 spec 模式，开始编码实现"
++ 用 "任务清单已就绪，下一步？ → 开始编码" 这种 **invent 的简化 selector**
+（不是 tasks-execution 模板的 4 个固定选项：用 task-swarm / 顺序执行 / 需要
+调整 / 暂不 coding）。
+
+证据：
+- `spec_session.py:_auto_pending_selector` line 926-945 phase=tasks → 设
+  `pending_selector=tasks-execution`，模板有 4 个固定选项
+- `phase-transition` 是 spec 内部 phase 切换（intake→requirements→...→
+  implementation→acceptance→iteration），**不**退出 spec 模式；**只有**
+  `/specode:end` 才退出
+- 但 SKILL.md 没明确"phase-transition 不退出 spec"，也没明确"呈现 selector
+  时禁止 invent / 简化"，主代理因此 hallucinate
+
+修复（commands 薄 / SKILL 厚原则）：
+
+**SELECTOR_PROMPTS / selectors.md（10 个 selector 各加「用户选定后流程」段）**
+
+每个 selector 模板末尾约束段后新增 `**用户选定后流程（同一 turn 内继续）**`
+段，列出**每个选项**的下一步动作（phase-transition target / fork agent /
+下一个 selector 等）。注意用 `**bold**` 而非 `### H3`——避免被 drift test
+的 H3/H4 regex 误识别为 selector 边界。
+
+`spec_session.py SELECTOR_PROMPTS` 与 `references/selectors.md` 同步修改，
+`test_selectors_drift.py` 11/11 通过保证 byte-identical。
+
+**SKILL.md §Selectors 顶部加 3 个子节**
+
+1. **`AskUserQuestion` 工具语义（重要 / 关乎流程连续性）**：澄清
+   `AskUserQuestion` 是同步阻塞工具，拿到选项后**同一 turn 内**按 selector
+   "用户选定后流程" 段继续；**严禁** "已选择 X，请下一轮输入 /specode:continue"
+   就 end turn—— `/specode:spec` / `/specode:continue` 是持续流程入口而非
+   回合触发器
+2. **呈现 selector 时禁止 invent / 简化选项**：必须用 SELECTOR_PROMPTS /
+   selectors.md 模板 question / label / description 逐字传参，**禁止** invent
+   简化版（如 "任务清单已就绪，下一步？ / 开始编码"）
+3. **phase-transition 不退出 spec 模式**：`phase-transition` 是 spec 内部
+   phase 切换，spec 仍 mode=active 持锁；**只有** `/specode:end` 才退出；
+   **严禁** "Spec 流程完成！现在退出 spec 模式，开始编码实现" 这类话——
+   implementation phase 期间 hook 继续注入 4 条提醒（文档优先 / 代码-文档
+   同步 / 状态行 footer / 仍处于 spec 模式），主代理改代码前后必须按
+   §Code-Doc Sync Reminders 同步 tasks.md / implementation-log.md / design.md
+
+pytest **179/179 PASS**（drift test 11/11 + 全套 168 不变）。
+
 ## 0.10.9 (2026-05-22)
 
 ### Fixed — `/specode:spec` 创建后 hallucinate 引导 + 漏状态行 footer

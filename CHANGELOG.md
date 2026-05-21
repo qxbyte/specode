@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+_no entries yet_
+
+## 0.10.2 (2026-05-21)
+
 ### Fixed — Windows 上 hook 注入彻底失效（两个连续根因）
 
 1. **Launcher 命中 Microsoft Store alias stub**（commit `fb2ef14`）——

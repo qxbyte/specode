@@ -720,8 +720,30 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_project_root(sm: StateMachine) -> Optional[str]:
+    """从 spec_dir/.config.json 读 project_root；未配置 / 读失败时返回 None。
+
+    返回 None 时，render_*_prompt 会输出 fallback 文本提示"未设置 project_root，
+    暂用 spec_dir"——主要是兼容老 spec（pre 0.10.15 创建的没有此字段）。
+    """
+    spec_dir = sm.spec_dir
+    if not spec_dir:
+        return None
+    try:
+        cfg_path = Path(spec_dir) / ".config.json"
+        if not cfg_path.exists():
+            return None
+        with cfg_path.open("r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        pr = cfg.get("project_root")
+        return str(pr) if pr else None
+    except Exception:
+        return None
+
+
 def _materialize_prompts_for_coding(sm: StateMachine) -> None:
     gi = sm.current_group_index
+    project_root = _resolve_project_root(sm)
     for s in sm.current_group():
         render_coder_prompt(
             stage=s,
@@ -732,6 +754,7 @@ def _materialize_prompts_for_coding(sm: StateMachine) -> None:
             group=gi + 1,
             round_=1,
             mode="initial",
+            project_root=project_root,
         )
 
 
@@ -751,11 +774,13 @@ def _materialize_prompt_reviewer(sm: StateMachine) -> None:
         spec_dir=sm.spec_dir or "",
         group=gi + 1,
         round_=1,
+        project_root=_resolve_project_root(sm),
     )
 
 
 def _materialize_prompts_p0_fix(sm: StateMachine) -> None:
     gi = sm.current_group_index
+    project_root = _resolve_project_root(sm)
     files: list[str] = []
     for p in sm.p0_pending:
         f = (p.get("file_hint") or "unknown").strip()
@@ -784,11 +809,13 @@ def _materialize_prompts_p0_fix(sm: StateMachine) -> None:
             fix_targets=[p for p in sm.p0_pending
                          if (p.get("file_hint") or "").strip() == f],
             file_idx=i,
+            project_root=project_root,
         )
 
 
 def _materialize_prompts_v_fix(sm: StateMachine) -> None:
     gi = sm.current_group_index
+    project_root = _resolve_project_root(sm)
     files: list[str] = []
     for t in sm.fix_targets:
         f = (t.get("file_path") or "").strip()
@@ -824,6 +851,7 @@ def _materialize_prompts_v_fix(sm: StateMachine) -> None:
             mode="v-fix",
             fix_targets=ftargets,
             file_idx=i,
+            project_root=project_root,
         )
 
 
@@ -852,6 +880,7 @@ def _materialize_prompt_validator(sm: StateMachine) -> None:
         group=gi + 1,
         round_=next_round,
         prev_validation=prev_validation,
+        project_root=_resolve_project_root(sm),
     )
 
 

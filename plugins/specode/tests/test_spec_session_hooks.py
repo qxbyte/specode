@@ -210,6 +210,53 @@ def test_on_user_prompt_active_with_workflow_choice_emits_all_segments(
     assert "你仍处于 spec 模式" in ctx                         # continue reminder
 
 
+def test_on_user_prompt_project_root_choice_emits_with_cwd_context(
+    run_script, fake_home, make_session_id, doc_root
+):
+    """0.10.15+：pending_selector=project-root-choice 时，hook 注入 selector
+    模板并把 invocation_cwd / cwd_subdir 填进去给主代理。"""
+    sid = make_session_id()
+    spec_dir = doc_root / "specs" / "pr-test"
+    spec_dir.mkdir(parents=True)
+    fake_cwd = "/home/user/my-repo"
+    (spec_dir / ".config.json").write_text(json.dumps({
+        "specId": "pr",
+        "slug": "pr-test",
+        "phase": "intake",
+        "workflow": None,
+        "pending_selector": "project-root-choice",
+        "lock": {"holder": sid},
+        "source_text": "新需求一句话",
+        "invocation_cwd": fake_cwd,
+        "project_root": None,
+    }), encoding="utf-8")
+    _write_session(
+        fake_home, sid,
+        mode="active",
+        active_spec_slug="pr-test",
+        active_spec_dir=str(spec_dir),
+        phase="intake",
+        pending_selector="project-root-choice",
+        lock_state="ok",
+    )
+    cp = run_script(
+        "spec_session.py", "on-user-prompt",
+        stdin=json.dumps({"session_id": sid, "prompt": "走起"})
+    )
+    ctx = _ctx(_parse_hook(cp.stdout))
+    # selector 模板被注入
+    assert "选择器节点：项目实现目录选择" in ctx
+    assert "AskUserQuestion" in ctx
+    # invocation_cwd 占位被替换成实际值
+    assert fake_cwd in ctx
+    # cwd_subdir 也已填入（路径拼接 cwd + slug）
+    assert "pr-test" in ctx  # slug 出现在 cwd/slug 选项
+    # 3 个 label 都在
+    assert "cwd（在已有项目里迭代）" in ctx
+    assert "cwd/slug（新项目子目录）" in ctx
+    assert "自定义路径" in ctx
+
+
 def test_on_user_prompt_active_implementation_no_pending(
     run_script, fake_home, make_session_id, doc_root
 ):

@@ -54,12 +54,19 @@ def test_spec_init_config_json_initial_state(
     assert cfg["specId"] == payload["specId"]
     assert cfg["slug"] == "beta-spec"
     assert cfg["phase"] == "intake"
-    assert cfg["pending_selector"] == "workflow-choice"
+    # 0.10.15+：spec 创建后第一个 selector 是 project-root-choice，由
+    # set-project-root CLI 推进到 workflow-choice
+    assert cfg["pending_selector"] == "project-root-choice"
     assert cfg["workflow"] is None
     # lock initially held by the initialising session
     assert cfg["lock"]["holder"] == sid
     assert cfg["doc_root"] == str(doc_root)
     assert cfg["source_text"] == "需求 B"
+    # 0.10.15+：spec_init 时记录 cwd 给 project-root-choice selector 渲染用
+    assert "invocation_cwd" in cfg
+    assert cfg["invocation_cwd"]  # 非空
+    # project_root 此时尚未指定，等 set-project-root CLI 才写入
+    assert cfg["project_root"] is None
 
 
 def test_spec_init_writes_sessions_file(
@@ -81,7 +88,8 @@ def test_spec_init_writes_sessions_file(
     assert sess["mode"] == "active"
     assert sess["active_spec_slug"] == "gamma"
     assert sess["phase"] == "intake"
-    assert sess["pending_selector"] == "workflow-choice"
+    # 0.10.15+：spec 创建后第一个 selector 是 project-root-choice
+    assert sess["pending_selector"] == "project-root-choice"
     assert sess["lock_state"] == "ok"
 
 

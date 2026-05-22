@@ -2,7 +2,7 @@
 
 每个 phase-gate 节点必须**调用宿主内置 `AskUserQuestion` 工具**呈现选择器；工具自身渲染 chip-tabs / 选项列表 / 上下键导航 / 回车提交 / ESC 取消 / "Other" 自定义输入 UI。模型只负责传参，**绝不**自己输出 markdown 列表让用户回复编号。
 
-本文件给出全部 7 个固定场景的 (类型 → AskUserQuestion 参数)；spec_session.py 的 `SELECTOR_PROMPTS` 字典是这些模板的运行时常量库。0.9.3 起 `doc-confirm-tasks` 被废弃并合并进 `tasks-execution`（详见 §A4）。
+本文件给出全部 8 个固定场景的 (类型 → AskUserQuestion 参数)；spec_session.py 的 `SELECTOR_PROMPTS` 字典是这些模板的运行时常量库。0.9.3 起 `doc-confirm-tasks` 被废弃并合并进 `tasks-execution`（详见 §A4）。
 
 ---
 
@@ -63,13 +63,68 @@ questions:
           <对应的另一份 artifact>
 ```
 
-**当前状态**：7 个固定场景**均未启用** A+ 形态；本节是模板留档，待将来出现"让用户视觉对比 artifact"的 phase-gate 时按本骨架填空即可。如果新增固定场景使用 A+，应同步在 `spec_session.py SELECTOR_PROMPTS` 内加常量并补到下方 8 场景表里。
+**当前状态**：8 个固定场景**均未启用** A+ 形态；本节是模板留档，待将来出现"让用户视觉对比 artifact"的 phase-gate 时按本骨架填空即可。如果新增固定场景使用 A+，应同步在 `spec_session.py SELECTOR_PROMPTS` 内加常量并补到下方 8 场景表里。
 
 ---
 
-## 7 个固定场景常量库
+## 8 个固定场景常量库
 
-下列 7 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。
+下列 8 个固定场景的提示词与 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典内容**逐字一致**——hook 命中 `pending_selector` 时把对应模板替换占位后注入到 `additionalContext`，模型读到后直接调 `AskUserQuestion` 工具。统一采用三段式 YAML 缩进格式（**目的** / **上下文** / **前置动作** / 工具参数 / **约束**）。
+
+---
+
+### A0 `project-root-choice` — 项目实现目录选择（类型 A 单列单选）
+
+```text
+## 选择器节点：项目实现目录选择
+
+**目的**：spec 刚创建（pending_selector=project-root-choice），在选工作流之前
+**先**确定 task-swarm subagent / 主代理写代码时用哪个目录作为项目根（`project_root`）。
+spec 文档目录（`<spec_dir>`）只放 `.md` 文档和 `.task-swarm/` 状态，**不是**代码根。
+
+**上下文**：active spec=<slug>，phase=intake。
+- 用户启动 Claude Code 的 cwd：`<invocation_cwd>`
+- cwd/slug 子目录：`<cwd_subdir>`
+
+**前置动作（chat 简报，≤3 行）**：写一句
+"spec 已创建。代码将写到 project_root，**不是** spec 文档目录。
+请选择项目目录（cwd 在已有项目里迭代 / cwd/slug 新项目子目录 / 自定义）。"
+
+**调用 `AskUserQuestion` 工具**，**直接传**下列结构（label/description 不要翻译）：
+
+questions:
+  - question: "代码写到哪个目录？project_root 决定 task-swarm subagent 的 cwd"
+    header: "项目目录"
+    multiSelect: false
+    options:
+      - label: "cwd（在已有项目里迭代）"
+        description: "代码写到 <invocation_cwd>。适用：已 cd 到目标 repo 后启动。"
+      - label: "cwd/slug（新项目子目录）"
+        description: "代码写到 <cwd_subdir>。适用：cwd 是父目录，要新建项目子目录。"
+      - label: "自定义路径"
+        description: "用 Other 输入绝对路径。适用：项目目录跟 cwd 完全无关。"
+
+**约束**：
+- 调用工具后立即 end turn 等用户选择。
+- 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
+
+**用户选定后流程（同一 turn 内继续，不要 end turn 让用户输命令）**
+
+拿到选项后**本 turn 内**按选项走，调 `spec_session.py set-project-root` CLI 写入：
+
+- 选 "cwd（在已有项目里迭代）" → 调
+  `sh "$PLUGIN_ROOT/scripts/run.sh" "$PLUGIN_ROOT/scripts/spec_session.py" set-project-root --spec <spec_dir> --session <id> --root "<invocation_cwd>"`
+  （`$PLUGIN_ROOT` 即 `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}`）
+- 选 "cwd/slug（新项目子目录）" → 同上但 `--root "<cwd_subdir>"`，CLI 会 mkdir -p 自动创建。
+- 选 "自定义路径"（Other 文本）→ 拿用户输入的绝对路径作 `--root`。**禁止**接受相对路径；若用户给的是相对，请先扩展为绝对。
+
+CLI 成功后：
+1. `.config.json.project_root` 已写入，`pending_selector` 推进到 `workflow-choice`
+2. 立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（不要 end turn 让用户再输命令）
+3. 简报一句"已设 project_root=<选定路径>，下一步选工作流"
+
+CLI exit 1（路径不存在 / 不是目录 / 无权限）→ 报错给用户，重新呈现本 selector。
+```
 
 ---
 

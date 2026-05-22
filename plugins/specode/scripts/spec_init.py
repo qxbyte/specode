@@ -290,6 +290,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         "implementation-log.md": _render(_load_template("implementation-log.md"), ctx),
     }
 
+    # invocation_cwd：记录 spec_init.py 被调用时的 cwd（即用户启动 Claude Code/
+    # codebuddy 的目录）。供后续 project-root-choice selector 给用户 3 选项：
+    # cwd（已有项目里迭代）/ cwd/slug（新项目子目录）/ 自定义路径。
+    invocation_cwd = os.getcwd()
+
     spec_config = {
         "specId": spec_id,
         "slug": slug,
@@ -297,7 +302,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         "createdAt": created_at,
         "phase": "intake",
         "workflow": None,            # workflow 选择器之后写入
-        "pending_selector": "workflow-choice",
+        # 0.10.15+：先 project-root-choice，用户选完后 set-project-root CLI
+        # 会把 pending_selector 推进到 workflow-choice。
+        "pending_selector": "project-root-choice",
         "lock": {
             "holder": args.session,
             "acquired_at": created_at,
@@ -306,6 +313,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         "doc_root": str(root),
         "source": source,
         "source_text": args.source_text,
+        "invocation_cwd": invocation_cwd,  # 用于 selector 渲染（cwd / cwd/slug 选项）
+        "project_root": None,              # set-project-root CLI 后写入
     }
 
     active_pointer_path = root / ".active-specode.json"
@@ -387,7 +396,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             "phase": "intake",
             "lock_state": "ok",
             "task_swarm_run_id": None,
-            "pending_selector": "workflow-choice",
+            "pending_selector": "project-root-choice",
         }
         _atomic_write_json(sessions_path, session_payload)
 

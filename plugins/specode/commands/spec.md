@@ -92,8 +92,16 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 - 详细流程见 SKILL.md §Session Lifecycle / references/obsidian.md
 - 调用模板规约见 SKILL.md §CLI 调用规约（**禁止**裸 `python3 spec_init.py …`）
 
-### 第四步成功后必做
+### 第四步成功后必做（0.10.15+：先 project-root，再 workflow）
 
-`spec_init.py` `exit 0` 后 spec 已进入 **active 模式**（`mode=active` / `pending_selector=workflow-choice`）。**`/specode:spec` 是持续流程入口，不需要用户再输命令推进**——本 turn hook 未刷新，主代理按 SKILL.md §Status Footer「新 spec 创建/接管的当 turn」走（chat 简报 + 状态行 footer + 立即调 `AskUserQuestion` 呈现 `workflow-choice` selector）。
+`spec_init.py` `exit 0` 后 spec 已进入 **active 模式**（`mode=active` / `pending_selector=project-root-choice`）。**`/specode:spec` 是持续流程入口，不需要用户再输命令推进**——本 turn hook 未刷新，主代理按 SKILL.md §Status Footer「新 spec 创建/接管的当 turn」走（chat 简报 + 状态行 footer），然后**依次**：
+
+1. **立即调 `AskUserQuestion` 呈现 `project-root-choice` selector**（决定代码写到哪个目录；详见 `references/selectors.md` §A0）
+2. 拿到用户选择后**本 turn 内**调 `spec_session.py set-project-root --spec <dir> --session <id> --root <选定路径>`
+3. CLI 成功后立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（详见 `references/selectors.md` §A1）
+
+**两步都不要 end turn 让用户再输命令**——project-root 选完直接进 workflow 选择。
 
 **严禁**说 "使用 `/specode:continue` 进入下一阶段" / "你可以使用 ... 推进" / "下一步请输入 ..." 这类让用户再输命令的引导——流程由 selector 推进。
+
+**为什么要先选 project_root**：spec 文档目录（`<doc_root>/specs/<slug>/`）只放 `.md` 文档和 `.task-swarm/` 状态；代码实际写到的目录是 `project_root`。两者解耦后，task-swarm subagent 能明确知道"代码写哪里"，避免 0.10.13 之前那种"代码错写到 spec dir 污染文档目录"的事故。

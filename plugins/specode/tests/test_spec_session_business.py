@@ -302,3 +302,103 @@ def test_load_emits_spec_config(run_script, init_spec, fake_home):
     out = json.loads(cp.stdout)
     assert out["ok"] is True
     assert out["config"]["slug"] == slug
+
+
+# --- set-project-root (0.10.15+) -----------------------------------------
+
+def test_set_project_root_writes_config_and_advances_selector(
+    run_script, init_spec, fake_home, tmp_path
+):
+    """成功路径：写 project_root + pending_selector 推到 workflow-choice。"""
+    slug, sid, spec_dir, _ = init_spec()
+    cfg_before = _spec_cfg(spec_dir)
+    assert cfg_before["pending_selector"] == "project-root-choice"
+    assert cfg_before["project_root"] is None
+
+    project = tmp_path / "my-project"
+    project.mkdir()
+
+    cp = run_script(
+        "spec_session.py", "set-project-root",
+        "--spec", str(spec_dir),
+        "--session", sid,
+        "--root", str(project),
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    assert out["ok"] is True
+    assert out["project_root"] == str(project)
+    assert out["pending_selector"] == "workflow-choice"
+
+    cfg = _spec_cfg(spec_dir)
+    assert cfg["project_root"] == str(project)
+    assert cfg["pending_selector"] == "workflow-choice"
+    sess = _sess(fake_home, sid)
+    assert sess["pending_selector"] == "workflow-choice"
+
+
+def test_set_project_root_auto_creates_missing_dir(
+    run_script, init_spec, fake_home, tmp_path
+):
+    """--root 路径不存在时自动 mkdir -p（cwd/slug 新项目场景）。"""
+    slug, sid, spec_dir, _ = init_spec()
+    new_dir = tmp_path / "brand-new" / "nested"
+    assert not new_dir.exists()
+
+    cp = run_script(
+        "spec_session.py", "set-project-root",
+        "--spec", str(spec_dir),
+        "--session", sid,
+        "--root", str(new_dir),
+    )
+    assert cp.returncode == 0, cp.stderr
+    assert new_dir.exists() and new_dir.is_dir()
+
+
+def test_set_project_root_rejects_relative_path(
+    run_script, init_spec, fake_home
+):
+    slug, sid, spec_dir, _ = init_spec()
+    cp = run_script(
+        "spec_session.py", "set-project-root",
+        "--spec", str(spec_dir),
+        "--session", sid,
+        "--root", "relative/path/here",
+    )
+    assert cp.returncode == 1
+    assert "绝对路径" in cp.stderr
+
+
+def test_set_project_root_rejects_non_directory(
+    run_script, init_spec, fake_home, tmp_path
+):
+    slug, sid, spec_dir, _ = init_spec()
+    a_file = tmp_path / "i-am-a-file.txt"
+    a_file.write_text("content", encoding="utf-8")
+
+    cp = run_script(
+        "spec_session.py", "set-project-root",
+        "--spec", str(spec_dir),
+        "--session", sid,
+        "--root", str(a_file),
+    )
+    assert cp.returncode == 1
+    assert "不是目录" in cp.stderr
+
+
+def test_set_project_root_rejects_non_lock_holder(
+    run_script, init_spec, fake_home, make_session_id, tmp_path
+):
+    slug, _sid_holder, spec_dir, _ = init_spec()
+    other_sid = make_session_id()  # 不持锁
+    project = tmp_path / "proj"
+    project.mkdir()
+
+    cp = run_script(
+        "spec_session.py", "set-project-root",
+        "--spec", str(spec_dir),
+        "--session", other_sid,
+        "--root", str(project),
+    )
+    assert cp.returncode == 1
+    assert "lock holder" in cp.stderr

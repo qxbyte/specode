@@ -46,15 +46,24 @@ def _atomic_write_text(path: Path, content: str) -> None:
 # 通用上下文段
 # -------------------------------------------------------------------------
 
-def _context_block(spec_id: str, spec_dir: str, run_id: str, group: int, round_: int) -> str:
-    return (
-        f"## 上下文\n"
-        f"- specId: {spec_id}\n"
-        f"- spec_dir: {spec_dir}\n"
-        f"- run_id: {run_id}\n"
-        f"- group: {group}\n"
-        f"- round: {round_}\n"
-    )
+def _context_block(spec_id: str, spec_dir: str, run_id: str, group: int, round_: int,
+                   project_root: Optional[str] = None) -> str:
+    lines = [
+        "## 上下文",
+        f"- specId: {spec_id}",
+        f"- spec_dir: {spec_dir}",
+    ]
+    # 0.10.15+：project_root 是代码实际写入的根目录，跟 spec_dir 区分
+    if project_root:
+        lines.append(f"- project_root: {project_root}  ← 代码必须写到这里，不要写到 spec_dir")
+    else:
+        lines.append("- project_root: (未设置；fallback 用 spec_dir，但应由主代理在 init 后通过 set-project-root CLI 指定)")
+    lines.extend([
+        f"- run_id: {run_id}",
+        f"- group: {group}",
+        f"- round: {round_}",
+    ])
+    return "\n".join(lines) + "\n"
 
 
 def _agent_root(run_dir: Path, agent_key: str) -> Path:
@@ -111,6 +120,7 @@ def render_coder_prompt(
     mode: str = "initial",  # initial / p0-fix / v-fix
     fix_targets: Optional[list[dict]] = None,
     file_idx: Optional[int] = None,
+    project_root: Optional[str] = None,
 ) -> str:
     """渲染 coder 的 task.md。返回 prompt 文本。同步写到 agent 目录的 task.md。"""
     if mode == "initial":
@@ -131,7 +141,27 @@ def render_coder_prompt(
     else:
         lines.append(f"# {agent_key}：{mode} 修复任务")
     lines.append("")
-    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_))
+    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_,
+                                 project_root=project_root))
+    lines.append("")
+
+    # 0.10.15+：项目根目录与路径规约（避免 subagent 把代码写到 spec_dir）
+    lines.append("## 项目根目录与路径规约")
+    if project_root:
+        lines.append(f"- 代码根目录（`project_root`）：`{project_root}`")
+        lines.append(f"- spec 文档目录（`spec_dir`）：`{spec_dir}`")
+        lines.append("- 下面 `@writes` / `@reads` / "
+                     "「修复指引文件」中的**相对路径**，全部相对于 "
+                     "`project_root` 解析（如 `src/services/foo.ts` "
+                     "→ 实际写到 `<project_root>/src/services/foo.ts`）。")
+        lines.append("- **严禁**把代码 / 数据库 / node_modules 等写到 `spec_dir/` 下；"
+                     "`spec_dir/` 只放 `*.md` 文档和 `.task-swarm/` 状态。")
+        lines.append("- 跑 Bash 命令时请先 `cd \"" + project_root + "\"` 再执行 "
+                     "`npm install` / `pytest` / `cargo` 等。")
+    else:
+        lines.append(f"- ⚠ project_root 未设置；fallback 用 spec_dir=`{spec_dir}`")
+        lines.append("- 这是兼容老 spec 的退化路径。新 spec 应在 init 后通过 "
+                     "project-root-choice selector + set-project-root CLI 显式指定。")
     lines.append("")
 
     if mode == "initial":
@@ -218,13 +248,15 @@ def render_reviewer_prompt(
     spec_dir: str,
     group: int,
     round_: int = 1,
+    project_root: Optional[str] = None,
 ) -> str:
     agent_key = f"reviewer-g{group}-r{round_}"
     root, inbox, outbox = _ensure_agent_dirs(run_dir, agent_key)
     lines: list[str] = []
     lines.append(f"# {agent_key}：本 group {len(group_stages)} 个 stage 联合评审")
     lines.append("")
-    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_))
+    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_,
+                                 project_root=project_root))
     lines.append("")
     lines.append("## 评审范围")
     for s in group_stages:
@@ -284,14 +316,20 @@ def render_validator_prompt(
     group: int,
     round_: int = 1,
     prev_validation: Optional[Path] = None,
+    project_root: Optional[str] = None,
 ) -> str:
     agent_key = f"validator-g{group}-r{round_}"
     root, inbox, outbox = _ensure_agent_dirs(run_dir, agent_key)
     lines: list[str] = []
     lines.append(f"# {agent_key}：本 group {len(group_stages)} 个 stage 联合验证")
     lines.append("")
-    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_))
+    lines.append(_context_block(spec_id, spec_dir, run_id, group, round_,
+                                 project_root=project_root))
     lines.append("")
+    if project_root:
+        lines.append(f"## 跑验证命令时请先 `cd \"{project_root}\"`")
+        lines.append("（所有 `@writes` 路径相对 `project_root`，不是 `spec_dir`）")
+        lines.append("")
     lines.append("## 验证范围")
     for s in group_stages:
         lines.append(f"- 阶段 {s.number}: {s.title}")

@@ -48,10 +48,22 @@ def test_full_lifecycle_event_chain(run_script, fake_home, doc_root, make_sessio
     sess = _read_sess(fake_home, sid)
     assert sess["mode"] == "active"
     assert sess["active_spec_slug"] == "lifecycle"
-    assert sess["pending_selector"] == "workflow-choice"
+    # 0.10.15+：spec_init 后第一个 selector 是 project-root-choice
+    assert sess["pending_selector"] == "project-root-choice"
     cfg = _read_cfg(spec_dir)
     assert cfg["phase"] == "intake"
     assert cfg["lock"]["holder"] == sid
+
+    # 2b) set-project-root → 推进到 workflow-choice
+    cp = run_script("spec_session.py", "set-project-root",
+                    "--spec", str(spec_dir), "--session", sid,
+                    "--root", str(spec_dir))  # 测试用 spec_dir 自己也算合法路径
+    assert cp.returncode == 0, cp.stderr
+    sess = _read_sess(fake_home, sid)
+    cfg = _read_cfg(spec_dir)
+    assert cfg["project_root"] == str(spec_dir)
+    assert cfg["pending_selector"] == "workflow-choice"
+    assert sess["pending_selector"] == "workflow-choice"
 
     # 3) phase-transition intake → requirements
     cp = run_script("spec_session.py", "phase-transition",

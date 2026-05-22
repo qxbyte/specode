@@ -194,6 +194,55 @@ def write_spec_config_atomic(spec_dir: Path, data: dict) -> None:
 # -------------------------------------------------------------------------
 
 SELECTOR_PROMPTS: dict[str, str] = {
+    "project-root-choice": """## 选择器节点：项目实现目录选择
+
+**目的**：spec 刚创建（pending_selector=project-root-choice），在选工作流之前
+**先**确定 task-swarm subagent / 主代理写代码时用哪个目录作为项目根（`project_root`）。
+spec 文档目录（`<spec_dir>`）只放 `.md` 文档和 `.task-swarm/` 状态，**不是**代码根。
+
+**上下文**：active spec=<slug>，phase=intake。
+- 用户启动 Claude Code 的 cwd：`<invocation_cwd>`
+- cwd/slug 子目录：`<cwd_subdir>`
+
+**前置动作（chat 简报，≤3 行）**：写一句
+"spec 已创建。代码将写到 project_root，**不是** spec 文档目录。
+请选择项目目录（cwd 在已有项目里迭代 / cwd/slug 新项目子目录 / 自定义）。"
+
+**调用 `AskUserQuestion` 工具**，**直接传**下列结构（label/description 不要翻译）：
+
+questions:
+  - question: "代码写到哪个目录？project_root 决定 task-swarm subagent 的 cwd"
+    header: "项目目录"
+    multiSelect: false
+    options:
+      - label: "cwd（在已有项目里迭代）"
+        description: "代码写到 <invocation_cwd>。适用：已 cd 到目标 repo 后启动。"
+      - label: "cwd/slug（新项目子目录）"
+        description: "代码写到 <cwd_subdir>。适用：cwd 是父目录，要新建项目子目录。"
+      - label: "自定义路径"
+        description: "用 Other 输入绝对路径。适用：项目目录跟 cwd 完全无关。"
+
+**约束**：
+- 调用工具后立即 end turn 等用户选择。
+- 不要在 chat 输出 markdown 列表 / 不要让用户回复编号。
+
+**用户选定后流程（同一 turn 内继续，不要 end turn 让用户输命令）**
+
+拿到选项后**本 turn 内**按选项走，调 `spec_session.py set-project-root` CLI 写入：
+
+- 选 "cwd（在已有项目里迭代）" → 调
+  `sh "$PLUGIN_ROOT/scripts/run.sh" "$PLUGIN_ROOT/scripts/spec_session.py" set-project-root --spec <spec_dir> --session <id> --root "<invocation_cwd>"`
+  （`$PLUGIN_ROOT` 即 `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}`）
+- 选 "cwd/slug（新项目子目录）" → 同上但 `--root "<cwd_subdir>"`，CLI 会 mkdir -p 自动创建。
+- 选 "自定义路径"（Other 文本）→ 拿用户输入的绝对路径作 `--root`。**禁止**接受相对路径；若用户给的是相对，请先扩展为绝对。
+
+CLI 成功后：
+1. `.config.json.project_root` 已写入，`pending_selector` 推进到 `workflow-choice`
+2. 立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（不要 end turn 让用户再输命令）
+3. 简报一句"已设 project_root=<选定路径>，下一步选工作流"
+
+CLI exit 1（路径不存在 / 不是目录 / 无权限）→ 报错给用户，重新呈现本 selector。
+""",
     "workflow-choice": """## 选择器节点：工作流选择
 
 **目的**：用户刚运行 /specode:spec <需求>，已进入 intake 阶段。
@@ -1178,6 +1227,84 @@ def cmd_end(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_project_root(args: argparse.Namespace) -> int:
+    """0.10.15+：写 .config.json.project_root + 推进 pending_selector→workflow-choice。
+
+    由 project-root-choice selector 选定后由主代理调用。
+
+    args:
+      --spec <dir>       spec 目录
+      --session <id>     lock holder 必须是当前 session
+      --root <path>      绝对路径；不存在则 mkdir -p；存在但非目录则 exit 1
+
+    幂等：重复调用以最后一次为准。
+    """
+    spec_dir = Path(args.spec)
+    if not spec_dir.exists():
+        sys.stderr.write(f"spec 目录不存在：{spec_dir}\n")
+        return 1
+    cfg = read_spec_config(spec_dir)
+    if cfg is None:
+        sys.stderr.write(f"无法读取 {spec_dir}/.config.json\n")
+        return 1
+    lock = cfg.get("lock") or {}
+    if lock.get("holder") != args.session:
+        sys.stderr.write(
+            f"lock holder 不是当前 session "
+            f"(holder={_session_short(lock.get('holder'))} vs current={_session_short(args.session)})\n"
+        )
+        return 1
+
+    root_path = Path(args.root)
+    if not root_path.is_absolute():
+        sys.stderr.write(f"--root 必须是绝对路径，收到：{args.root!r}\n")
+        return 1
+    if root_path.exists():
+        if not root_path.is_dir():
+            sys.stderr.write(f"--root 存在但不是目录：{root_path}\n")
+            return 1
+    else:
+        # 自动创建（覆盖"cwd/slug 新项目子目录"场景；自定义路径也可借此创建）
+        try:
+            root_path.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            sys.stderr.write(f"创建 --root 目录失败：{root_path}：{e}\n")
+            return 1
+
+    prior_cfg = json.loads(json.dumps(cfg))
+    cfg["project_root"] = str(root_path)
+    cfg["pending_selector"] = "workflow-choice"
+    try:
+        write_spec_config_atomic(spec_dir, cfg)
+    except Exception as e:
+        sys.stderr.write(f"写 spec config 失败：{e}\n")
+        return 1
+
+    # 同步 session 的 pending_selector
+    sess = read_session(args.session)
+    if sess is not None:
+        sess["pending_selector"] = "workflow-choice"
+        sess["last_activity_at"] = _now_iso()
+        try:
+            write_session_atomic(args.session, sess)
+        except Exception as e:
+            # 回滚 spec config
+            try:
+                write_spec_config_atomic(spec_dir, prior_cfg)
+            except Exception:
+                pass
+            sys.stderr.write(f"写 sessions 失败，已回滚 spec config：{e}\n")
+            return 1
+
+    _emit_json({
+        "ok": True,
+        "project_root": str(root_path),
+        "pending_selector": "workflow-choice",
+        "spec_dir": str(spec_dir),
+    })
+    return 0
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     sess = read_session(args.session)
     if sess is None:
@@ -1611,6 +1738,8 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
             "last_heartbeat": "?",
             "n_pass": "?",
             "n_fail": "?",
+            "invocation_cwd": "?",
+            "cwd_subdir": "?",
         }
         # 填入 spec config 中的派生值
         if spec_dir:
@@ -1624,6 +1753,13 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
                 if other and other != session_id:
                     ctx["other_id_short"] = _session_short(other)
                     ctx["last_heartbeat"] = str(lock.get("last_heartbeat_at") or "?")
+                inv = cfg.get("invocation_cwd")
+                if inv:
+                    ctx["invocation_cwd"] = str(inv)
+                    # cwd/slug：用 os.path.join 跨平台拼接，但模板里用斜杠展示更直观；
+                    # spec_session 不直接 mkdir，set-project-root CLI 才创建实际目录
+                    sep = "\\" if "\\" in str(inv) else "/"
+                    ctx["cwd_subdir"] = f"{inv}{sep}{slug}"
             except Exception:
                 pass
         sel = _fill_selector(pending, ctx)
@@ -2115,6 +2251,11 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("end")
     p.add_argument("--session", required=True)
 
+    p = sub.add_parser("set-project-root")
+    p.add_argument("--spec", required=True, help="spec 目录")
+    p.add_argument("--session", required=True, help="必须是 lock holder")
+    p.add_argument("--root", required=True, help="项目实现根目录（绝对路径，不存在则 mkdir）")
+
     p = sub.add_parser("status")
     p.add_argument("--session", required=True)
 
@@ -2155,6 +2296,7 @@ COMMANDS = {
     "load": cmd_load,
     "continue": cmd_continue,
     "end": cmd_end,
+    "set-project-root": cmd_set_project_root,
     "status": cmd_status,
     "read-session": cmd_read_session,
     "list-specs": cmd_list_specs,

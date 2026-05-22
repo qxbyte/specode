@@ -4,6 +4,66 @@
 
 _no entries yet_
 
+## 0.10.15 (2026-05-22)
+
+### Added — `project_root`：spec 文档目录与代码实现目录解耦
+
+**用户痛点**：在 user-login 事故中，task-swarm coder subagent 把 `npm install` / `src/App.tsx` / `database/migrations/` 全写到了 spec 文档目录 `<doc_root>/specs/user-login/` 下，污染了 vault。根因：`render_coder_prompt` 生成的 task.md 上下文段里**只有 `spec_dir` 字段，没有项目实现根目录概念**，subagent 看到 `@writes:src/services/auth-service.ts` 这种相对路径就拿 spec_dir 当根。
+
+修复路径：**spec 文档目录与代码实现目录解耦**——`spec_dir` 只放 `.md` 文档和 `.task-swarm/` 状态，代码实际写入到 `project_root`（绝对路径，由用户在 spec 创建后通过 selector 选定）。
+
+实现：
+
+1. **`spec_init.py`**：
+   - 写 `.config.json` 时记录 `invocation_cwd = os.getcwd()`（用户启动 Claude Code 时的目录，供 selector 渲染用）
+   - `pending_selector` 默认改为 `project-root-choice`（替代 `workflow-choice`）
+   - 新增 `project_root: null` 字段（待 `set-project-root` CLI 写入）
+
+2. **`spec_session.py` SELECTOR_PROMPTS["project-root-choice"]**（新 selector）：
+   - 三选项：`cwd（在已有项目里迭代）` / `cwd/slug（新项目子目录）` / `自定义路径`
+   - 每个选项 description 带具体路径（hook 注入时填入 `<invocation_cwd>` / `<cwd_subdir>`）
+   - 用户选定后由主代理调 `set-project-root` CLI 写入
+
+3. **`spec_session.py` `cmd_set_project_root`**（新 CLI）：
+   - `set-project-root --spec <dir> --session <id> --root <abs-path>`
+   - 校验：lock holder 必须是 current session；`--root` 必须绝对路径；不存在则 mkdir -p；存在但非目录 exit 1
+   - 写 `.config.json.project_root` + 把 `pending_selector` 推进到 `workflow-choice`，session 同步
+
+4. **`task_swarm_prompt.py` `_context_block`** + 各 `render_*_prompt`：
+   - context block 加 `- project_root: <path>` 行（fallback 文本明确"未设置时用 spec_dir"）
+   - `render_coder_prompt` 新增 `## 项目根目录与路径规约` 段：明确"`@writes/@reads` 相对 `project_root`，**严禁**写到 `spec_dir`，Bash 命令请先 `cd` 到 `project_root`"
+   - reviewer / validator 也注入 project_root（跑测试时 cd 用）
+
+5. **`task_swarm.py`** 调用方：新增 `_resolve_project_root(sm)` helper 读 `spec_dir/.config.json.project_root`；6 处 `render_*_prompt` 调用全部传入。
+
+6. **`commands/spec.md`** 第四步「成功后必做」：从直接呈现 `workflow-choice` 改成**两步走**——先 `project-root-choice` selector → 用户选 → 主代理调 `set-project-root` CLI → 再 `workflow-choice` selector。两步都不 end turn。
+
+7. **`references/selectors.md`** drift-sync 新增 `A0 project-root-choice` 节，byte-identical 与 SELECTOR_PROMPTS 一致。
+
+**向后兼容**：老 spec（pre-0.10.15）的 `.config.json` 没有 `project_root` 字段，`_resolve_project_root` 返回 `None`，render_*_prompt 输出 fallback 文本（"⚠ project_root 未设置；fallback 用 spec_dir"），不阻断流程。用户可手动调 `set-project-root` 补字段。
+
+**用户使用流程**：
+
+```
+/specode:spec -n user-login 添加用户登录功能
+  → spec_init.py 创建 spec + 写 invocation_cwd
+  → 主代理呈现 project-root-choice selector（3 选项含具体路径）
+  → 用户选「cwd（在已有项目里迭代）」
+  → 主代理调 set-project-root --root <cwd>
+  → CLI 写 project_root + 推 pending_selector → workflow-choice
+  → 主代理立即呈现 workflow-choice selector
+  → ...
+```
+
+### Tests
+
+- 新增 5 个 `test_set_project_root_*`：成功路径 + 自动 mkdir + 拒绝相对路径 + 拒绝非目录 + 拒绝非 lock-holder
+- 新增 `test_on_user_prompt_project_root_choice_emits_with_cwd_context`：hook 注入 selector 时填充 invocation_cwd / cwd_subdir
+- 新增 `test_coder_prompt_includes_project_root_from_spec_config` + `test_coder_prompt_fallback_when_project_root_unset`：覆盖 project_root 注入 task-swarm prompt 的两条路径
+- 更新 3 个测试预期：spec_init 后 pending_selector 是 `project-root-choice` 而非 `workflow-choice`，集成测试加 set-project-root 调用步骤
+- selectors.md drift test 自动 cover `project-root-choice` byte-identical
+- 全套 pytest **195/195 PASS**
+
 ## 0.10.14 (2026-05-22)
 
 ### Added — `/specode:spec -n <slug> <需求>` 显式指定 spec 目录名

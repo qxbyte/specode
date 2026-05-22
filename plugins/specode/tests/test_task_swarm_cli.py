@@ -312,3 +312,63 @@ def test_v_fix_prompt_files_match_state_in_flight(tmp_path, run_swarm):
             f"（典型 r/r+1 漂移 bug：state 是 r{state['round']}、"
             f"磁盘可能是 r{state['round']+1}）"
         )
+
+
+def test_coder_prompt_includes_project_root_from_spec_config(tmp_path, run_swarm):
+    """0.10.15+：spec_dir/.config.json.project_root 必须被 task-swarm prompt
+    渲染为 `## 项目根目录与路径规约` 段，明确告知 subagent 写到 project_root
+    不是 spec_dir。
+
+    note: 把 spec_dir 设为 tmp_path 本身（fixture monkeypatch.chdir 已切到 tmp_path），
+    这样 _find_run_dir 能从 cwd 同级找到 run_dir。
+    """
+    # spec_dir == tmp_path（cwd），让 init 自动推断 + plan 能定位 run_dir
+    project_root = tmp_path / "my-app"
+    project_root.mkdir()
+    (tmp_path / ".config.json").write_text(json.dumps({
+        "slug": "demo",
+        "phase": "tasks",
+        "project_root": str(project_root),
+    }), encoding="utf-8")
+    tasks_md = tmp_path / "tasks.md"
+    tasks_md.write_text(
+        "## 阶段 1: 阶段 1\n"
+        "- [ ] 1.1 任务 @writes:src/f1.py _需求：1.1_\n",
+        encoding="utf-8",
+    )
+
+    init = json.loads(run_swarm("init", "--tasks", str(tasks_md)).stdout)
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", init["run_id"])
+
+    coder_task_md = run_dir / "agents" / "coder-g1-s1-r1" / "task.md"
+    assert coder_task_md.exists(), f"coder task.md 不存在：{coder_task_md}"
+    content = coder_task_md.read_text(encoding="utf-8")
+    # project_root 出现在 context block + 路径规约段
+    assert str(project_root) in content
+    assert "项目根目录与路径规约" in content
+    assert "spec_dir" in content
+    assert "严禁" in content  # 禁止把代码写到 spec_dir
+
+
+def test_coder_prompt_fallback_when_project_root_unset(tmp_path, run_swarm):
+    """老 spec 兼容：.config.json 没有 project_root → prompt 给出 fallback 文本，
+    不阻断流程（保持 0.10.14 及之前的行为）。"""
+    (tmp_path / ".config.json").write_text(json.dumps({
+        "slug": "legacy",
+        "phase": "tasks",
+        # project_root 字段缺失（模拟 pre-0.10.15 spec）
+    }), encoding="utf-8")
+    tasks_md = tmp_path / "tasks.md"
+    tasks_md.write_text(
+        "## 阶段 1: 阶段 1\n- [ ] 1.1 任务 @writes:src/f.py _需求：1.1_\n",
+        encoding="utf-8",
+    )
+    init = json.loads(run_swarm("init", "--tasks", str(tasks_md)).stdout)
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", init["run_id"])
+
+    coder_task_md = run_dir / "agents" / "coder-g1-s1-r1" / "task.md"
+    content = coder_task_md.read_text(encoding="utf-8")
+    # fallback 提示出现（未设置 project_root 时）
+    assert "未设置" in content

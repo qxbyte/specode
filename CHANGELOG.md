@@ -4,6 +4,60 @@
 
 _no entries yet_
 
+## 0.10.18 (2026-05-23)
+
+### Fixed — `commands/task-swarm.md` 第 4 步软提示导致主代理提前 advance + team-lead 代笔补 STATUS
+
+**用户痛点（login-page 事故现场）**：主代理在 `coder-p0fix-g1-r1-f0` 还 ⠙ streaming 时就调 `advance --phase p0-fix`，依据是 team-lead 报告"已修复 result.md STATUS line"。advance 看磁盘上 STATUS 合法 → 返回 `ok:true` 进入 validation → validator 验出 P0 还在（f0 实际没修完）→ 主代理 fork 自定义命名的 `coder-fix-session-validation`（违反 task_swarm 命名规则）→ 同时**两个 agent 并发改 session.js**，状态机进一步崩坏。
+
+事后看 state.json：`phase=v-fix`、`failed_status=failed`、`vfix_in_flight=[coder-vfix-g1-r2-f0]`（task_swarm 期待的 agent 没被 spawn，只有目录壳），teammates UI 显示 2 个 streaming agent 在改同文件。
+
+根因三层：
+
+1. **commands/task-swarm.md 第 4 步措辞 "等齐 subagent 返回（PostToolUse hook 注入提醒，可读可忽略）"** —— "可忽略"等于告诉模型可以不等
+2. **team-lead 代笔补 STATUS 反模式没明确禁止** —— 主代理凭口头报告判定完成
+3. **自定义命名 agent 绕开 task_swarm in_flight 规则没明确禁止** —— validator fail 后主代理另起 `coder-fix-xxx` 而不用 plan 给的 `coder-vfix-g{N}-r{R}-f{I}`
+
+修复 `commands/task-swarm.md`：
+
+#### 第 4 步全文重写为强约束
+
+旧：`4. 等齐 subagent 返回（PostToolUse hook 注入提醒，可读可忽略）`
+
+新：完整约束（节选）：
+
+> - **必须**先在主代理 UI 看 "Waiting for N teammates" 区域，**所有** fork 出去的 Task 都 ✓ completed 才能进 step 5；**任何 ⠙ streaming / ⠴ running Bash 的就不能 advance**。
+> - **不要**凭口头报告判定完成——包括 team-lead / 其他平台 agent 说"已修复 STATUS"/"已完成"。**只有** subagent 自己的 Task tool 返回 ✓ completed 才算数。
+> - PostToolUse hook 注入的"plan 提醒"**不是**"立即 advance"指令。
+> - 不确定时调 `task_swarm.py plan --run <run_id>`，若返回 `action: *-waiting`，**禁止** advance。
+>
+> **常见误判**：
+> - "team-lead 说改完了" ≠ subagent 真完成
+> - "f0 跑了 30 个 tool 看起来快完了" ≠ completed
+> - "其他 4 个都 ✓ 了最后 1 个估计也快" ≠ 可以提前；advance 之后没回头路
+
+step 3 也加了一句明确禁止自定义 agent_key：
+
+> `coder-fix-xxx` / `coder-session-fix` 等自定义命名**全部禁止**，必须用 plan 给的 `coder-vfix-g{N}-r{R}-f{I}` 等规范名
+
+#### 新节「advance 报 result.md 缺 STATUS / 解析失败的正确应对」
+
+放在「异常出口」前。明确列出 4 条错误做法（手补 STATUS / 凭口头报告 advance / 凭印象判定 / 起新名字 agent）+ 正确做法 5 步（保留残缺 result.md / 查 in_flight 状态 / 等 subagent 真完成 / 用同一 agent_key 重 fork / 多次失败报用户 abort）。
+
+核心断言：
+
+> STATUS 缺失多半意味着 subagent 提前退出 / 工作未完成——代码改动可能根本没刷到磁盘。手补 STATUS 后 advance 通过，下游 reviewer/validator 拿到的是半成品代码，必然 fail。
+
+### 未做的事
+
+- **未修 task_swarm.py advance 加 subagent lifecycle 检查**：stdlib-only 脚本跨不到 Claude Code/codebuddy 框架的 Task spawn API，没法验证"所有 spawn 的 Task 是否真已退出"。约束只能在主代理文档层做。
+- **未扩展 PreToolUse hook 拦截 subagent outbox 写**：team-lead 是独立 subagent，它的 session_id 不在 specode `~/.specode/sessions/` 里，hook 静默放行——这是 0.10.13 hook 的设计盲区，但扩展拦截会误伤合法 subagent 的正常 outbox 写（coder 写 result.md 本来就该走 Edit），暂不动。
+
+### Tests
+
+- 纯文档改动，无 Python 代码路径影响
+- 全套 pytest **212/212 PASS**
+
 ## 0.10.17 (2026-05-23)
 
 ### Changed — `commands/task-swarm.md` 顶部加强制前置阅读指引（修软提示无效问题）

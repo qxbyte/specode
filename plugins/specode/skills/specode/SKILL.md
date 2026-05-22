@@ -37,7 +37,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 | 命令 | 解析 → 关键 CLI 调用 |
 |---|---|
-| `/specode:spec <需求>` | 解析名称前缀 `<名称>：<内容>` / 推导英文 slug → `spec_init.py --name <slug> --requirement-name "<显示名>" --source-text "<需求>" --session <session_id>` |
+| `/specode:spec <需求>` | **优先** `-n <slug> <需求>`：slug 直接用作 spec 目录名；**兼容** `<名称>：<内容>` / 纯 `<需求>`（主代理推导 slug）→ `spec_init.py --name <slug> --requirement-name "<显示名>" --source-text "<需求>" --session <session_id>` |
 | `/specode:continue [slug]` | 无 slug：`spec_session.py list-specs` 列表 → 用户回编号；有 slug：`spec_session.py acquire --spec <dir> --session <id>`（LockHeld → `takeover-options` 选择器）→ `continue` + `load` → 状态摘要 + 状态行 footer → end turn |
 | `/specode:end` | `spec_session.py end --session <id>`（释锁 + mode=ended） |
 | `/specode:status` | `spec_session.py status --session <id>` 或 `spec_status.py` |

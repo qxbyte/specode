@@ -1,6 +1,6 @@
 ---
 description: 进入 specode 持久会话，开始新 spec 或调用子命令
-argument-hint: "<需求> | <名称>: <需求> | -h | --set-vault <p> | --set-root <p> | --detect-vault | --vault-status | --sync-status"
+argument-hint: "-n <slug> <需求> | <需求> | <名称>: <需求> | -h | --set-vault <p> | --set-root <p> | --detect-vault | --vault-status | --sync-status"
 ---
 
 /specode:spec $ARGUMENTS
@@ -34,7 +34,7 @@ confirm 写入位置（`~/.config/specode/config.json`），然后 end turn。**
 
 ## 第三步：doc_root 确认（新建 spec 前必做）
 
-若 `$ARGUMENTS` 是 `<需求>` 或 `<名称>: <需求>`（既不是第一步的 fast-path、也不是第二步的 set 命令），
+若 `$ARGUMENTS` 是 `-n <slug> <需求>` / `<需求>` / `<名称>: <需求>`（既不是第一步的 fast-path、也不是第二步的 set 命令），
 **先**调 `spec_vault.py status` 拿到 `source` 字段：
 
 ```sh
@@ -51,7 +51,35 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 ## 第四步：常规创建 spec
 
-解析 `<名称>：<内容>` → 推导英文 slug，然后：
+按 `$ARGUMENTS` 形态分两个子分支，**优先 4a**：
+
+### 4a. 显式 `-n <slug>` / `--name <slug>`（推荐）
+
+若 `$ARGUMENTS` 以 `-n <slug>` 或 `--name <slug>` 开头：
+
+- 第二个 token 是 spec 目录名 slug，**保留用户原文**，不做翻译/推导。
+- 剩余文本 → `source_text`（原始需求）。
+- `requirement_name` 默认按 slug 推：短横线 → 空格 + 首字母大写
+  （如 `user-login` → `User Login`）。
+
+示例：
+
+- `/specode:spec -n user-login 添加用户登录功能` →
+  `--name user-login --requirement-name "User Login" --source-text "添加用户登录功能"`
+- `/specode:spec --name dark-mode 加个深色主题切换` →
+  `--name dark-mode --requirement-name "Dark Mode" --source-text "加个深色主题切换"`
+
+**这条路径的好处**：用户能精确控制 `<doc_root>/specs/<slug>/` 的目录名，
+不会出现"主代理把 '订单退款' 推成 `order-refund-flow` 但用户想要 `refund`"的歧义。
+
+### 4b. 推导式（兼容、不推荐）
+
+若 `$ARGUMENTS` 是纯 `<需求>` 或 `<名称>: <需求>`：
+
+- 按 `references/workflow.md` §1.1「名称前缀解析 + slug 推导」由主代理推导。
+- **推导结果对用户不可预知**——若用户在意目录名，应引导改用 4a 形式。
+
+### 调用 spec_init.py
 
 ```sh
 sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \

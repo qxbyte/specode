@@ -24,21 +24,33 @@ phase 切换永远走 `spec_session.py phase-transition --spec <dir> --session <
 接受三种形式：
 
 ```text
-/specode:spec <需求文本>
+/specode:spec -n <slug> <需求文本>            ← 推荐：直接指定 spec 目录名
+/specode:spec --name <slug> <需求文本>        ← 同上（长形式）
+/specode:spec <需求文本>                       ← 兼容：主代理推导 slug
+/specode:spec <名称>：<需求文本>               ← 兼容：从前缀提显示名 + 推导 slug
 /specode:spec <需求文本> --root /path/to/dir
 /specode:spec <文件路径>
 ```
 
-`<需求文本>` 解析步骤：
+`<需求文本>` 解析步骤（**有 `-n` / `--name` 时跳过 step 1 + 2，直接走 step 0**）：
 
-1. **名称前缀解析**：检测前 30 字符内是否含 `<名称>：<内容>`（全角 `：`）或 `<名称>: <内容>`（半角 `:` 必须有空格）。命中：
+0. **显式 slug**（**优先**，避免推导歧义）：若 `$ARGUMENTS` 以 `-n <slug>` 或 `--name <slug>` 开头：
+ - `<slug>` 直接当 spec 目录名（保留用户原文，**不做翻译/推导**；建议但不强制 短+小写+连字符 ≤64 字符）
+ - `requirement_name` 默认按 slug 推：短横线 → 空格 + 首字母大写（如 `user-login` → `User Login`）
+ - 剩余文本 → `source_text`
+ - **跳过下面 1+2 步**，直接进 §1.2
+ - 例：`/specode:spec -n user-login 添加用户登录功能`
+   → `--name user-login --requirement-name "User Login" --source-text "添加用户登录功能"`
+
+1. **名称前缀解析**（兼容路径，仅当未给 `-n` 时）：检测前 30 字符内是否含 `<名称>：<内容>`（全角 `：`）或 `<名称>: <内容>`（半角 `:` 必须有空格）。命中：
  - 左半部分 → 显示名（中文允许；保留为 `requirementName`）
  - 右半部分 → 源需求文本（`--source-text`）
  - 不对路径 / URL / 无冒号输入做拆分
-2. **slug 推导**（由你负责，CLI 不会从中文推 slug）：
+2. **slug 推导**（兼容路径，仅当未给 `-n` 时；由你负责，CLI 不会从中文推 slug）：
  - 读完用户需求后，给一个**短 + 语义 + 英文 + 小写 + 连字符** ≤64 字符 slug
  - 例：`login-password-rule`、`undo-redo`、`dark-mode`、`api-rate-limit`
-3. **文件路径模式**：若 `<需求>` 是一个可读文件路径，先 Read 该文件，把内容当成源文本继续走前两步。
+ - **注意推导结果对用户不可预知**——若用户在意目录名，应引导用户改用 step 0 的 `-n` 形式
+3. **文件路径模式**：若 `<需求>` 是一个可读文件路径，先 Read 该文件，把内容当成源文本继续走前面 step 0-2。
 4. 提取根目录提示（`--root`）、工作流提示（如用户已说"做个 bugfix"）、约束、验证期望。
 
 ### 1.2 调 `spec_init.py`

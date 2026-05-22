@@ -4,6 +4,31 @@
 
 _no entries yet_
 
+## 0.10.14 (2026-05-22)
+
+### Added — `/specode:spec -n <slug> <需求>` 显式指定 spec 目录名
+
+用户痛点：当前 `/specode:spec <需求>` 走"主代理推导英文 slug"路径——推导结果对用户不可预知（如用户想要 `refund`，主代理可能推成 `order-refund-flow`）。即使用前缀形式 `<名称>：<内容>`，左侧也只是 `requirement_name`（中文显示名），slug 仍是主代理推。用户无法精确控制 `<doc_root>/specs/<slug>/` 的目录名。
+
+`spec_init.py` 的 CLI 层早就支持 `--name <slug>`（line 230，必填），bug 在文档/指引层始终引导主代理"推导"。本版本在 4 处文档加入显式 `-n` / `--name` 路径作为**推荐形式**：
+
+- `commands/spec.md`：argument-hint 加 `-n <slug> <需求>` 在最前；第四步拆成 4a（显式 `-n`，推荐）+ 4b（推导，兼容）
+- `skills/specode/SKILL.md` 路由表第一行：标注"优先 `-n <slug>`"
+- `skills/specode/references/workflow.md` §1.1：加 step 0「显式 slug」，明确"有 `-n` 时跳过 step 1+2 的前缀解析与推导"
+
+`requirement_name` 默认从 slug 推：短横线 → 空格 + 首字母大写（如 `user-login` → `User Login`）。
+
+例：
+- `/specode:spec -n user-login 添加用户登录功能` → `--name user-login --requirement-name "User Login" --source-text "添加用户登录功能"`
+- `/specode:spec --name dark-mode 加个深色主题切换` → `--name dark-mode --requirement-name "Dark Mode" --source-text "加个深色主题切换"`
+
+旧形式（纯 `<需求>` / `<名称>：<内容>`）保留兼容，但 workflow.md 明确"推导结果对用户不可预知；若用户在意目录名应引导改用 `-n` 形式"。
+
+### Tests
+
+- 无新增测试：`spec_init.py --name` 一直是必填字符串参数，无需在 CLI 层验证；本次纯文档改动，不影响代码路径。
+- 全套 pytest **186/186 PASS**
+
 ## 0.10.13 (2026-05-22)
 
 ### Fixed — task-swarm v-fix prompt 写到 `r{round+1}`，但 state 命名是 `r{round}`（导致 "产物文件不存在" 死锁）

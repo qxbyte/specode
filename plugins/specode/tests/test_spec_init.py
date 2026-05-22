@@ -177,18 +177,69 @@ def test_spec_init_missing_session_arg_errors(run_script, doc_root, fake_home):
     assert "session" in cp.stderr.lower()
 
 
-def test_spec_init_rejects_invalid_slug(run_script, doc_root, fake_home, make_session_id):
-    """Slug must be lowercase alnum + hyphen; CamelCase rejected with exit 3."""
+@pytest.mark.parametrize("bad_slug,why", [
+    ("evil/path", "含 /"),
+    ("bad\\slash", "含 \\"),
+    ("bad<x>", "含 < >"),
+    ("bad:colon", "含 :"),
+    ("bad*star", "含 *"),
+    ("has space", "含空格"),
+    (".hidden", "首字符 ."),
+    # 首字符 - 由 argparse 在 --name 解析阶段就被拒（"-" 当作 flag prefix），
+    # 不会进入 SLUG_RE。本测试不 cover 这条——已在更外层兜底。
+    ("CON", "Windows 保留名"),
+    ("nul", "Windows 保留名"),
+    ("trailing.", "末尾 ."),
+    ("", "空 slug"),
+])
+def test_spec_init_rejects_invalid_slug(
+    run_script, doc_root, fake_home, make_session_id, bad_slug, why
+):
+    """0.10.16+：放宽到 Unicode，但仍拒绝文件系统危险字符 / Windows 保留名等。"""
     sid = make_session_id()
     cp = run_script(
         "spec_init.py",
-        "--name", "BadSlug",
+        "--name", bad_slug,
         "--requirement-name", "Bad",
         "--source-text", "x",
         "--session", sid,
     )
-    assert cp.returncode == 3
-    assert "slug" in cp.stderr.lower() or "非法" in cp.stderr
+    assert cp.returncode == 3, (
+        f"slug={bad_slug!r} ({why}) 应被拒，但 exit={cp.returncode}\n"
+        f"stderr={cp.stderr}"
+    )
+    assert "非法" in cp.stderr or "slug" in cp.stderr.lower()
+
+
+@pytest.mark.parametrize("ok_slug", [
+    "user-login",       # 标准 ASCII
+    "UserLogin",        # 大写也允许（0.10.16+ 放宽）
+    "登录页面",         # 中文
+    "ログイン",         # 日文
+    "auth_v2",          # 下划线 + 数字
+    "spec.with.dots",   # 中间含 .（仅首字符不可）
+    "user-1.0.0",       # 版本号风格
+])
+def test_spec_init_accepts_unicode_and_extended_ascii_slug(
+    run_script, doc_root, fake_home, make_session_id, ok_slug
+):
+    """0.10.16+：Unicode (中文/日文/emoji) 与扩展 ASCII (大写/下划线/点) 都允许。"""
+    sid = make_session_id()
+    cp = run_script(
+        "spec_init.py",
+        "--name", ok_slug,
+        "--requirement-name", "Test",
+        "--source-text", "x",
+        "--session", sid,
+    )
+    assert cp.returncode == 0, (
+        f"slug={ok_slug!r} 应被接受，但 exit={cp.returncode}\n"
+        f"stderr={cp.stderr}"
+    )
+    payload = json.loads(cp.stdout)
+    spec_dir = Path(payload["spec_dir"])
+    assert spec_dir.exists()
+    assert spec_dir.name == ok_slug  # 目录名跟用户原文一致
 
 
 def test_spec_init_root_override_wins(

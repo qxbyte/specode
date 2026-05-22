@@ -171,7 +171,37 @@ def _load_template(name: str) -> str:
 # 工具
 # -------------------------------------------------------------------------
 
-SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
+# 0.10.16+：允许 Unicode（中文 / 日文 / emoji 等），仅禁文件系统危险字符。
+# 拒：< > : " / \ | ? *（Windows 禁字符）、控制字符、任何空白（避免 shell 转义麻烦）。
+# 首字符额外拒：. （避免隐藏文件）、- （避免被误判为 CLI flag）。
+# 长度 1-80。
+SLUG_RE = re.compile(
+    r'^[^<>:"/\\|?*\s\x00-\x1f.\-]'
+    r'[^<>:"/\\|?*\s\x00-\x1f]{0,79}$'
+)
+
+# Windows 保留名（case-insensitive）——即使字符合法也不能用作文件夹名
+_WIN_RESERVED = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
+
+def _slug_invalid_reason(slug: str) -> Optional[str]:
+    """返回 slug 非法原因（用户可读）；合法返回 None。"""
+    if not slug:
+        return "slug 不能为空"
+    if not SLUG_RE.match(slug):
+        return (
+            'slug 不能含 < > : " / \\ | ? * 或空白字符；'
+            '不能以 . 或 - 开头；长度 1-80'
+        )
+    if slug.upper() in _WIN_RESERVED:
+        return f"slug 是 Windows 保留名 ({slug!r}) — 请换一个"
+    if slug.endswith(".") or slug.endswith(" "):
+        return "slug 不能以 . 或空格结尾（Windows 限制）"
+    return None
 
 
 def _now_iso() -> str:
@@ -242,10 +272,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_detect(ns)
 
     slug = args.name.strip()
-    if not SLUG_RE.match(slug):
-        sys.stderr.write(
-            f"非法 slug：{slug!r}（仅允许小写字母、数字、短横线，开头必须是字母/数字，长度 ≤ 80）。\n"
-        )
+    reason = _slug_invalid_reason(slug)
+    if reason:
+        sys.stderr.write(f"非法 slug：{slug!r}（{reason}）。\n")
         return 3
 
     # 1. 解析 doc_root

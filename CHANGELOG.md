@@ -4,6 +4,68 @@
 
 _no entries yet_
 
+## 0.10.16 (2026-05-23)
+
+### Fixed — slug 强制 ASCII 与 0.10.14 文档"保留原文不做翻译"自相矛盾（中文 slug 被静默换成英文）
+
+复现：用户在 codebuddy 跑 `/specode:spec -n 登录页面 帮我做一个简单的登录页面`。主代理按 0.10.14 4a 路径调 `spec_init.py --name 登录页面 ...`，CLI 报错"非法 slug"（exit 3）。主代理**自动 fallback 到 4b 推导**，把 slug 换成 `login-page` 再调一次（成功）——但用户不知道目录名被偷偷换了。
+
+根因有两层：
+
+1. **代码层**：`spec_init.py:174` 的 `SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")` 强制 ASCII 小写+数字+短横线，跟 0.10.14 commands/spec.md 4a 承诺的"保留用户原文，不做翻译/推导"自相矛盾。这条 ASCII 限制是早期跨 OS 文件系统兼容性的历史包袱，但现代 Python 3 + Windows 10+/macOS/Linux 都支持 UTF-8 路径，已无必要。
+2. **流程层**：主代理在 SLUG_RE 失败后**静默 fallback 推导**，没让用户知情。用户用 `-n` 形式就是想精确控制目录名，自动换成英文 = 欺骗用户。
+
+修复：
+
+1. **`spec_init.py:174` SLUG_RE 放宽**：
+
+   ```python
+   # 0.10.16+：允许 Unicode（中文/日文/emoji 等），仅禁文件系统危险字符
+   SLUG_RE = re.compile(
+       r'^[^<>:"/\\|?*\s\x00-\x1f.\-]'
+       r'[^<>:"/\\|?*\s\x00-\x1f]{0,79}$'
+   )
+   ```
+
+   拒：`< > : " / \ | ? *`（Windows 禁字符）、控制字符 `\x00-\x1f`、任何空白（避免 shell 转义麻烦）；首字符额外拒 `.`（隐藏文件）、`-`（CLI flag 歧义）。新增 `_WIN_RESERVED` set 拒 Windows 保留名（`CON` / `PRN` / `AUX` / `NUL` / `COM1-9` / `LPT1-9`）。新增 `_slug_invalid_reason(slug)` 返回用户可读的拒绝原因（替代单一错误消息）。
+
+2. **`commands/spec.md` 4a 加分支**：
+
+   > spec_init.py exit 3（slug 非法）时：**禁止**主代理**静默 fallback 到 4b 推导**——用户用了 `-n` 形式就是想精确控制目录名，自动换成英文 slug 是欺骗用户。正确做法：把 CLI stderr 报给用户让用户重选，仅当用户明确说"你帮我想一个"时才走 4b 推导。
+
+3. **`references/workflow.md` step 0** 同步说明 + 例 2（中文 slug）。
+
+例 2（新支持）：
+
+```
+/specode:spec -n 登录页面 帮我做一个简单的登录页面
+  → --name 登录页面
+  → --requirement-name "登录页面"（非 ASCII slug 复用原文做显示名）
+  → --source-text "帮我做一个简单的登录页面"
+  → specs/登录页面/ 目录被创建
+```
+
+### Added — `/specode:spec -h` 帮助文本顶部加「用法」节
+
+之前 help 只有"会话与锁 / 工作流 / 会话日志"三节，没列实际 CLI 用法。0.10.14/0.10.15 加了 `-n <slug>` 显式语法和 `project-root-choice` selector，help 没跟上。本版本在 `HELP_OUTPUT_TEMPLATE` 顶部加「用法」节（5 行简表）：
+
+```
+用法：
+  /specode:spec -n <slug> <需求>     推荐：显式指定 spec 目录名（slug 直接用作 specs/<slug>/）
+  /specode:spec <需求>                兼容：主代理从 <需求> 推导 slug（结果不可预知）
+  /specode:continue [slug]            接管已有 spec（无 slug 时列表选）
+  /specode:end                        退出当前 spec 模式
+  /specode:status                     查看会话与 spec 状态
+```
+
+工作流流程图保持原样——`project-root-choice` 是 selector 自动引导的内部步骤，用户不必在 help 里看到字段名。
+
+### Tests
+
+- 重写 `test_spec_init_rejects_invalid_slug` 为 parametrize 11 case：`evil/path` / `bad\\slash` / `bad<x>` / `bad:colon` / `bad*star` / `has space` / `.hidden` / `CON` / `nul` / `trailing.` / 空 slug 全部 exit 3
+- 新增 `test_spec_init_accepts_unicode_and_extended_ascii_slug` parametrize 7 case：`user-login` / `UserLogin` / `登录页面` / `ログイン` / `auth_v2` / `spec.with.dots` / `user-1.0.0` 全部 exit 0，且磁盘 spec_dir.name == 用户原文
+- 全套 pytest **212/212 PASS**
+
 ## 0.10.15 (2026-05-22)
 
 ### Added — `project_root`：spec 文档目录与代码实现目录解耦

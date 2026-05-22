@@ -58,16 +58,26 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 若 `$ARGUMENTS` 以 `-n <slug>` 或 `--name <slug>` 开头：
 
 - 第二个 token 是 spec 目录名 slug，**保留用户原文**，不做翻译/推导。
+- 0.10.16+ 起允许 Unicode（中文/日文/emoji 都可），只禁文件系统危险字符
+  （`< > : " / \ | ? *`、空白字符、首字符 `.` 或 `-`、Windows 保留名）。
 - 剩余文本 → `source_text`（原始需求）。
-- `requirement_name` 默认按 slug 推：短横线 → 空格 + 首字母大写
-  （如 `user-login` → `User Login`）。
+- `requirement_name` 默认：英文 slug 按短横线 → 空格 + 首字母大写
+  （如 `user-login` → `User Login`）；非 ASCII slug（如中文）直接复用原文。
 
 示例：
 
 - `/specode:spec -n user-login 添加用户登录功能` →
   `--name user-login --requirement-name "User Login" --source-text "添加用户登录功能"`
-- `/specode:spec --name dark-mode 加个深色主题切换` →
-  `--name dark-mode --requirement-name "Dark Mode" --source-text "加个深色主题切换"`
+- `/specode:spec -n 登录页面 帮我做一个简单的登录页面` →
+  `--name 登录页面 --requirement-name "登录页面" --source-text "帮我做一个简单的登录页面"`
+
+**spec_init.py exit 3（slug 非法）时的应对**：
+
+- **禁止**主代理**静默 fallback 到 4b 推导**——用户用了 `-n` 形式就是想精确控制目录名，
+  自动换成英文 slug 是欺骗用户。
+- 正确做法：把 CLI 的 stderr 错误原信息（如"不能含 / \\ * ? 或空白；不能以 - 开头"）
+  报给用户，要求用户重新提供一个合法 slug，**不要替用户决定**。
+- 仅当用户明确说"你帮我想一个"时才走 4b 推导。
 
 **这条路径的好处**：用户能精确控制 `<doc_root>/specs/<slug>/` 的目录名，
 不会出现"主代理把 '订单退款' 推成 `order-refund-flow` 但用户想要 `refund`"的歧义。

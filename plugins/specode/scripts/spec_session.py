@@ -746,6 +746,13 @@ def _get_plugin_version() -> str:
 
 HELP_OUTPUT_TEMPLATE = """specode v$version — Specification-driven workflow
 
+用法：
+  /specode:spec -n <slug> <需求>     推荐：显式指定 spec 目录名（slug 直接用作 specs/<slug>/）
+  /specode:spec <需求>                兼容：主代理从 <需求> 推导 slug（结果不可预知）
+  /specode:continue [slug]            接管已有 spec（无 slug 时列表选）
+  /specode:end                        退出当前 spec 模式
+  /specode:status                     查看会话与 spec 状态
+
 会话与锁：
   每次会话拥有唯一 session_id，hook 会在 additionalContext 中持续注入。
   CLI 调用必须传 --session <id>。当前 spec 锁记录在 <spec-dir>/.config.json。

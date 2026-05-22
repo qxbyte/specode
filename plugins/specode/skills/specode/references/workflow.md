@@ -35,12 +35,17 @@ phase 切换永远走 `spec_session.py phase-transition --spec <dir> --session <
 `<需求文本>` 解析步骤（**有 `-n` / `--name` 时跳过 step 1 + 2，直接走 step 0**）：
 
 0. **显式 slug**（**优先**，避免推导歧义）：若 `$ARGUMENTS` 以 `-n <slug>` 或 `--name <slug>` 开头：
- - `<slug>` 直接当 spec 目录名（保留用户原文，**不做翻译/推导**；建议但不强制 短+小写+连字符 ≤64 字符）
- - `requirement_name` 默认按 slug 推：短横线 → 空格 + 首字母大写（如 `user-login` → `User Login`）
+ - `<slug>` 直接当 spec 目录名（保留用户原文，**不做翻译/推导**）
+ - 0.10.16+ 起允许 Unicode（中文/日文/emoji 都可），仅禁文件系统危险字符
+   （`< > : " / \ | ? *`、空白、首字符 `.` 或 `-`、Windows 保留名 `CON` / `PRN` / `AUX` / `NUL` / `COM1-9` / `LPT1-9`）
+ - `requirement_name` 默认：英文 slug 按短横线 → 空格 + 首字母大写（`user-login` → `User Login`）；非 ASCII slug（中文等）直接复用原文
  - 剩余文本 → `source_text`
  - **跳过下面 1+2 步**，直接进 §1.2
- - 例：`/specode:spec -n user-login 添加用户登录功能`
+ - 例 1：`/specode:spec -n user-login 添加用户登录功能`
    → `--name user-login --requirement-name "User Login" --source-text "添加用户登录功能"`
+ - 例 2：`/specode:spec -n 登录页面 帮我做一个简单的登录页面`
+   → `--name 登录页面 --requirement-name "登录页面" --source-text "帮我做一个简单的登录页面"`
+ - **slug 非法（spec_init.py exit 3）时**：不要 fallback 到 step 2 推导；把 CLI stderr 报给用户让用户重选，仅当用户明确说"你帮我想一个"时才走 step 2
 
 1. **名称前缀解析**（兼容路径，仅当未给 `-n` 时）：检测前 30 字符内是否含 `<名称>：<内容>`（全角 `：`）或 `<名称>: <内容>`（半角 `:` 必须有空格）。命中：
  - 左半部分 → 显示名（中文允许；保留为 `requirementName`）

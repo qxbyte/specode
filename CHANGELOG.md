@@ -4,6 +4,68 @@
 
 _no entries yet_
 
+## 0.10.21 (2026-05-23)
+
+### Fixed — writeback line-safe 算法对多行 `reproduce_cmd` 报"越界"
+
+**用户痛点（login-page 现场）**：validator-g1-r3 pass，`reproduce_cmd` 含多行（`cd C:\Users\qiang\login-page` + 空行 + `# 验证 P0...` + `node -e "..."`）。`task_swarm.py writeback` 报错：
+
+```
+writeback 越界：line 49
+原: '## 阶段 5: 集成测试'
+新: '# 1. 验证 Vite 构建成功（前端无编译错误）'
+```
+
+根因：`task_swarm_writeback.py:_format_findings_block` 把 multi-line `reproduce_cmd` 直接拼进 `f"> ✅ validator pass: \`{cmd}\`"` 的 inline backtick——这个字符串作为单元素追加进 `out` 列表。后续 `"\n".join(new_lines + block_lines)` 写入 tasks.md，**`cmd` 内部的 `\n` 被保留**，文件实际多了几行非 `>` 前缀的内容（如 `# 验证 P0 修复`、`node -e "..."`）。`_verify_line_safe` 行级对齐时发现新行不属于"checkbox toggle"也不"以 `>` 开头"，报"越界"。
+
+修复 `task_swarm_writeback.py:_format_findings_block`：
+
+```python
+if "\n" in cmd:
+    out.append(f"> ✅ validator{round_text} pass，复现命令：")
+    out.append("> ```")
+    for cmd_line in cmd.splitlines():
+        out.append(f"> {cmd_line}" if cmd_line else ">")
+    out.append("> ```")
+else:
+    cmd_text = f": `{cmd}`" if cmd else ""
+    out.append(f"> ✅ validator{round_text} pass{cmd_text}")
+```
+
+多行 cmd 用 `> ```fenced` ` 块，每行加 `> ` 前缀（包括空行用 `>`）→ 完全满足 `_verify_line_safe` 的"允许多出 `> ` 前缀或空行"规则。单行 cmd 仍 inline。
+
+### Changed — PreToolUse hook 对 `tasks.md` 从软提醒升级为强阻断
+
+**用户痛点（login-page 现场）**：上面 writeback 报越界后，主代理**手工 Edit tasks.md** 把 1-4 阶段所有 `[ ]` 改成 `[x]`——破坏 state.json 与 tasks.md 行号一致性，后续 writeback 永远过不去。0.10.13 PreToolUse hook 当时对 tasks.md 给的是**软提醒**（"本提醒不阻断当前工具调用"），主代理见 writeback 失败就绕过 CLI 自己改。
+
+修复 `spec_session.py:hook_on_pre_tool_use`：
+
+旧（软提醒，可忽略）：
+
+```python
+text = "## ⚠ 检测到正在直接 Edit/Write tasks.md ..."
+_emit_hook_additional_context(text, hook_event_name="PreToolUse")
+```
+
+新（强阻断，exit 2 + stderr 详细原因）：
+
+```python
+sys.stderr.write(
+    f"specode 阻断：主代理不得直接 Edit/Write `tasks.md` ...\n"
+    "若 writeback 本身报越界，请保留现场报告用户，让 task-swarm 算法层修，\n"
+    "**不要**手工抹平。\n"
+)
+sys.exit(2)
+```
+
+现在 `tasks.md` 跟 `.task-swarm/runs/*/state.json` / `agents/*/outbox/*` 同等待遇——active spec + task-swarm 进行中时主代理一律不能直接 Edit/Write，必须走 `task_swarm.py writeback` CLI。
+
+### Tests
+
+- 新增 `test_writeback_handles_multi_line_reproduce_cmd`：触发 multi-line reproduce_cmd writeback 全流程，断言不报越界 + tasks.md 包含 `> ```` 块 + 每行带 `> ` 前缀
+- 新增 `test_on_pre_tool_use_blocks_edit_of_tasks_md`：active spec + task_swarm_run_id 进行中 → Edit tasks.md → exit 2 + stderr 含 `task_swarm.py writeback` 引导
+- 全套 pytest **219/219 PASS**
+
 ## 0.10.20 (2026-05-23)
 
 ### Added — `--skip-validator` 人工验收模式：task-swarm 跳过 validator/v-fix

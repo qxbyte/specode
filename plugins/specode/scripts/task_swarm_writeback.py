@@ -131,8 +131,20 @@ def _format_findings_block(gf: GroupFindings) -> list[str]:
             if last_pass is not None:
                 round_text = f" g{last_pass.get('group')}-r{last_pass.get('round')}"
             cmd = gf.reproduce_cmd or ""
-            cmd_text = f": `{cmd}`" if cmd else ""
-            out.append(f"> ✅ validator{round_text} pass{cmd_text}")
+            # 0.10.21+：reproduce_cmd 可能含多行（cd + 多个 node/pytest 命令）。
+            # 直接 inline 进单行 `> ✅ validator pass: \`<cmd>\`` 会让多行字符串
+            # 写入 tasks.md 后被 splitlines 拆成多行，其中非首行不以 `>` 开头 →
+            # _verify_line_safe 报"writeback 越界"。
+            # 修法：单行 cmd 仍 inline；多行 cmd 单独占 `> ```` ... ` ` ``` ``` 块。
+            if "\n" in cmd:
+                out.append(f"> ✅ validator{round_text} pass，复现命令：")
+                out.append("> ```")
+                for cmd_line in cmd.splitlines():
+                    out.append(f"> {cmd_line}" if cmd_line else ">")
+                out.append("> ```")
+            else:
+                cmd_text = f": `{cmd}`" if cmd else ""
+                out.append(f"> ✅ validator{round_text} pass{cmd_text}")
         elif gf.final_verdict == "failed-deadloop":
             out.append("> ⚠️ validator failed-deadloop（连续 3 轮同一 fail 签名）；本 group 标 failed")
         else:

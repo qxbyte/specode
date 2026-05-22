@@ -351,6 +351,63 @@ def test_coder_prompt_includes_project_root_from_spec_config(tmp_path, run_swarm
     assert "严禁" in content  # 禁止把代码写到 spec_dir
 
 
+def test_writeback_handles_multi_line_reproduce_cmd(tmp_path, run_swarm):
+    """0.10.21+ 回归：validator pass 的 reproduce_cmd 含多行（cd ... + node -e "..."）
+    不应让 writeback 报"line-safe 越界"。
+
+    历史 bug（login-page 现场）：_format_findings_block 把 multi-line cmd 拼成
+    inline string，写入 tasks.md 后被 splitlines 拆出非 `>` 前缀的行，
+    _verify_line_safe 报"writeback 越界：line N 原 '## 阶段 5:' 新 '# 验证 ...'"。
+    """
+    # 自造 tasks.md（2 阶段，触发 stage 间插入注释）
+    p = tmp_path / "tasks.md"
+    p.write_text(
+        "## 阶段 1: 阶段 1\n"
+        "- [ ] 1.1 任务 @writes:src/f1.py _需求：1.1_\n"
+        "\n"
+        "## 阶段 2: 阶段 2\n"
+        "- [ ] 2.1 任务2 @writes:src/g2.py @depends-on:1 _需求：2.1_\n",
+        encoding="utf-8",
+    )
+    init = json.loads(run_swarm("init", "--tasks", str(p)).stdout)
+    run_id = init["run_id"]
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", run_id)
+    _write_coder_result(run_dir, "coder-g1-s1-r1")
+    run_swarm("advance", "--run", run_id, "--phase", "coding", "--round", "1")
+    _write_reviewer(run_dir, 1, with_p0=False)
+    run_swarm("advance", "--run", run_id, "--phase", "review", "--round", "1")
+    # 手工写 validator validation.md，含多行 reproduce_cmd
+    out_dir = run_dir / "agents" / "validator-g1-r1" / "outbox"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    multi_line_cmd_body = (
+        "# v\n"
+        "## 判定\npass\n"
+        "## 复现命令\n"
+        "```bash\n"
+        "cd /tmp/project\n"
+        "\n"
+        "# 验证 P0 修复\n"
+        "node -e \"console.log('ok')\"\n"
+        "```\n"
+        "## 按子任务的验证结果\n- [x] 1.1: pass\n\n"
+        "STATUS: ok\n"
+    )
+    (out_dir / "validation.md").write_text(multi_line_cmd_body, encoding="utf-8")
+    run_swarm("advance", "--run", run_id, "--phase", "validation", "--round", "1")
+    # writeback 必须成功（不报越界）
+    cp = run_swarm("writeback", "--run", run_id, "--group", "1")
+    assert cp.returncode == 0, (
+        f"writeback 失败：stderr={cp.stderr}\nstdout={cp.stdout}"
+    )
+    tasks_after = p.read_text(encoding="utf-8")
+    # 多行命令应该以 ``` fenced 块的形式出现，每行带 >
+    assert "validator g1-r1 pass，复现命令" in tasks_after
+    assert "> ```" in tasks_after
+    assert "> cd /tmp/project" in tasks_after
+    assert "> # 验证 P0 修复" in tasks_after
+
+
 def test_init_skip_validator_flag_persists_to_state(tmp_path, run_swarm):
     """0.10.20+：init --skip-validator 把 skip_validator=true 写入 state.json。"""
     p = _write_tasks_md(tmp_path, num_stages=1)

@@ -599,6 +599,34 @@ def test_on_pre_tool_use_blocks_write_to_agent_outbox(
     assert "outbox" in cp.stderr
 
 
+def test_on_pre_tool_use_blocks_edit_of_tasks_md(
+    run_script, fake_home, make_session_id, doc_root
+):
+    """0.10.21+：active spec + task_swarm_run_id 进行中时，tasks.md 直写
+    从软提醒升级为强阻断（exit 2）。
+
+    历史 bug：login-page 现场主代理见 writeback 越界报错就手工 Edit tasks.md
+    把 [ ] 改成 [x]，破坏 state.json 与 tasks.md 行号一致性，后续 writeback
+    永远过不去。"""
+    sid = make_session_id()
+    run_id = "20260101-deadbe"
+    spec_dir = _prep_active_with_task_swarm(fake_home, doc_root, sid, run_id)
+    tasks_md = spec_dir / "tasks.md"
+    tasks_md.write_text("## 阶段 1: x\n- [ ] 1.1 t\n", encoding="utf-8")
+
+    cp = run_script(
+        "spec_session.py", "on-pre-tool-use",
+        stdin=json.dumps({
+            "session_id": sid,
+            "tool_name": "Edit",
+            "tool_input": {"file_path": str(tasks_md)},
+        })
+    )
+    assert cp.returncode == 2, f"expected deny exit=2, got {cp.returncode}\nstderr={cp.stderr}"
+    assert "tasks.md" in cp.stderr
+    assert "task_swarm.py writeback" in cp.stderr
+
+
 def test_on_pre_tool_use_allows_normal_source_file_edit(
     run_script, fake_home, make_session_id, doc_root
 ):

@@ -2192,7 +2192,10 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
         sys.stderr.write(reason)
         sys.exit(2)
 
-    # 软提醒：tasks.md 直写
+    # 0.10.21+：tasks.md 直写从软提醒升级为强阻断
+    # 理由：login-page 现场显示主代理见 writeback 越界报错就手工 Edit tasks.md
+    # 把 `[ ]` 改成 `[x]`，破坏了 state.json 与 tasks.md 行号一致性，后续
+    # writeback 永远过不去。跟 state.json / outbox 同等待遇——只能走 CLI。
     try:
         tasks_md = (spec_dir / "tasks.md").resolve()
     except Exception:
@@ -2201,18 +2204,21 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
     if edited != tasks_md:
         return
 
-    text = (
-        "## ⚠ 检测到正在直接 Edit/Write `tasks.md`\n\n"
-        f"task-swarm run `{run_id}` 进行中。直接编辑 `tasks.md` 会破坏 "
-        "line-safe diff 约束，并让主代理 / state.json 之间的同步失效。\n\n"
-        "请放弃当前编辑，改走：\n\n"
-        "```bash\n"
-        f"task_swarm.py writeback --run {run_id} --group <N>\n"
-        "```\n\n"
-        "本提醒**不阻断**当前工具调用——是否继续由你判断；"
-        "若坚持直写，请准备好向用户解释 writeback CLI 的回写日志为何出现 diff 越界。"
+    reason = (
+        f"specode 阻断：主代理不得直接 Edit/Write `tasks.md`\n\n"
+        f"文件: {edited}\n"
+        f"run_id: {run_id}\n\n"
+        "`tasks.md` 在 task-swarm run 进行中是受控产物——所有 checkbox toggle "
+        "（`[ ]` → `[x]`）和评审注释块都必须通过 `task_swarm.py writeback` CLI 走，\n"
+        "走 line-safe diff 算法保证 state.json 行号引用不被破坏。\n\n"
+        "已知反模式：见 writeback 越界报错就手工改 tasks.md → state.json 行号失效 → 后续\n"
+        "writeback 永远过不去 → 主代理陷入死循环（参 0.10.13 user-login / 0.10.21 login-page 事故）。\n\n"
+        "正确路径: task_swarm.py writeback --run <run_id> --group <N>\n"
+        "若 writeback 本身报越界，请保留现场报告用户，让 task-swarm 算法层修，**不要**\n"
+        "手工抹平。\n"
     )
-    _emit_hook_additional_context(text, hook_event_name="PreToolUse")
+    sys.stderr.write(reason)
+    sys.exit(2)
 
 
 # -------------------------------------------------------------------------

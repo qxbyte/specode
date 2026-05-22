@@ -47,8 +47,11 @@ class GroupFindings:
     stages: list[int]  # group 内 stage 编号
     findings: list[StageFinding] = field(default_factory=list)
     validator_history: list[dict] = field(default_factory=list)
-    final_verdict: str = "pass"  # pass / fail / failed-deadloop
+    final_verdict: str = "pass"  # pass / fail / failed-deadloop / manual-review
     reproduce_cmd: str = ""
+    # 0.10.20+：True 表示这次 run 是 init --skip-validator 启动的，writeback
+    # 注释块写"⏭️ validator 已跳过（人工验收模式）"而非 "✅ validator ... pass"
+    skip_validator: bool = False
 
 
 @dataclass
@@ -112,24 +115,29 @@ def _format_findings_block(gf: GroupFindings) -> list[str]:
     """
     out: list[str] = []
     out.append("")  # 空行
-    # 顶部 validator 最终结论
-    last_pass = None
-    for h in gf.validator_history:
-        if h.get("verdict") == "pass":
-            last_pass = h
-            break
-    if gf.final_verdict == "pass":
-        round_text = ""
-        if last_pass is not None:
-            round_text = f" g{last_pass.get('group')}-r{last_pass.get('round')}"
-        cmd = gf.reproduce_cmd or ""
-        cmd_text = f": `{cmd}`" if cmd else ""
-        out.append(f"> ✅ validator{round_text} pass{cmd_text}")
-    elif gf.final_verdict == "failed-deadloop":
-        out.append("> ⚠️ validator failed-deadloop（连续 3 轮同一 fail 签名）；本 group 标 failed")
+    # 0.10.20+：skip_validator 模式优先于其他状态——本 run 根本没跑 validator
+    if gf.skip_validator:
+        out.append("> ⏭️ validator 已跳过（人工验收模式）—— 代码正确性由用户人工核验")
+        out.append(">")
     else:
-        out.append(f"> ❌ validator 最终结论：{gf.final_verdict}")
-    out.append(">")
+        # 顶部 validator 最终结论
+        last_pass = None
+        for h in gf.validator_history:
+            if h.get("verdict") == "pass":
+                last_pass = h
+                break
+        if gf.final_verdict == "pass":
+            round_text = ""
+            if last_pass is not None:
+                round_text = f" g{last_pass.get('group')}-r{last_pass.get('round')}"
+            cmd = gf.reproduce_cmd or ""
+            cmd_text = f": `{cmd}`" if cmd else ""
+            out.append(f"> ✅ validator{round_text} pass{cmd_text}")
+        elif gf.final_verdict == "failed-deadloop":
+            out.append("> ⚠️ validator failed-deadloop（连续 3 轮同一 fail 签名）；本 group 标 failed")
+        else:
+            out.append(f"> ❌ validator 最终结论：{gf.final_verdict}")
+        out.append(">")
     if gf.findings:
         out.append("> 评审建议（task-swarm reviewer）：")
         for f in gf.findings:

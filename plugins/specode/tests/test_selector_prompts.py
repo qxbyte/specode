@@ -159,14 +159,18 @@ def test_doc_confirm_design_snapshot(run_script, fake_home, selector_setup):
 
 
 def test_tasks_execution_snapshot(run_script, fake_home, selector_setup):
-    """0.9.3 起 tasks-execution 合并了旧 doc-confirm-tasks，提供 4 选项含「需要调整」回退。"""
+    """0.10.20+：tasks-execution 4 选项含两种 task-swarm 模式（full vs skip-validator）。"""
     sid = selector_setup("tasks-execution", phase="tasks")
     ctx = _fetch_ctx(run_script, fake_home, sid)
     assert "任务执行选择" in ctx
-    assert "用 task-swarm 多 agent 并发（推荐）" in ctx
+    # 两种 task-swarm 模式都要在
+    assert "task-swarm + validator 自动验收（推荐）" in ctx
+    assert "task-swarm + 人工验收（跳过 validator）" in ctx
+    # --skip-validator flag 在用户选定后流程中被引用
+    assert "--skip-validator" in ctx
+    # 顺序执行 + 暂停/调整保留
     assert "顺序执行（同时处理 optional）" in ctx
-    assert "需要调整 tasks.md" in ctx
-    assert "暂不 coding" in ctx
+    assert "暂停 / 调整 tasks.md" in ctx
 
 
 def test_takeover_options_snapshot(run_script, fake_home, selector_setup):

@@ -486,14 +486,14 @@ questions:
     header: "执行方式"
     multiSelect: false
     options:
-      - label: "用 task-swarm 多 agent 并发（推荐）"
-        description: "委派给 task-swarm 编排器；多 coder 并发 + reviewer + validator 自动 fix loop。required + optional 一并处理。"
+      - label: "task-swarm + validator 自动验收（推荐）"
+        description: "多 coder 并发 + reviewer + validator 自动 fix loop 到 pass。最稳但 validator 一轮耗时长。"
+      - label: "task-swarm + 人工验收（跳过 validator）"
+        description: "多 coder 并发 + reviewer + p0-fix，**跳过** validator/v-fix 循环；代码正确性由用户事后人工核验。省 validator 那一轮耗时；有问题再跟模型常规对话沟通。"
       - label: "顺序执行（同时处理 optional）"
         description: "单 agent 逐个推进 required + optional 任务，[ ] → [~] → [x]。如需只跑 required，可在 Other 输入说明。"
-      - label: "需要调整 tasks.md"
-        description: "tasks 不符合预期，告诉你具体怎么改。"
-      - label: "暂不 coding"
-        description: "tasks.md 已落地但暂不开始实现；随时 /specode:end 关闭会话。"
+      - label: "暂停 / 调整 tasks.md"
+        description: "tasks 不符合预期需要调整，或暂不开始 coding（Other 输入说明具体哪种）。"
 
 **约束**：
 - 4 个选项已占满工具上限；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
@@ -502,10 +502,10 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "用 task-swarm 多 agent 并发" → 走 `/specode:task-swarm` 第二步 `init` + 第三步 7 步循环（详见 `commands/task-swarm.md` + `references/task-swarm.md`）
-- 选 "顺序执行" → 调 `phase-transition --from tasks --to implementation` → 单 agent 按 `tasks.md` checkbox 顺序逐个推进 required + optional（如 "Other" 说"只跑 required" 跳过 optional）
-- 选 "需要调整 tasks.md" → end turn 等用户反馈 → 下一 turn 按反馈 Edit `tasks.md` → 重新呈现 `tasks-execution` selector
-- 选 "暂不 coding" → 在 chat 简报 "tasks.md 已落地，留在 tasks phase；随时 `/specode:end` 退出或后续 `/specode:continue <slug>` 续接" → end turn（这是合理的"让用户决定何时继续"出口）
+- 选 "task-swarm + validator 自动验收" → 走 `/specode:task-swarm` 第二步 `init`（默认 full 模式）+ 第三步 7 步循环（详见 `commands/task-swarm.md` + `references/task-swarm.md`）
+- 选 "task-swarm + 人工验收（跳过 validator）" → 同上但 `init` 时加 `--skip-validator` flag；流程走到 p0-fix 完成后直接 writeback，不进 validation/v-fix；writeback 后提醒用户人工 review 代码 + `/specode:end` 退出 spec 模式后跟模型常规对话沟通调整
+- 选 "顺序执行" → 调 `phase-transition --from tasks --to implementation` → 单 agent 按 `tasks.md` checkbox 顺序逐个推进
+- 选 "暂停 / 调整 tasks.md" → end turn 等用户反馈：若是调整 → 下一 turn Edit `tasks.md` → 重新呈现本 selector；若是暂停 → 留在 tasks phase，随时 `/specode:end` 退出或后续 `/specode:continue <slug>` 续接
 """,
     "takeover-options": """## 选择器节点：接管选项
 

@@ -4,6 +4,56 @@
 
 _no entries yet_
 
+## 0.10.20 (2026-05-23)
+
+### Added — `--skip-validator` 人工验收模式：task-swarm 跳过 validator/v-fix
+
+**用户痛点**：login-page 现场显示一轮 validator 跑下来要花 25-50k tokens + 大量 Bash 测试，多轮 v-fix 循环下成本高昂。用户希望有"task-swarm 但不启动 validator"的选项——多 coder 并发 + reviewer + p0-fix 仍走，但跳过 validation/v-fix 循环；代码正确性由用户**事后人工核验**，有问题再跟模型常规对话沟通。
+
+实现：
+
+1. **`task_swarm_state.py` `StateMachine`**：加 `skip_validator: bool = False` 字段，load/to_dict 同步。
+2. **`task_swarm.py cmd_init`**：加 `--skip-validator` argparse flag；写入 state.json；events_append init 事件含 `skip_validator` 字段。
+3. **`task_swarm.py cmd_advance`**：两处分支改造：
+   - review phase advance：`if sm.p0_pending: begin_p0_fix ...; elif sm.skip_validator: begin_writeback（直接进 writeback）; else: begin_validation`
+   - p0-fix phase advance：`if sm.skip_validator: begin_writeback; else: begin_validation`
+4. **`task_swarm_writeback.py`**：
+   - `GroupFindings` 加 `skip_validator: bool = False` 字段
+   - `_format_findings_block` 优先检查 skip_validator——若 True 写 "`> ⏭️ validator 已跳过（人工验收模式）—— 代码正确性由用户人工核验`"，否则走原有 pass/fail/deadloop 分支
+5. **`task_swarm.py cmd_writeback`**：构造 `GroupFindings` 时把 `sm.skip_validator` 传入
+6. **`spec_session.py` SELECTOR_PROMPTS["tasks-execution"]** 4 个选项重新组织：
+   - "task-swarm + validator 自动验收（推荐）"
+   - "task-swarm + 人工验收（跳过 validator）"（新）
+   - "顺序执行（同时处理 optional）"
+   - "暂停 / 调整 tasks.md"（合并原"需要调整" + "暂不 coding"）
+7. **`commands/task-swarm.md`** 第二步 init 提及 `[--skip-validator]` flag + 触发条件
+8. **`references/selectors.md` A4** drift-sync byte-identical
+
+**新模式流程**：
+```
+init --skip-validator → coding → review → p0-fix → writeback → next group
+                                             （跳过 validation / v-fix）
+```
+
+用户使用：
+1. tasks.md 生成后呈现 `tasks-execution` selector
+2. 选「task-swarm + 人工验收（跳过 validator）」
+3. 主代理调 `task_swarm.py init --tasks <p> --session <id> --skip-validator`
+4. 流程按 full 模式跑 coding → review → p0-fix（行为不变）
+5. **p0-fix 完成后状态机直接进 writeback**（不 fork validator）
+6. writeback 把 tasks.md `[ ]` → `[x]`，注释块写"⏭️ validator 已跳过"
+7. 用户人工 review 代码 → 有问题跟模型常规对话沟通调整
+
+### Tests
+
+- 新增 `test_init_skip_validator_flag_persists_to_state`：验证 flag 写入 state.json
+- 新增 `test_init_without_flag_defaults_to_full_mode`：默认兼容
+- 新增 `test_skip_validator_review_no_p0_skips_validation`：无 P0 直接 writeback
+- 新增 `test_skip_validator_p0_fix_done_skips_validation`：p0-fix 完直接 writeback
+- 新增 `test_skip_validator_writeback_writes_skipped_note`：writeback 注释含"validator 已跳过"
+- 更新 `test_tasks_execution_snapshot` 预期 4 个新选项
+- 全套 pytest **217/217 PASS**
+
 ## 0.10.19 (2026-05-23)
 
 ### Added — `commands/task-swarm.md` 加术语区分节「reviewer 分级 vs validator fail」

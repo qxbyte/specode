@@ -351,6 +351,93 @@ def test_coder_prompt_includes_project_root_from_spec_config(tmp_path, run_swarm
     assert "严禁" in content  # 禁止把代码写到 spec_dir
 
 
+def test_init_skip_validator_flag_persists_to_state(tmp_path, run_swarm):
+    """0.10.20+：init --skip-validator 把 skip_validator=true 写入 state.json。"""
+    p = _write_tasks_md(tmp_path, num_stages=1)
+    init = json.loads(
+        run_swarm("init", "--tasks", str(p), "--skip-validator").stdout
+    )
+    run_dir = Path(init["run_dir"])
+    state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    assert state["skip_validator"] is True
+
+
+def test_init_without_flag_defaults_to_full_mode(tmp_path, run_swarm):
+    """0.10.20+：默认 skip_validator=false（兼容老行为）。"""
+    p = _write_tasks_md(tmp_path, num_stages=1)
+    init = json.loads(run_swarm("init", "--tasks", str(p)).stdout)
+    run_dir = Path(init["run_dir"])
+    state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
+    assert state["skip_validator"] is False
+
+
+def test_skip_validator_review_no_p0_skips_validation(tmp_path, run_swarm):
+    """0.10.20+：skip_validator=true + review 无 P0 → advance review 后直接进 writeback，
+    跳过 validation。"""
+    p = _write_tasks_md(tmp_path, num_stages=1)
+    init = json.loads(
+        run_swarm("init", "--tasks", str(p), "--skip-validator").stdout
+    )
+    run_id = init["run_id"]
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", run_id)
+    _write_coder_result(run_dir, "coder-g1-s1-r1")
+    run_swarm("advance", "--run", run_id, "--phase", "coding", "--round", "1")
+    _write_reviewer(run_dir, 1, with_p0=False)
+    cp = run_swarm("advance", "--run", run_id, "--phase", "review", "--round", "1")
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    assert out["phase"] == "writeback", (
+        f"skip_validator 模式无 P0 → 应直接进 writeback，实际 phase={out['phase']}"
+    )
+
+
+def test_skip_validator_p0_fix_done_skips_validation(tmp_path, run_swarm):
+    """0.10.20+：skip_validator=true + p0-fix 完成 → 直接进 writeback。"""
+    p = _write_tasks_md(tmp_path, num_stages=1)
+    init = json.loads(
+        run_swarm("init", "--tasks", str(p), "--skip-validator").stdout
+    )
+    run_id = init["run_id"]
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", run_id)
+    _write_coder_result(run_dir, "coder-g1-s1-r1")
+    run_swarm("advance", "--run", run_id, "--phase", "coding", "--round", "1")
+    _write_reviewer(run_dir, 1, with_p0=True)
+    run_swarm("advance", "--run", run_id, "--phase", "review", "--round", "1")
+    # p0-fix coder 返回
+    _write_coder_result(run_dir, "coder-p0fix-g1-r1-f0")
+    cp = run_swarm("advance", "--run", run_id, "--phase", "p0-fix", "--round", "1")
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    assert out["phase"] == "writeback", (
+        f"skip_validator 模式 p0-fix 完 → 应直接进 writeback，实际 phase={out['phase']}"
+    )
+
+
+def test_skip_validator_writeback_writes_skipped_note(tmp_path, run_swarm):
+    """0.10.20+：skip_validator 模式 writeback 时 tasks.md 注释块写
+    "⏭️ validator 已跳过（人工验收模式）"。"""
+    p = _write_tasks_md(tmp_path, num_stages=1)
+    init = json.loads(
+        run_swarm("init", "--tasks", str(p), "--skip-validator").stdout
+    )
+    run_id = init["run_id"]
+    run_dir = Path(init["run_dir"])
+    run_swarm("plan", "--run", run_id)
+    _write_coder_result(run_dir, "coder-g1-s1-r1")
+    run_swarm("advance", "--run", run_id, "--phase", "coding", "--round", "1")
+    _write_reviewer(run_dir, 1, with_p0=False)
+    run_swarm("advance", "--run", run_id, "--phase", "review", "--round", "1")
+    cp = run_swarm("writeback", "--run", run_id, "--group", "1")
+    assert cp.returncode == 0, cp.stderr
+    tasks_after = p.read_text(encoding="utf-8")
+    assert "validator 已跳过" in tasks_after
+    assert "人工验收模式" in tasks_after
+    # 不应当出现 "✅ validator g1-rN pass"
+    assert "✅ validator" not in tasks_after
+
+
 def test_coder_prompt_fallback_when_project_root_unset(tmp_path, run_swarm):
     """老 spec 兼容：.config.json 没有 project_root → prompt 给出 fallback 文本，
     不阻断流程（保持 0.10.14 及之前的行为）。"""

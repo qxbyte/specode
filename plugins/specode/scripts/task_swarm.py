@@ -254,8 +254,14 @@ def cmd_init(args: argparse.Namespace) -> int:
         round=0,
         started_at=_now_iso(),
         last_activity_at=_now_iso(),
+        skip_validator=bool(getattr(args, "skip_validator", False)),
     )
-    sm.events_append({"type": "init", "tasks_md": str(tasks_md), "groups": len(groups)})
+    sm.events_append({
+        "type": "init",
+        "tasks_md": str(tasks_md),
+        "groups": len(groups),
+        "skip_validator": sm.skip_validator,
+    })
     sm.save()
 
     # 同步 sessions/<id>.json.task_swarm_run_id
@@ -995,6 +1001,12 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 sm.begin_p0_fix(sm.p0_pending)
                 _materialize_prompts_p0_fix(sm)
                 next_msg = "下一步：fork p0-fix coder（按文件分组）"
+            elif sm.skip_validator:
+                # 0.10.20+：人工验收模式，无 P0 → 跳过 validation 直接 writeback
+                sm.begin_writeback()
+                next_msg = (f"无 P0 + skip_validator=true（人工验收模式）；"
+                            f"请调 `task_swarm.py writeback --run {sm.run_id} "
+                            f"--group {gi + 1}` 回写 tasks.md，然后人工验收代码。")
             else:
                 sm.begin_validation()
                 _materialize_prompt_validator(sm)
@@ -1031,13 +1043,27 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 finding["fix_status"] = "未修复" if any_failed else "已修复"
         sm.events_append({"type": "advance", "phase": "p0-fix",
                           "any_failed": any_failed, "errors": errors})
-        # 不阻断：进入 validation
-        sm.begin_validation()
-        _materialize_prompt_validator(sm)
-        if any_failed:
-            next_msg = "p0-fix 部分失败；继续进入 validation。失败的 P0 将标 '[P0 未修复]'。"
+        # 0.10.20+：skip_validator 人工验收模式 → 跳过 validation/v-fix
+        if sm.skip_validator:
+            gi = sm.current_group_index
+            sm.begin_writeback()
+            if any_failed:
+                next_msg = (f"p0-fix 部分失败 + skip_validator=true（人工验收模式）；"
+                            f"未修部分将以 [P0 未修复] 写入 tasks.md。请调 "
+                            f"`task_swarm.py writeback --run {sm.run_id} "
+                            f"--group {gi + 1}` 然后人工验收。")
+            else:
+                next_msg = (f"p0-fix 全部 ok + skip_validator=true（人工验收模式）；"
+                            f"请调 `task_swarm.py writeback --run {sm.run_id} "
+                            f"--group {gi + 1}` 回写 tasks.md，然后人工验收代码。")
         else:
-            next_msg = "p0-fix 全部 ok；进入 validation。"
+            # 不阻断：进入 validation（full 模式）
+            sm.begin_validation()
+            _materialize_prompt_validator(sm)
+            if any_failed:
+                next_msg = "p0-fix 部分失败；继续进入 validation。失败的 P0 将标 '[P0 未修复]'。"
+            else:
+                next_msg = "p0-fix 全部 ok；进入 validation。"
 
     elif phase == "validation":
         gi = sm.current_group_index
@@ -1213,6 +1239,7 @@ def cmd_writeback(args: argparse.Namespace) -> int:
         validator_history=[h for h in sm.validator_history if h.get("group") == gi + 1],
         final_verdict=final_verdict,
         reproduce_cmd=reproduce_cmd,
+        skip_validator=sm.skip_validator,
     )
     try:
         result = writeback_tasks_md(Path(sm.tasks_md), gf)
@@ -1320,6 +1347,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pi.add_argument("--max-rounds", type=int, default=6)
     pi.add_argument("--session", default=None)
     pi.add_argument("--spec", default=None)
+    pi.add_argument("--skip-validator", action="store_true",
+                    help="人工验收模式：review/p0-fix 完成后直接 writeback，跳过 validation/v-fix")
 
     ps = sub.add_parser("status")
     ps.add_argument("--run", required=True)

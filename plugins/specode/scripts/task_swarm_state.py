@@ -105,6 +105,11 @@ class StateMachine:
     spec_dir: Optional[str] = None
     spec_id: Optional[str] = None
 
+    # 0.10.20+：人工验收模式。True 时 review/p0-fix 完成后跳过 validation/v-fix，
+    # 直接 begin_writeback；tasks.md 注释块写"⏭️ validator 已跳过（人工验收模式）"。
+    # 由 cmd_init 的 --skip-validator flag 设置。
+    skip_validator: bool = False
+
     # group 数据
     groups: list[list[StageEntry]] = field(default_factory=list)
     current_group_index: int = 0
@@ -192,6 +197,7 @@ class StateMachine:
             completed_at=data.get("completed_at"),
             failed_status=data.get("failed_status"),
             events=data.get("events", []),
+            skip_validator=data.get("skip_validator", False),
         )
         return sm
 
@@ -228,6 +234,7 @@ class StateMachine:
             "completed_at": self.completed_at,
             "failed_status": self.failed_status,
             "events": list(self.events),
+            "skip_validator": self.skip_validator,
         }
 
     def save(self) -> None:

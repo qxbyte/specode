@@ -58,12 +58,15 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 ```sh
 sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
    "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
-   init --tasks "<active_spec_dir>/tasks.md" --session <id>
+   init --tasks "<active_spec_dir>/tasks.md" --session <id> [--skip-validator]
 ```
 
 - `--tasks` 是 **tasks.md 的绝对路径**（不是 spec 目录），用 step 1 的 `active_spec_dir + /tasks.md`
-- init 报 `tasks.md 中未解析出任何 ## 阶段 N: 段` → 格式不对，**回到 `tasks-execution` 选「需要调整 tasks.md」**让主代理按 SKILL.md §「Spec 文档生成」重写
-- 拿到 `{run_id, run_dir, groups}` 后转第三步
+- `--skip-validator`（0.10.20+）：**人工验收模式**——review/p0-fix 完成后跳过 validation/v-fix 直接 writeback。
+  仅当用户在 `tasks-execution` selector 选了「task-swarm + 人工验收（跳过 validator）」时加这个 flag；
+  默认（不加）是 full 模式，含 validator 自动验收循环。
+- init 报 `tasks.md 中未解析出任何 ## 阶段 N: 段` → 格式不对，**回到 `tasks-execution` 选「暂停 / 调整 tasks.md」**让主代理按 SKILL.md §「Spec 文档生成」重写
+- 拿到 `{run_id, run_dir, groups, skip_validator}` 后转第三步
 
 ## 第三步：7 步循环（plan → fork → advance → writeback → resolve）
 

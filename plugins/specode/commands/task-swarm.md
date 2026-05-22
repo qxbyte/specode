@@ -112,6 +112,35 @@ task_swarm.py heartbeat --run <run_id>
 spec_session.py heartbeat --spec <dir> --session <id>
 ```
 
+## 术语区分：reviewer 分级 vs validator fail（容易混）
+
+主代理常把 validator 报的"子任务 1.5 未完成"误称为"P1 问题" / "P2 问题"——
+这会让用户误以为可以跳过。两者是**不同维度**，**修复策略**也根本不同：
+
+| 概念 | 来源 | 触发 fix loop？ |
+|---|---|---|
+| **P0（带证据标签）** | reviewer `review.md` `## P0`，**必带** `[req:x.y]` / `[security]` / `[contract]` 之一 | ✓ 触发 **p0-fix（尝试型，仅一轮）**：所有 P0 并发 fork 一轮 coder → **不再 review** → 直接进 validation；未修成功的 P0 在 tasks.md 标 `[P0 未修复]`，**不循环再修**（最终是否修好交给 validator 验） |
+| **P0（不带证据标签）** | reviewer `## P0` 但漏写证据标签 | 自动降级 **advisory** → ✗ 不触发任何 fix（见 `task_swarm_outbox.py:282-286`） |
+| **P1 / P2** | reviewer `review.md` `## P1` / `## P2` 节 | ✗ 不触发任何 fix（advisory，仅写入 tasks.md 注释） |
+| **validator fail** | validator `validation.md` `## 判定 = fail` | ✓ 触发 **v-fix（循环到 pass）**：按 validator 修复指引并发 fork → 重新 validation → 再 fail 再 fork → 连续 3 轮同 fail 签名才 `failed-deadloop` |
+
+**关键差异（设计意图，详见 `references/task-swarm.md` §3）**：
+
+- **reviewer 路径是"尝试性修复"**：reviewer 是 advisory（建议性裁判），p0-fix 只给"带证据标签的 P0"一次修复机会，不论结果都进 validation；P1/P2/无标签 P0 直接进 advisory 不修。**reviewer 不是阻塞性 gate**。
+- **validator 路径是"循环验证"**：validator 是任务级裁判，输出 pass/fail 二元判定，**不分级**。fail 就必须 v-fix 修到 pass，没有"P1 可跳过"概念。
+
+validator **不输出 P0/P1/P2 标签**（见 `references/task-swarm.md` §4.3 schema "`## 给 coder 的修复指引（**不带 P0/P1 标签**）`"）。
+它的 fix_targets 全是"任务没做完"，按 task-swarm 状态机 fail 必修。
+
+**主代理报告 validator fail 时的正确措辞**：
+- ✓ "validator 判 fail，子任务 1.5（响应式设计）未完成"
+- ✗ "validator 判 fail，因为 1 个 P1 问题"（误用 reviewer 术语，会让用户误以为可跳过）
+
+**如果用户问"这条任务能不能跳过"**：
+- 按 task-swarm 设计**不能**——validator fail 必进 v-fix 循环到 pass
+- 想跳过的唯一办法：esc 中断 → abort run → 改 tasks.md 移除该任务（或挪到下一 group）→ 重新 `init`
+- **不要**给用户"可以不修"的错觉。tasks.md 里写了就是 must-do，要么修要么改 tasks.md，没有第三条路。
+
 ## advance 报 "result.md 缺 STATUS / 解析失败" 的正确应对
 
 这是 0.10.13 (user-login) / 0.10.17 (login-page) 两次事故的根源——必须按这套走，不要自创修补。

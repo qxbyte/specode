@@ -4,6 +4,40 @@
 
 _no entries yet_
 
+## 0.10.19 (2026-05-23)
+
+### Added — `commands/task-swarm.md` 加术语区分节「reviewer 分级 vs validator fail」
+
+**用户痛点（login-page 现场）**：validator-g1-r2 报 fail（子任务 1.5 响应式设计未完成），主代理输出"判定为 fail，因为 1 个 P1 问题（响应式设计）仍然存在"——把 validator 的子任务核验失败误称为 reviewer 的 P1 等级。用户看到"P1"自然问"这个 P1 到底需不需要修"——因为按 reviewer 分级体系 P1 是 advisory，**不阻塞 pipeline**。
+
+但实际上 validator 跟 reviewer 是**两个完全不同的裁判**：
+
+- **reviewer 路径是尝试性修复**：p0-fix 只给"带证据标签的 P0"一次修复机会，不论结果都进 validation；P1/P2/无标签 P0 不修。
+- **validator 路径是循环验证**：fail 就必须 v-fix 修到 pass，没有"P1 可跳过"概念，**没有任何"建议性"**。
+
+主代理混淆术语的后果：用户被误导以为 1.5 是"建议项"可以跳过；或者把 reviewer P0 误当 validator fail 一直循环修。
+
+修复 `commands/task-swarm.md` 加新节「术语区分」：
+
+1. **4 行对比表**：P0（带证据标签）/ P0（不带证据标签）/ P1·P2 / validator fail，列出来源 + 是否触发 fix loop + 具体策略
+2. **关键差异说明**：reviewer 是"尝试性修复"（一次性），validator 是"循环验证"（修到 pass）
+3. **主代理正确措辞示范**：✓ "子任务 1.5 未完成" vs ✗ "1 个 P1 问题"
+4. **用户问"能不能跳过"时的回答**：按设计不能，跳过的唯一办法是 abort run + 改 tasks.md 移除该任务
+
+放在"advance 报 STATUS 缺失的正确应对"节之前，跟其他易混淆场景集中在一起。
+
+**对照源码确认**：
+- "P0 不带证据标签自动降级 advisory" 在 `task_swarm_outbox.py:280-286` 真实装
+- "p0-fix 不再 review 直接进 validation" 在 `references/task-swarm.md §3 line 61` 明确写过
+- "validator fix_targets 不带 P0/P1 标签" 在 `references/task-swarm.md §4.3 line 175` 明确写过
+
+新节是把分散在 references / 代码里的事实**集中到 commands 一处**，让主代理读 commands 时就能正确分辨，不必再去 references 拼。
+
+### Tests
+
+- 纯文档改动，无 Python 代码路径影响
+- 全套 pytest **212/212 PASS**
+
 ## 0.10.18 (2026-05-23)
 
 ### Fixed — `commands/task-swarm.md` 第 4 步软提示导致主代理提前 advance + team-lead 代笔补 STATUS

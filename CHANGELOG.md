@@ -4,6 +4,34 @@
 
 _no entries yet_
 
+## 0.10.17 (2026-05-23)
+
+### Changed — `commands/task-swarm.md` 顶部加强制前置阅读指引（修软提示无效问题）
+
+**用户痛点**：模型读 `commands/task-swarm.md` 后跑 task-swarm 流程，**明知**有 `references/task-swarm.md` 这份详细规格（commands 已有多处 "详见 references/task-swarm.md" 软提示），但**主动选择只读 commands**。模型内心戏证据：
+
+> "我应该读取 commands/task-swarm.md，因为它可能包含命令的具体用法。"
+
+结果：模型按 commands 81 行的简化路由开始干，遇到 plan 输出解析 / advance 失败 / writeback 越界等细节就凭印象推——这是 0.10.13 user-login 事故里 r2/r3 漂移 + 主代理手工 Edit state.json 的反模式根源之一。
+
+根因：现有 "详见 references/task-swarm.md" 措辞太弱（line 8 / 57-67 / 80 都有），模型当作背景资料而非必读项。
+
+修复：`commands/task-swarm.md` 顶部加 **⛔ 强制前置阅读** 节，明确：
+
+1. 列出 references/task-swarm.md 的 9 个章节 TOC（让模型知道里面有什么）
+2. **指令式**前置要求："**在调任何 `task_swarm.py` 子命令之前**（包括 init / plan / advance / writeback / resolve），必须先 Read references/task-swarm.md 至少扫一遍 TOC + §3 + §9"
+3. 明确 commands 文件的边界："本文件下面的 3 步路由**只够回答'现在该调哪条 CLI'**，不够回答 plan 输出怎么解析 / advance 失败该 retry 还是 fork / writeback 越界怎么办"
+4. 兜底约束："**禁止凭印象推**；如果对任何一步仍不确定，先 Read references 对应章节再动手"
+
+放置在 frontmatter 后、3 步路由前，最显眼位置。
+
+**未改 commands/spec.md 和 commands/continue.md**：用户只反馈 task-swarm 这一处遇到问题，其他 commands 没有真实证据需要同等强化。等出现实际 case 再说，避免预防性过度设计。
+
+### Tests
+
+- 纯文档改动，无 Python 代码路径影响
+- 全套 pytest **212/212 PASS**
+
 ## 0.10.16 (2026-05-23)
 
 ### Fixed — slug 强制 ASCII 与 0.10.14 文档"保留原文不做翻译"自相矛盾（中文 slug 被静默换成英文）

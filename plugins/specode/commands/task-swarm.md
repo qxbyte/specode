@@ -5,6 +5,29 @@ argument-hint: "[<spec-dir>/tasks.md] [--max-parallel N] [--max-rounds N]"
 
 /specode:task-swarm $ARGUMENTS
 
+## ⛔ 强制前置阅读（不可跳过）
+
+本文件**只列**入口路由 + 关键禁止项。所有实操细节都在 `references/task-swarm.md`：
+
+- §1 角色 / 并发度
+- §2 文件冲突 / group 切分（`@writes` 不相交 + `@depends-on` 拓扑）
+- §3 Phase 状态机（reviewer / p0-fix / validator / v-fix 转换规则）
+- §4 子代理产物 schema（coder `result.md` / reviewer `review.md` / validator `validation.md`）
+- §5 tasks.md writeback 格式（line-safe diff / 修复状态标签）
+- §6 `on-task-completed` hook 提醒矩阵
+- §7 信息流总览
+- §8 死循环保护（连续 3 轮同 fail 签名 → `failed-deadloop`）
+- §9 CLI 接口速查
+
+**在调任何 `task_swarm.py` 子命令之前**（包括 init / plan / advance / writeback / resolve），
+必须先 Read `references/task-swarm.md` 至少扫一遍 TOC + §3 + §9。本文件下面的 3 步路由
+**只够回答"现在该调哪条 CLI"**，不够回答"plan 输出怎么解析 / advance 失败时该 retry
+还是 fork / writeback 越界怎么办"——这些细节都在 references 里。**禁止凭印象推**。
+
+如果对任何一步流程仍不确定，**先 Read references 对应章节再动手**，不要边猜边跑。
+
+---
+
 按以下 3 步路由。**禁止**主代理直接 `task_swarm.py init`、**禁止**根据用户裸输入 invent `<spec_dir>`。task-swarm 是 tasks phase + `tasks-execution` selector 选中 task-swarm 路径后的下游编排，不是用户裸触发的入口（详见 SKILL.md §Task-Swarm + `references/task-swarm.md`）。
 
 ## 第一步：前置校验（必做）

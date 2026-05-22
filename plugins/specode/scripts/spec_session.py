@@ -332,9 +332,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入设计（design）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入设计环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 
@@ -367,9 +367,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入设计（design）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入设计环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 
@@ -402,9 +402,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入任务拆分（tasks）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入任务拆分环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 
@@ -662,6 +662,20 @@ spec=<slug>, phase=<phase>, mode=readonly
   - 不要 Edit/Write 该 spec 的任何文档或源码
   - 状态行 footer 必须带 [只读] 标记
   - 如需写入，请走 `/specode:continue` 选"强制接管"
+"""
+
+SPEC_MODE_ENDED_REMINDER = """## ✅ spec 模式已退出（一次性反向提醒）
+
+session 已 ended（`/specode:end` 调用成功）。
+
+**从现在起，作废此前所有 spec-mode 指令：**
+  - **不要**再在响应末尾输出 `─── spec-mode ─── …` 状态行（footer）
+  - **不再**受 spec-mode 三项纪律约束（selector / 文档优先 / 状态行）
+  - 此前注入的 `STATUS_FOOTER_TEMPLATE`、`SPEC_MODE_CONTINUE_REMINDER`、`DOC_PRIORITY_REMINDER_*` 等指令**全部失效**，不要再按它们行事
+
+如需重新进入 spec 模式：`/specode:spec <需求>` 开新 spec，或 `/specode:continue <slug>` 恢复已有 spec。
+
+（本提示只在 end 后的下一 turn 显示一次。）
 """
 
 
@@ -1139,6 +1153,15 @@ def cmd_end(args: argparse.Namespace) -> int:
     existing["ended_at"] = _now_iso()
     existing["lock_state"] = "released"
     existing["pending_selector"] = None
+    # 对齐 end.md 文档：清 active_spec_* / task_swarm_run_id
+    existing["active_spec_slug"] = None
+    existing["active_spec_dir"] = None
+    existing["spec_id"] = None
+    existing["phase"] = None
+    existing["task_swarm_run_id"] = None
+    # 标记：下一次 UserPromptSubmit 时由 hook 注入一次性反向提醒，
+    # 抵消此前 N 个 turn 注入的 STATUS_FOOTER_TEMPLATE / SPEC_MODE_CONTINUE_REMINDER
+    existing["post_end_reminder_pending"] = True
     try:
         write_session_atomic(args.session, existing)
     except Exception as e:
@@ -1545,6 +1568,18 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
         pass
 
     mode = sess.get("mode") or "idle"
+    # 刚 /specode:end 完的下一 turn：注入一次性反向提醒，明确指示模型停止输出
+    # 状态行 footer 并作废此前所有 spec-mode 纪律指令；提示后立刻清标志，确保只显示一次。
+    if mode == "ended" and sess.get("post_end_reminder_pending"):
+        sess["post_end_reminder_pending"] = False
+        try:
+            write_session_atomic(session_id, sess)
+        except Exception:
+            pass
+        _emit_hook_additional_context(
+            SPEC_MODE_ENDED_REMINDER, hook_event_name="UserPromptSubmit"
+        )
+        return
     if mode in ("idle", "ended"):
         return
 

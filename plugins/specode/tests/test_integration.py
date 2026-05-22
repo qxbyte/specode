@@ -78,12 +78,13 @@ def test_full_lifecycle_event_chain(run_script, fake_home, doc_root, make_sessio
     assert _read_cfg(spec_dir)["lock"] is None
 
 
-def test_after_end_user_prompt_emits_nothing(
+def test_after_end_user_prompt_emits_one_shot_then_nothing(
     run_script, fake_home, doc_root, make_session_id
 ):
-    """After /end, on-user-prompt must not inject spec-mode reminders."""
+    """After /end: the FIRST on-user-prompt injects a one-shot reverse reminder
+    (telling the model to stop emitting the spec-mode footer and discard prior
+    spec-mode discipline). The SECOND on-user-prompt injects nothing."""
     sid = make_session_id()
-    # Create spec and end it
     cp = run_script(
         "spec_init.py",
         "--name", "ended",
@@ -94,9 +95,23 @@ def test_after_end_user_prompt_emits_nothing(
     assert cp.returncode == 0
     run_script("spec_session.py", "end", "--session", sid)
 
+    # 第一 turn：应注入一次性反向提醒
     cp = run_script(
         "spec_session.py", "on-user-prompt",
         stdin=json.dumps({"session_id": sid, "prompt": "hey, anything?"})
+    )
+    assert cp.returncode == 0
+    out = cp.stdout.strip()
+    assert out, "post-end first prompt should emit one-shot reverse reminder"
+    payload = json.loads(out)
+    ctx = payload["hookSpecificOutput"]["additionalContext"]
+    assert "spec 模式已退出" in ctx
+    assert "─── spec-mode ───" in ctx  # explicitly tells model to stop emitting this
+
+    # 第二 turn：标志已被消费，hook 静默
+    cp = run_script(
+        "spec_session.py", "on-user-prompt",
+        stdin=json.dumps({"session_id": sid, "prompt": "and now?"})
     )
     assert cp.returncode == 0
     assert cp.stdout.strip() == ""

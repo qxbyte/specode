@@ -119,6 +119,38 @@ def test_on_user_prompt_ended_session_emits_nothing(
     assert _parse_hook(cp.stdout) is None
 
 
+def test_on_user_prompt_post_end_reminder_emits_once_then_clears(
+    run_script, fake_home, make_session_id
+):
+    """刚 /specode:end 完的下一 turn 必须收到一次性反向提醒；标志被消费后，
+    再后续 turn 不再注入任何内容。"""
+    sid = make_session_id()
+    _write_session(fake_home, sid, mode="ended", post_end_reminder_pending=True)
+
+    # 第一 turn：注入反向提醒
+    cp = run_script(
+        "spec_session.py", "on-user-prompt",
+        stdin=json.dumps({"session_id": sid, "prompt": "随便问点啥"})
+    )
+    assert cp.returncode == 0
+    ctx = _ctx(_parse_hook(cp.stdout))
+    assert "spec 模式已退出" in ctx
+    assert "不要" in ctx and "─── spec-mode ───" in ctx
+    # 标志应已被清掉，落盘
+    sess = json.loads(
+        (fake_home / ".specode" / "sessions" / f"{sid}.json").read_text(encoding="utf-8")
+    )
+    assert sess.get("post_end_reminder_pending") is False
+
+    # 第二 turn：不再注入
+    cp = run_script(
+        "spec_session.py", "on-user-prompt",
+        stdin=json.dumps({"session_id": sid, "prompt": "再问一句"})
+    )
+    assert cp.returncode == 0
+    assert _parse_hook(cp.stdout) is None
+
+
 def test_on_user_prompt_idle_session_emits_nothing(
     run_script, fake_home, make_session_id
 ):

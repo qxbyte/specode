@@ -182,9 +182,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入设计（design）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入设计环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 
@@ -221,9 +221,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入设计（design）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入设计环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 
@@ -260,9 +260,9 @@ questions:
     multiSelect: false
     options:
       - label: "确认（推荐）"
-        description: "文档内容符合预期，进入下一 phase。"
+        description: "文档内容符合预期，进入任务拆分（tasks）环节。"
       - label: "查看全文"
-        description: "在 chat 完整 echo 该文档（不进入下一 phase）。"
+        description: "在 chat 完整 echo 该文档（不进入任务拆分环节）。"
       - label: "继续沟通"
         description: "文档需要修改，告诉你具体怎么改。"
 

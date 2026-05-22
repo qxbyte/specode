@@ -4,6 +4,41 @@
 
 _no entries yet_
 
+## 0.10.12 (2026-05-22)
+
+### Fixed — `/specode:end` 之后模型仍在响应末尾输出 `─── spec-mode ───` 状态行（banner 残留）
+
+复现：`/specode:spec ...` → 走若干 turn → `/specode:end`（CLI 返回 `ok:true`）→ 后续任意 turn 模型仍输出 `─── spec-mode ─── spec: ... | /specode:end 退出` 状态行。
+
+根因：`hook_on_user_prompt` 在 `mode in ("idle","ended")` 时静默 early-return，**不注入任何反向消息**。但此前 N 个 turn 已反复注入 `STATUS_FOOTER_TEMPLATE`（"请在本次响应正文之后**额外**输出一行 ─── spec-mode ─── ..."）与 `SPEC_MODE_CONTINUE_REMINDER`（"下一 turn 必须继续遵守 ... 通过 /specode:end 才能正式退出"）。`/specode:end` 提交那一 turn mode 仍是 active，hook 最后一次注入照常进行；end 之后下一 turn hook 安静停止，但模型 context 里堆积的"必须输出 footer / 下一 turn 必须继续遵守"指令仍生效，凭惯性继续输出 banner。
+
+修复：
+
+1. 新增 `SPEC_MODE_ENDED_REMINDER` 模板：明确告知模型"已退出，作废此前所有 spec-mode 指令，**不要**再输出 `─── spec-mode ───` footer"
+2. `cmd_end` 设 `post_end_reminder_pending=True`；同时**对齐 `end.md` 文档**清掉 `active_spec_slug` / `active_spec_dir` / `spec_id` / `phase` / `task_swarm_run_id`（此前实现只改 `mode/ended_at/lock_state/pending_selector`，违反文档约定）
+3. `hook_on_user_prompt` 在 `mode=="ended" and post_end_reminder_pending` 时注入提醒并清标志；其他 `ended/idle` 路径维持原静默
+
+行为：end 后**第 1 turn** 模型收到明确反向指令 → **第 2 turn 起** hook 完全静默 → banner 不再出现。
+
+### Changed — `doc-confirm-*` selector option description 用具体环节名替代「下一 phase」
+
+`requirements.md / bugfix.md / design.md` 三份文档确认 selector 的「确认（推荐）」和「查看全文」option description 此前都用泛化"进入下一 phase / 不进入下一 phase"。每个 selector 的下一阶段实际固定：
+
+- `doc-confirm-requirements` → 进入设计（design）环节
+- `doc-confirm-bugfix` → 进入设计（design）环节
+- `doc-confirm-design` → 进入任务拆分（tasks）环节
+
+同步更新 `references/selectors.md`（drift test byte-identical cover）。
+
+`workflow-choice` 的"进入下一阶段"保留泛化（next 按 workflow 动态选 requirements/design/bugfix 三选一，无法静态命名）。
+
+### Tests
+
+- 扩展 `test_end_sets_mode_ended_and_releases_lock` 覆盖 `active_spec_*` 字段清零 + `post_end_reminder_pending` 标志
+- 新增 `test_on_user_prompt_post_end_reminder_emits_once_then_clears`（hook 单元，覆盖第 1 turn 注入 + 第 2 turn 静默）
+- 重写集成测试 `test_after_end_user_prompt_emits_nothing` → `..._emits_one_shot_then_nothing`
+- 全套 pytest **180/180 PASS**
+
 ## 0.10.11 (2026-05-22)
 
 ### Removed — `spec-writer` subagent；4 份核心 spec 文档改由主代理直接生成

@@ -103,6 +103,18 @@ claude plugin marketplace remove specode
 rm -rf ~/.specode ~/.config/specode
 ```
 
+### Update
+
+```sh
+# Claude Code
+claude plugin update specode
+claude plugin marketplace update specode
+
+# CodeBuddy
+codebuddy plugin update specode
+codebuddy plugin marketplace update specode
+```
+
 ## Usage
 
 ### 1. Configure your document root (first run)

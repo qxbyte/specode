@@ -87,6 +87,18 @@ claude plugin marketplace remove specode
 rm -rf ~/.specode ~/.config/specode
 ```
 
+### 升级
+
+```sh
+# Claude Code
+claude plugin update specode
+claude plugin marketplace update specode
+
+# CodeBuddy
+codebuddy plugin update specode
+codebuddy plugin marketplace update specode
+```
+
 ## 使用
 
 ### 1. 首次使用：绑定文档根

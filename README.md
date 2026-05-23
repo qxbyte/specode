@@ -60,8 +60,13 @@ windows, or merge unreviewed code, specode is the rails.
 - **Per-session JSONL logs** for "why did the agent go off-script"
   forensics, with automatic secret redaction and 500-char string
   truncation.
-- **Isolated `spec-writer` agent** for document authoring
-  (Read / Write / Edit / Grep / Glob — deliberately no Bash).
+- **Main agent writes spec docs directly.** No subagent fork — the
+  main agent reads template skeletons from `assets/templates/<phase>.md`
+  and fills them against your original requirement text, keeping
+  context and conversational state intact (a previous `spec-writer`
+  subagent was removed in 0.10.11 precisely because it couldn't
+  see the main agent's context and tended to hallucinate generic
+  template content).
 
 ## Installation
 
@@ -224,7 +229,7 @@ plugins/specode/
   commands/                       /specode:spec, :continue, :end,
                                   :status, :task-swarm
   agents/                         task-swarm-{planner,coder,
-                                  reviewer,validator}, spec-writer
+                                  reviewer,validator}
   scripts/                        spec_vault / spec_init /
                                   spec_session / spec_lint /
                                   spec_status / task_swarm*

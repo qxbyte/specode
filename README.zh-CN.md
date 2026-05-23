@@ -45,8 +45,10 @@ specode 就是给它套的轨道。
   ```
 - **每个 session 的 JSONL 日志**：用来排查「代理为什么走偏」，默认
   屏蔽敏感字段、字符串自动截断到 500 字符。
-- **物理隔离的 `spec-writer` agent**：只给 Read / Write / Edit / Grep
-  / Glob，**故意不给 Bash**，专心写文档。
+- **主代理直接写 spec 文档**：不 fork subagent —— 主代理读
+  `assets/templates/<phase>.md` 模板骨架、按用户原始需求填空，全程
+  保留上下文与对话状态（0.10.11 之前用过 `spec-writer` subagent，
+  因为拿不到主代理上下文容易 hallucinate 通用模板内容，故移除）。
 
 ## 安装
 
@@ -200,7 +202,7 @@ plugins/specode/
   commands/                       /specode:spec, :continue, :end,
                                   :status, :task-swarm
   agents/                         task-swarm-{planner,coder,
-                                  reviewer,validator}, spec-writer
+                                  reviewer,validator}
   scripts/                        spec_vault / spec_init /
                                   spec_session / spec_lint /
                                   spec_status / task_swarm*

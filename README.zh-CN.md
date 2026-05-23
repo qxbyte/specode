@@ -2,60 +2,57 @@
 
 # specode
 
-面向 CLI 编码代理的规格驱动工作流插件。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.zh-CN.md#许可证)
+[![Version](https://img.shields.io/badge/version-0.10.21-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/specode#installation)
+[![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/specode#installation)
+[![Tests](https://img.shields.io/badge/pytest-152%20cases-success)](./plugins/specode/tests)
 
-本插件**全部 hook 改为提醒式**——每个 hook 只往模型上下文里注入提示文本（`exit 0` + `additionalContext`），**永不阻断**工具调用。状态绑定到宿主注入的 `session_id`（多窗口天然不混淆），五份 spec 文档（`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` / `implementation-log.md`）仍是事实源。
+> 面向 CLI 编码代理（Claude Code / CodeBuddy）的规格驱动工作流插件。
 
-## 能力概览
+specode 把一句话需求变成一条「文档优先」的纪律化交付链路。代理被牵着走过
+固定的 phase 流水线 —— **requirements → design → tasks → implementation
+→ acceptance**，五份 Markdown 文档（`requirements.md` / `bugfix.md` /
+`design.md` / `tasks.md` / `implementation-log.md`）是唯一事实源。
+每个 phase-gate 由你在 chat 里通过选择器决定下一步；中间过程由提醒式
+hook 把代理钉在轨道上，**永不阻断**工具调用。
 
-- **会话状态绑定 `session_id`**。每个宿主会话拥有独立的状态文件 `~/.specode/sessions/<session_id>.json`，含 mode（active / readonly / ended）、active spec slug、phase、锁状态、当前 `pending_selector`、task_swarm_run_id。所有写操作原子化（tempfile + os.replace + fsync）。
-- **持久会话是唯一模式**。`/specode:spec <需求>` 始终创建持久会话；`/specode:end` 写入 `mode=ended`，hook 立刻在下一 turn 停止注入。无 `--persist` 标志。
-- **7 个提醒式 hook（`exit 0`、永不阻断）**：SessionStart / UserPromptSubmit×2（提示注入 + 静默续锁）/ PreToolUse / Stop / PostToolUse Task / SessionEnd。共同负责会话生命周期、phase-gate 选择器提醒、代码-文档同步、task-swarm 节点提醒、状态行 footer 要求。
-- **task-swarm 多 agent 并发**：tasks.md 确认后选 `用 task-swarm 多 agent 并发`，主代理切到编排模式——`task_swarm.py init/plan/advance/writeback` 状态机驱动；多 coder 并发（按 `@writes` 文件冲突自动切 group），reviewer / validator 单实例物理隔离（无 Edit/Write 工具）；validator fail → coder 循环修复直到 pass（3 轮同 fail 签名 → 死循环保护）；reviewer P0 带证据标签触发一次性修复，全部 findings 写回 tasks.md。
-- **选择器文本由模型生成**。hook 只注入"该呈现哪种类型 的 哪个场景 选择器"元信息，模型按 3 种骨架（A 单选 / B wizard / C 复选）格式化文本。11 个固定场景常量存放在 `spec_session.py` 的 `SELECTOR_PROMPTS` 字典里。
-- **active 期间每次响应都有状态行 footer**：
+如果你见过 LLM 代理跑着跑着就飘、跨窗口丢上下文、合上未审过的代码 ——
+specode 就是给它套的轨道。
+
+## 能力亮点
+
+- **Document-first 纪律**：每条需求都先落到 spec 文档再动代码。Hook 在
+  写代码前后都会提醒代理读 / 改文档。
+- **提醒式 Hook，永不阻断**：7 个 hook 全部 `exit 0`，只往模型上下文
+  注入提示（状态行 footer、phase 选择器、文档-代码同步提醒、静默续锁
+  心跳），不会中途打断工具调用，不再有「hook 拒绝」的意外。
+- **会话状态绑定 `session_id`**：每个宿主 session 拥有独立状态文件
+  `~/.specode/sessions/<session_id>.json`（原子写）。同时开三个窗口
+  也不会混在一起。
+- **Phase-gate 选择器**：每个决策点由代理按三种骨架（A 单选 / B
+  wizard / C 复选）渲染 11 个固定场景之一 —— 你选方向，代理执行。
+- **task-swarm —— 内置的并发实现编排器**：`tasks.md` 确认后，task-swarm
+  扇出多个 **coder** 子代理并发干活（按 `@writes` 文件写冲突自动切
+  group、按 `@depends-on` 排拓扑），再让单实例 **reviewer** 提
+  建议（P0 触发一次修复）和单实例 **validator** 做最终判定（pass/fail
+  二元，fail 会循环修到 pass）。连续 3 轮同 fail 触发死循环保护。
+- **Obsidian 感知的文档根**：三层解析（env > config > 自动探测
+  Obsidian vault），spec 落进你的知识库，而不是散在各 project 目录。
+- **active 期间每个 turn 都有状态行 footer**：永远知道自己在哪里：
   ```
   ─── spec-mode ─── spec: <slug> | session: <前 8 位> | phase: <p> | /specode:end 退出
   ```
-  只读模式追加 `[只读]` 字段。
-- **Document-first 纪律**。UserPromptSubmit 注入"📝 文档优先提醒（输入侧）"提示模型在写代码前评估是否需要先 Edit 文档；Stop 注入"🔄 代码-文档同步提醒（输出侧）"提示模型自检是否漏补文档。**全程提醒，不阻断**。
-- **`/specode:spec -h` 帮助 fast-path**。hook 命中后注入完整帮助文本要求逐字打印，替代旧版"模型读 references/help-output.md"的不稳定路径。
-- **`spec-writer` agent**——物理隔离的文档生成 agent（工具仅 Read / Write / Edit / Grep / Glob；无 Bash，无法跑命令）。
-
-## 项目结构
-
-```
-.claude-plugin/marketplace.json   ← 单插件 marketplace 清单
-plugins/specode/
-  .claude-plugin/plugin.json      ← 插件清单
-  hooks/hooks.json                ← 4 个提醒式 hook
-  commands/                       ← /specode:spec, /specode:continue,
-                                    /specode:end, /specode:status,
-                                    /specode:task-swarm
-  agents/                         ← task-swarm-{planner,coder,reviewer,
-                                    validator}（v0.7）, spec-writer（v0.6）
-  scripts/
-    spec_vault.py                 ← 三层文档根解析 + Obsidian vault 探测
-    spec_init.py                  ← spec 目录初始化 + 原子双写
-    spec_session.py               ← 业务 + hook 子命令；含
-                                    SELECTOR_PROMPTS 常量库
-    spec_lint.py                  ← 4 条 advisory lint 规则
-    spec_status.py
-    run.sh / run.cmd              ← Python 跨平台启动器
-  skills/specode/
-    SKILL.md                      ← spec-mode 纪律契约
-    references/                   ← workflow / lock-protocol /
-                                    obsidian / prompts（选择器场景库）/
-                                    templates / iteration
-  assets/templates/               ← 文档模板
-  tests/                          ← 75 个 pytest 用例
-```
+- **每个 session 的 JSONL 日志**：用来排查「代理为什么走偏」，默认
+  屏蔽敏感字段、字符串自动截断到 500 字符。
+- **物理隔离的 `spec-writer` agent**：只给 Read / Write / Edit / Grep
+  / Glob，**故意不给 Bash**，专心写文档。
 
 ## 安装
 
 ### GitHub（推荐）
 
-使用你已安装的任一 CLI；插件清单两边通用。CodeBuddy 已在 2.97.1 上验证。
+两个 CLI 都行，插件清单通用。CodeBuddy 已在 2.97.1 上验证。
 
 ```sh
 # CodeBuddy
@@ -67,10 +64,9 @@ claude plugin marketplace add https://github.com/qxbyte/specode
 claude plugin install specode@specode
 ```
 
-### 一次性会话
+### 一次性会话（仅 Claude Code）
 
 ```sh
-# Claude Code 支持通过 --plugin-url 一次性安装
 claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
 ```
 
@@ -93,58 +89,118 @@ rm -rf ~/.specode ~/.config/specode
 
 ## 使用
 
-```
-/specode:spec <需求>                     # 创建持久 spec 会话
-/specode:continue [slug]                 # 恢复 / 切换
-/specode:status                          # 查看当前会话状态
-/specode:end                             # 结束会话（保留文档）
+### 1. 首次使用：绑定文档根
 
-/specode:spec --set-vault <路径>         # 绑定 Obsidian vault
-/specode:spec --set-root <路径>          # 绑定非 vault 文档根
-/specode:spec --detect-vault             # 列出已安装 vault
-/specode:spec --vault-status             # 显示当前文档根与来源
-/specode:spec -h                         # 完整帮助（hook fast-path）
-```
-
-会话激活后：
-
-- 每次用户 prompt 都会注入状态块 + 选择器提醒（命中 phase-gate 时）+ 文档优先提醒。
-- 每次模型 turn 结束时注入代码-文档同步提醒。
-- 模型必须按三种类型骨架渲染选择器，并在响应末尾输出状态行 footer。
-
-## 会话日志收集（0.10.0+）
-
-specode 默认把每个 session 的事件流写到 `~/.specode/logs/<session_id>.jsonl`
-（含 hook 触发、主代理工具调用、specode CLI 调用、phase/lock 变化），
-便于排查"主代理为什么走偏 / 漏 fork spec-writer / 选错 selector"等问题。
+spec 文档落在 `<doc_root>/specs/<slug>/`。绑定一次即可长期记住：
 
 ```sh
-# 回放一个 session
+/specode:spec --set-vault <路径>     # 绑定 Obsidian vault
+/specode:spec --set-root <路径>      # 任意目录都行（等价）
+/specode:spec --detect-vault         # 列出已检测到的 vault
+/specode:spec --vault-status         # 查看当前文档根 + 解析来源
+```
+
+未绑定时 specode 会自动探测 Obsidian vault，没有就会在创建 spec 时
+问你。
+
+### 2. 新建 spec
+
+```sh
+/specode:spec -n <slug> <需求>       # 推荐：显式 slug
+/specode:spec <需求>                 # 或让代理推导 slug
+/specode:spec <名称>: <需求>         # 或同时指定显示名 + 需求
+```
+
+`-n` 保留 slug 原文（允许 Unicode：中文 / 日文 / emoji 都行），只禁
+文件系统危险字符。不带 `-n` 的写法让代理推导 slug，方便但结果不可预知。
+
+创建成功后代理会**连续**呈现两个选择器：
+
+1. **project-root-choice**：代码写到哪个目录（与文档目录解耦）。
+2. **workflow-choice**：从 `requirements.md` 起步，还是走 `bugfix.md`
+   缺陷修复流程等。
+
+之后每个 turn 都以状态行 footer 收尾，phase-gate 处由代理弹选择器
+让你决定下一步。
+
+### 3. 管理会话
+
+```sh
+/specode:continue [slug]    # 恢复当前 session 或切到指定 spec
+/specode:status             # 查看 mode / phase / lock / pending selector
+/specode:end                # 结束 session（文档保留）
+```
+
+状态按宿主 `session_id` 隔离，每个终端窗口各自一条线。
+
+### 4. task-swarm：并发跑 tasks
+
+`tasks.md` 确认后，在 `tasks-execution` 选择器里选 `task-swarm` 路径，
+编排器接管：
+
+```
+init  →  plan  →  fork（N 个 coder）  →  advance  →  writeback  →  resolve
+                ↑                                    ↓
+                └────────── reviewer / validator ────┘
+```
+
+- **coder** 并发执行，按 `@writes` 文件冲突自动切 group。
+- **reviewer** 每个 group 单实例；只有带证据标签（`[req:x.y]` /
+  `[security]` / `[contract]`）的 P0 才触发一轮 `p0-fix`，其余 advisory。
+- **validator** 每个 group 单实例；`fail` 进入 `v-fix` 循环直到 `pass`，
+  连续 3 轮同 fail 触发死循环保护。
+- 可在 `tasks-execution` 选择「task-swarm + 人工验收（跳过 validator）」
+  → 加 `--skip-validator` 走人工验收。
+
+`/specode:task-swarm` 是入口；完整状态机规格见
+`references/task-swarm.md`。
+
+### 5. 查看 session 日志
+
+specode 默认把每个 session 的事件流写到
+`~/.specode/logs/<session_id>.jsonl`（含 hook 触发、主代理工具调用、
+phase / lock 变化），用于排查「代理为什么跳过 phase / fork 错 agent /
+选错 selector」：
+
+```sh
 sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
    "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>
-
-# 临时关
-export SPECODE_LOG=off
-
-# 永久关：编辑 ~/.config/specode/config.json 加 "logging": false
 ```
 
-默认 redact 黑名单（`password / api_key / token / …`）+ 字符串字段自动
-截断到 500 字符。可通过 `~/.config/specode/config.json.redact_keys`
+默认 redact 黑名单（`password / api_key / token / …`），字符串字段
+自动截断到 500 字符。可通过 `~/.config/specode/config.json.redact_keys`
 扩展黑名单。
 
-## 全局 bypass
+### 6. 全局 bypass（仅调试）
 
 ```sh
-SPECODE_GUARD=off   # 让所有 hook 立即 exit 0
+SPECODE_GUARD=off   # 让所有 hook 立刻 exit 0
 SPECODE_LOG=off     # 让 session 日志不写入
 ```
 
-仅作调试用。
+## 项目结构
+
+```
+.claude-plugin/marketplace.json   单插件 marketplace 清单
+plugins/specode/
+  .claude-plugin/plugin.json      插件清单
+  hooks/hooks.json                7 个提醒式 hook handler
+  commands/                       /specode:spec, :continue, :end,
+                                  :status, :task-swarm
+  agents/                         task-swarm-{planner,coder,
+                                  reviewer,validator}, spec-writer
+  scripts/                        spec_vault / spec_init /
+                                  spec_session / spec_lint /
+                                  spec_status / task_swarm*
+  skills/specode/                 SKILL.md + references/
+  assets/templates/               文档模板
+  tests/                          152 个 pytest 用例
+```
 
 ## 贡献
 
-参见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)：runtime 仅限标准库、hook 安全契约（提醒式、永不 `exit 2`）、测试规范。
+参见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)：runtime 仅限标准库、
+hook 安全契约（提醒式、永不 `exit 2`）、测试规范。
 
 ## 许可证
 

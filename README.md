@@ -107,11 +107,11 @@ rm -rf ~/.specode ~/.config/specode
 
 ```sh
 # Claude Code
-claude plugin update specode
+claude plugin update specode@specode
 claude plugin marketplace update specode
 
 # CodeBuddy
-codebuddy plugin update specode
+codebuddy plugin update specode@specode
 codebuddy plugin marketplace update specode
 ```
 

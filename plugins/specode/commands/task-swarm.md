@@ -1,6 +1,6 @@
 ---
-description: 多 agent 并发执行 tasks.md（state.json 单一事实源；主代理按 plan→fork→advance 循环驱动）
-argument-hint: "[<spec-dir>/tasks.md] [--max-parallel N] [--max-rounds N]"
+description: 多 agent 并发执行 tasks.md（state.json 单一事实源；主代理按 plan→fork→advance 循环驱动）。无参数 = spec 模式；传 tasks.md 路径 = standalone 模式（任意 tasks.md，不走 spec 校验）
+argument-hint: "[<tasks.md 路径>] [--max-parallel N] [--max-rounds N] [--skip-validator]"
 ---
 
 /specode:task-swarm $ARGUMENTS
@@ -30,7 +30,31 @@ argument-hint: "[<spec-dir>/tasks.md] [--max-parallel N] [--max-rounds N]"
 
 按以下 3 步路由。**禁止**主代理直接 `task_swarm.py init`、**禁止**根据用户裸输入 invent `<spec_dir>`。task-swarm 是 tasks phase + `tasks-execution` selector 选中 task-swarm 路径后的下游编排，不是用户裸触发的入口（详见 SKILL.md §Task-Swarm + `references/task-swarm.md`）。
 
-## 第一步：前置校验（必做）
+## 模式判定（先做）
+
+看 `$ARGUMENTS` 是否包含一个**存在的** tasks.md 路径（绝对路径或相对当前 cwd 的相对路径）：
+
+- **包含 tasks.md 路径** → **standalone 模式**：
+  - **跳过**「第一步：前置校验」（不需要 spec session / phase / selector，不读 active_spec_dir）
+  - 直接进「第二步：init」，但 init 调用改为：
+    ```sh
+    sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
+       "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
+       init --tasks "<用户给的绝对路径>" [--skip-validator] [--max-parallel N] [--max-rounds N]
+    ```
+    **不传** `--session`，**不传** `--spec`。状态目录自动落到 `<tasks.md 同目录>/.task-swarm/runs/<run_id>/`。
+  - 拿到 `run_id` 后照常走「第三步」7 步循环
+  - 「heartbeat」节**只调** `task_swarm.py heartbeat`，**不调** `spec_session.py heartbeat`（standalone 没有 spec 锁）
+  - 异常出口处理（STATUS=failed / writeback 越界 / deadloop）与 spec 模式一致
+
+- **不含路径参数** → **spec 模式**（默认）：走下面「第一步：前置校验」开始的完整流程
+
+**判定规则**：
+- 把 `$ARGUMENTS` 用空格切词，取第一个**不以 `--` 开头**的 token 当候选路径
+- 调 `ls "<候选>"` 验证存在；存在且是文件 → standalone 模式
+- 不存在或不是文件 → 当作"没传路径"按 spec 模式走（**不**因路径不存在而报错退出，让 spec 模式的前置校验自己接管）
+
+## 第一步：前置校验（必做，仅 spec 模式）
 
 调 `spec_session.py read-session --session <id>` 拿当前 session 状态：
 
@@ -114,6 +138,8 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 task_swarm.py heartbeat --run <run_id>
 spec_session.py heartbeat --spec <dir> --session <id>
 ```
+
+**standalone 模式**：只调 `task_swarm.py heartbeat`，**省略** `spec_session.py heartbeat`（没有 spec 锁需要保活）。
 
 ## 术语区分：reviewer 分级 vs validator fail（容易混）
 

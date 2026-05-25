@@ -152,7 +152,7 @@ CLI 行为：
  - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
  - 验收节固定四行：所有 required 任务完成 / 所有验证命令通过 / 跳过 optional 已记录 / 用户确认验收。
 2. 报路径 + 摘要（任务总数 / required 数 / optional 数 / 主要阶段 + traceability / 同文件冲突 stage）。
-3. 呈现 `tasks-execution` 选择器（类型 A，**0.9.3 起合并了旧 `doc-confirm-tasks`**——一步完成确认 + 执行方式选择 + 回退入口）：
+3. 呈现 `tasks-execution` 选择器（类型 A，一步完成确认 + 执行方式选择 + 回退入口）：
  - 选 1 `用 task-swarm 多 agent 并发（推荐）` → 调 `task_swarm.py init --tasks <spec_dir>/tasks.md --session <id>` 切到 task-swarm 编排模式；详见 `references/task-swarm.md`。required + optional 一并处理。
  - 选 2 `顺序执行（同时处理 optional）` → phase-transition → implementation，单 agent 顺序推进 required + optional。如用户在 Other 里说"只跑 required"则跳过 optional。
  - 选 3 `需要调整 tasks.md` → 留在 tasks phase；接收用户反馈 → 改 tasks.md → 重出本选择器。

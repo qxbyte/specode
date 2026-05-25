@@ -4,7 +4,7 @@ description: Use when 准备生成或修订 requirements.md / bugfix.md / design
 
 # Spec Document Templates
 
-5 份 spec 文档的章节模板与 EARS SHALL 写法。**主代理**按本文件 + `${CLAUDE_PLUGIN_ROOT}/assets/templates/<phase>.md` 模板骨架直接生成文档（0.10.11 起删除 `spec-writer` subagent，详见 SKILL.md §「Spec 文档生成」）。tasks.md 末尾自带 `## 测试要点` 节，主代理在 tasks phase 按 SHALL 补几行作为测试人员参考。
+5 份 spec 文档的章节模板与 EARS SHALL 写法。**主代理**按本文件 + `${CLAUDE_PLUGIN_ROOT}/assets/templates/<phase>.md` 模板骨架直接生成文档（详见 SKILL.md §「Spec 文档生成」）。tasks.md 末尾自带 `## 测试要点` 节，主代理在 tasks phase 按 SHALL 补几行作为测试人员参考。
 
 ## 0. 命名约定
 
@@ -290,7 +290,7 @@ sequenceDiagram
 
 ## 4. `tasks.md`
 
-**0.9.3 起统一为 task-swarm 兼容格式**：顶层 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。这样 主代理 生成的 tasks.md 直接能给 task-swarm 用，顺序执行也兼容（task-swarm 标签被顺序执行 agent 当注释忽略）。
+**采用 task-swarm 兼容格式**：顶层 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。这样主代理生成的 tasks.md 直接能给 task-swarm 用，顺序执行也兼容（task-swarm 标签被顺序执行 agent 当注释忽略）。
 
 ```markdown
 # 实现计划：[需求显示名]（[slug]）

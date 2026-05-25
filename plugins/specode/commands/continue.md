@@ -31,3 +31,5 @@ argument-hint: "[spec-slug]"
 3. `spec_session.py load --spec <dir>`
 4. `spec_session.py continue --spec <dir> --session <id>`（只读模式跳过）
 5. 完成后**按 SKILL.md §Status Footer「新 spec 创建/接管的当 turn」走**：chat 简报 "已加载 spec：<slug>（phase=<p>, iteration=<n>, lock=<state>）" + 状态行 footer + （若 sess.pending_selector 有值）主动呈现对应 selector
+
+CLI 调用模板见 SKILL.md §CLI 调用规约（**禁止**裸 `python3 spec_session.py …`）。

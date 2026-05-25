@@ -100,6 +100,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 - doc-root 三层解析详见 SKILL.md §Document Root Resolution
 - 三层全 miss → exit 3 + 引导提示；**不**回退到 cwd / ~/specs
 - 详细流程见 SKILL.md §Session Lifecycle / references/obsidian.md
+- 调用模板规约见 SKILL.md §CLI 调用规约（**禁止**裸 `python3 spec_init.py …`）
 
 ### 第四步成功后必做（0.10.15+：先 project-root，再 workflow）
 

@@ -16,7 +16,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REFS_DIR = REPO_ROOT / "plugins" / "specode" / "skills" / "specode" / "references"
-CATALOG_PY = REPO_ROOT / "plugins" / "specode" / "scripts" / "_ss_catalog.py"
+CATALOG_PY = REPO_ROOT / "plugins" / "specode" / "scripts" / "spec_session" / "_catalog.py"
 
 
 def _parse_hook(stdout: str) -> Optional[dict]:
@@ -56,14 +56,14 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
 
 
 def _load_catalog_keys() -> set[str]:
-    """Parse _ss_catalog.py CATALOG dict keys without importing the module."""
+    """Parse spec_session/_catalog.py CATALOG dict keys without importing the module."""
     src = CATALOG_PY.read_text(encoding="utf-8")
     m = re.search(
         r"CATALOG:\s*dict\[str,\s*list\[str\]\]\s*=\s*\{(.*?)\n\}\s*$",
         src,
         re.DOTALL | re.MULTILINE,
     )
-    assert m, "CATALOG dict not found in _ss_catalog.py"
+    assert m, "CATALOG dict not found in spec_session/_catalog.py"
     return set(re.findall(r'^\s*"([a-z][a-z0-9-]+)":', m.group(1), re.MULTILINE))
 
 

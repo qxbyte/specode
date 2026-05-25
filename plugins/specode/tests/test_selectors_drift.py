@@ -1,9 +1,10 @@
 """references/selectors.md 与 SELECTOR_PROMPTS 必须 byte-identical。
 
-selectors.md 是文档来源、_ss_selectors.py 的 SELECTOR_PROMPTS 是 hook 注入时实际
-拿出来拼字符串的运行时常量库（0.10.22 拆分前在 spec_session.py 里）。两边漂移会
-导致："文档说选项 A/B/C，运行时注入 A/B/D"——主代理按 hook 内容调 AskUserQuestion，
-用户体验跟文档对不上。
+selectors.md 是文档来源、spec_session/_selectors.py 的 SELECTOR_PROMPTS 是 hook
+注入时实际拿出来拼字符串的运行时常量库（0.10.22 拆分前在 spec_session.py 里，
+0.10.23 子目录化后搬到 spec_session/_selectors.py）。两边漂移会导致："文档说选项
+A/B/C，运行时注入 A/B/D"——主代理按 hook 内容调 AskUserQuestion，用户体验跟文档
+对不上。
 
 本套测试在 pytest 阶段自动比对：
 - runtime keys 必须与 selectors.md 中 ### / #### 反引号标题命中的 key 集合一致
@@ -18,7 +19,7 @@ import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPTS = REPO_ROOT / "plugins" / "specode" / "scripts" / "_ss_selectors.py"
+SCRIPTS = REPO_ROOT / "plugins" / "specode" / "scripts" / "spec_session" / "_selectors.py"
 SELECTORS_MD = REPO_ROOT / "plugins" / "specode" / "skills" / "specode" / "references" / "selectors.md"
 
 
@@ -29,7 +30,7 @@ def _load_runtime_prompts() -> dict[str, str]:
         src,
         re.DOTALL | re.MULTILINE,
     )
-    assert m, "SELECTOR_PROMPTS dict not found in _ss_selectors.py"
+    assert m, "SELECTOR_PROMPTS dict not found in spec_session/_selectors.py"
     body = m.group(1)
     prompts: dict[str, str] = {}
     for km in re.finditer(r'"([a-z-]+)":\s*"""(.*?)""",', body, re.DOTALL):

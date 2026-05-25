@@ -1,4 +1,4 @@
-'''spec_session.py 内部实现：B2 reference catalog hook。
+'''spec_session package 内部实现：B2 reference catalog hook。
 
 按 user prompt 关键词在 active spec 内注入「考虑读 references/<X>.md」提醒。
 description 即触发（superpowers 风格）：每个 reference 在文件头 YAML
@@ -20,15 +20,15 @@ import re
 from pathlib import Path
 from typing import Optional
 
-from _ss_hooks import (
+from spec_session._hooks import (
     _emit_hook_additional_context,
     _read_stdin_payload,
     _safe_hook,
 )
-from _ss_io import read_session
+from spec_session._io import read_session
 
 
-_THIS_DIR = Path(__file__).resolve().parent
+_THIS_DIR = Path(__file__).resolve().parents[1]  # = scripts/（本文件在 scripts/spec_session/）
 _REFERENCES_DIR = _THIS_DIR.parent / "skills" / "specode" / "references"
 
 

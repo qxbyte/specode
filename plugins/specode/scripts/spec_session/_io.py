@@ -1,4 +1,4 @@
-"""spec_session.py 内部实现：原子写 / session+spec config 读写 / 锁工具 / 共享常量。
+"""spec_session package 内部实现：原子写 / session+spec config 读写 / 锁工具 / 共享常量。
 
 不要直接运行本文件。它通过 spec_session.py 导出，spec_status.py 也通过
 spec_session.py 间接消费这里的 read_session / read_spec_config /

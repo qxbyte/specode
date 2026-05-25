@@ -1,4 +1,4 @@
-'''spec_session.py 内部实现：reminder 模板字符串 + help 文本渲染。
+'''spec_session package 内部实现：reminder 模板字符串 + help 文本渲染。
 
 hook 注入时拿这里的模板按 <slug> / <phase> / <session_short> / <mode>
 等占位符 .replace() 填值；HELP_OUTPUT_TEMPLATE / HELP_FASTPATH_WRAPPER
@@ -13,7 +13,7 @@ from pathlib import Path
 from string import Template
 
 
-_THIS_DIR = Path(__file__).resolve().parent
+_THIS_DIR = Path(__file__).resolve().parents[1]  # = scripts/（本文件在 scripts/spec_session/）
 
 
 STATUS_FOOTER_TEMPLATE = """## 🪧 spec-mode 状态行（必须在本响应末尾输出）

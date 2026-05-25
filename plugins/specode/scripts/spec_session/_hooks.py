@@ -1,4 +1,4 @@
-'''spec_session.py 内部实现：所有 hook 子命令（hook_on_*）+ safe wrapper + task-swarm plan 提醒辅助。
+'''spec_session package 内部实现：所有 hook 子命令（hook_on_*）+ safe wrapper + task-swarm plan 提醒辅助。
 
 hook 子命令仅由 hooks/hooks.json 调用；全部 exit 0、任何异常通过 @_safe_hook
 内部 catch（PreToolUse 对 task-swarm 受控路径与 tasks.md 的 exit 2 强阻断除外，
@@ -19,7 +19,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-from _ss_io import (
+from spec_session._io import (
     _now_iso,
     _session_short,
     read_session,
@@ -27,7 +27,7 @@ from _ss_io import (
     write_session_atomic,
     write_spec_config_atomic,
 )
-from _ss_reminders import (
+from spec_session._reminders import (
     CODE_DOC_SYNC_STOP,
     DOC_PRIORITY_REMINDER_ACTIVE,
     DOC_PRIORITY_REMINDER_READONLY,
@@ -38,12 +38,12 @@ from _ss_reminders import (
     _render_help_text,
     _wrap_help_fastpath,
 )
-from _ss_selectors import _fill_selector
+from spec_session._selectors import _fill_selector
 
 
-_THIS_DIR = Path(__file__).resolve().parent
+_THIS_DIR = Path(__file__).resolve().parents[1]  # = scripts/（本文件在 scripts/spec_session/）
 
-# spec_log 兜底 import（sibling 同目录脚本；spec_session.py 入口已注入 sys.path）
+# spec_log 兜底 import（sibling 同目录脚本；scripts/spec_session.py launcher 已注入 sys.path）
 try:
     from spec_log import write_event as _log_event  # type: ignore
 except Exception:

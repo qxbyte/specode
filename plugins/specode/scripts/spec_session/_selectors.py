@@ -1,4 +1,4 @@
-'''spec_session.py 内部实现：SELECTOR_PROMPTS 字典 + _fill_selector 模板填充。
+'''spec_session package 内部实现：SELECTOR_PROMPTS 字典 + _fill_selector 模板填充。
 
 `SELECTOR_PROMPTS` 是 11 个 phase-gate selector 的提示词常量库。
 hook 注入时按 key 取出对应模板字符串、用 _fill_selector 填入 <slug> / <phase> 等

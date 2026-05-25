@@ -1,4 +1,4 @@
-'''spec_session.py 内部实现：业务子命令（cmd_*）+ _update_session_for_spec + _auto_pending_selector。
+'''spec_session package 内部实现：业务子命令（cmd_*）+ _update_session_for_spec + _auto_pending_selector。
 
 这些命令被 hooks.json 引导主代理调用，全部接 --session 参数；
 任何写入失败必须回滚已变更的另一份文件 + 返回非零 exit。
@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from _ss_io import (
+from spec_session._io import (
     VALID_PHASES,
     _atomic_write_json,
     _emit_json,

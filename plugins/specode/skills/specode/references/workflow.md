@@ -1,3 +1,7 @@
+---
+description: Use when 涉及 phase / clarification / workflow-choice / 三档工作流选择 / phase 转换细节 / /specode:continue 接管子步骤。SKILL.md §Phase Order 与 §Workflow Selection 的运维详解。
+---
+
 # Workflow — Phase 协议详解
 
 SKILL.md §Phase Order / §Workflow Selection 的运维细节版本。本文件**不**重复激活规则、状态行 footer、selector 三种类型与场景表 —— 那些在 SKILL.md 与 `references/selectors.md` 里。

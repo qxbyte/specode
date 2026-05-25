@@ -83,6 +83,7 @@ from _ss_hooks import (  # noqa: E402
     hook_on_task_completed,
     hook_on_user_prompt,
 )
+from _ss_catalog import hook_on_user_prompt_catalog  # noqa: E402
 
 # 为 spec_status.py 维持的向后兼容 re-export
 # （spec_status.py:25 直接 `from spec_session import read_session, read_spec_config,
@@ -154,6 +155,7 @@ def _build_parser() -> argparse.ArgumentParser:
     for name in (
         "on-session-start",
         "on-user-prompt",
+        "on-user-prompt-catalog",
         "on-stop",
         "on-session-end",
         "on-task-completed",
@@ -186,6 +188,7 @@ COMMANDS = {
     "list-specs": cmd_list_specs,
     "on-session-start": hook_on_session_start,
     "on-user-prompt": hook_on_user_prompt,
+    "on-user-prompt-catalog": hook_on_user_prompt_catalog,
     "on-stop": hook_on_stop,
     "on-session-end": hook_on_session_end,
     "on-task-completed": hook_on_task_completed,

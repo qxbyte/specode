@@ -1,3 +1,7 @@
+---
+description: Use when 想看一份完整可用的 tasks.md 示例，理解 @writes / @reads / @depends-on 标签的实际写法。
+---
+
 # task-swarm 示例：3 阶段 / 8 任务
 
 下面是一份**完整可用**的 tasks.md 示例，演示：

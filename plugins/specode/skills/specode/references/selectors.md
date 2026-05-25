@@ -1,3 +1,7 @@
+---
+description: Use when 准备调 AskUserQuestion 呈现 phase-gate selector，或对 selector 选项 / 文案 / 类型 / Other 兜底有疑问。详述 8 个固定场景模板与三类骨架。
+---
+
 # Selectors — `AskUserQuestion` 调用规范
 
 每个 phase-gate 节点必须**调用宿主内置 `AskUserQuestion` 工具**呈现选择器；工具自身渲染 chip-tabs / 选项列表 / 上下键导航 / 回车提交 / ESC 取消 / "Other" 自定义输入 UI。模型只负责传参，**绝不**自己输出 markdown 列表让用户回复编号。

@@ -1,3 +1,7 @@
+---
+description: Use when 涉及 task-swarm / reviewer / validator / v-fix / p0-fix / @writes / @depends-on / writeback / deadloop / 多 agent 并发执行 tasks。详述 task-swarm 完整协议（角色边界、状态机、产物 schema、死循环保护）。
+---
+
 # task-swarm 协议参考（references/task-swarm.md）
 
 本文档是 `/specode:task-swarm` 命令背后的完整协议。

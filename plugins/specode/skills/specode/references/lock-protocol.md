@@ -1,3 +1,7 @@
+---
+description: Use when 涉及 lock / takeover / heartbeat / stale / 多窗口同 spec / verify-lock 异常 / 接管 / 只读模式。详述锁状态机、接管三选项、stale 判定。
+---
+
 # Lock Protocol — 锁状态机与多窗口接管
 
 每个 spec 自己的 `<spec-dir>/.config.json.lock` 字段管单写权。**持有者键 = `session_id`**（与 `~/.specode/sessions/<id>.json` 文件名同源）。

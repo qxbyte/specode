@@ -1,3 +1,7 @@
+---
+description: Use when 准备生成或修订 requirements.md / bugfix.md / design.md / tasks.md / implementation-log.md。详述 5 份文档的章节模板、EARS SHALL 写法、traceability 规范。
+---
+
 # Spec Document Templates
 
 5 份 spec 文档的章节模板与 EARS SHALL 写法。**主代理**按本文件 + `${CLAUDE_PLUGIN_ROOT}/assets/templates/<phase>.md` 模板骨架直接生成文档（0.10.11 起删除 `spec-writer` subagent，详见 SKILL.md §「Spec 文档生成」）。tasks.md 末尾自带 `## 测试要点` 节，主代理在 tasks phase 按 SHALL 补几行作为测试人员参考。

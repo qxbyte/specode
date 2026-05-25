@@ -1,3 +1,7 @@
+---
+description: Use when 进入 acceptance phase 后用户提到迭代 / 继续调整 / 重跑测试 / 改需求；或 spec 已交付但要继续推进。详述 iteration 子循环规则与文档累积写法。
+---
+
 # Iteration — 子循环规则与文档累积
 
 `iteration` 是 spec 已交付后的**常驻**状态。本文件给出触发条件、phase 子循环、文档累积写法、退出条件。

@@ -2,7 +2,47 @@
 
 ## Unreleased
 
-_no entries yet_
+### Refactored — `spec_session.py` 拆分（2360 行 → 薄入口 + 5 sibling 模块）
+
+纯重构，无行为变化。`spec_session.py` 从 2360 行的"什么都装"模块拆成：
+
+| 新模块 | 承载 |
+|---|---|
+| `_ss_io.py` | 原子写、session+spec config 读写、锁工具、共享常量（`VALID_PHASES` / `STALE_LOCK_SECONDS`） |
+| `_ss_selectors.py` | `SELECTOR_PROMPTS` 字典 + `_fill_selector` |
+| `_ss_reminders.py` | reminder 模板字符串 + help 文本渲染 |
+| `_ss_business.py` | 所有 `cmd_*` 业务命令 + `_update_session_for_spec` |
+| `_ss_hooks.py` | 所有 `hook_on_*` + `_safe_hook` + task-swarm plan 提醒辅助 |
+
+`spec_session.py` 现在是 231 行的薄入口：argparse + `COMMANDS` dispatch + main。
+
+**外部 surface 100% 不变**：
+- 文件名 `spec_session.py` 保留——`hooks/hooks.json`、`commands/*.md`、`tests/conftest.py:run_script` 都按这个名字拼绝对路径。
+- `spec_status.py:25` 的 `from spec_session import read_session, read_spec_config, _session_short, _is_lock_stale` 仍可解析（spec_session.py 末尾从 `_ss_io` 重新导出）。
+- `tests/test_selectors_drift.py` 的 `SCRIPTS` 常量改指向 `_ss_selectors.py`；dict 字面量是从源精确切片复制的，byte-identical 守卫通过。
+
+219 项原有测试全绿；无 schema 变化、无 hook 行为变化。
+
+### Added — `on-user-prompt-catalog` hook：reference 关键词触发提示
+
+新 advisory hook，注册到 `hooks.json` `UserPromptSubmit` 数组第 3 位。激活
+门：仅 `mode=active` 触发，`idle / readonly / ended` 一律静默。
+
+**机制**：
+- 每个 `references/*.md` 文件首部新增 YAML frontmatter `description: Use when …`（"何时该读"而非"内容是什么"，superpowers 风格）。
+- `_ss_catalog.py` 维护一份预编译关键词正则字典 `CATALOG`（含中英文双语 pattern，例如 `lock / takeover / 接管` → `lock-protocol`，`task-swarm / @writes / reviewer` → `task-swarm` 等 8 个 key）。
+- 每轮 user prompt 触发：扫文本、把命中的 reference 列出来 + 嵌入对应 description，作为 `additionalContext` 注入。
+
+**目的**：specode 从"全程监考"扩展为"全程监考 + 定向激活"双模并存。
+主代理看到注入后自己决定是否真要 Read 对应 reference；hook 永远 advisory，
+不阻断。
+
+**新 drift 守卫**：
+- `tests/test_catalog.py::test_catalog_keys_have_matching_reference_files` —— `CATALOG` key 必须对应真实 `references/<key>.md`
+- `tests/test_catalog.py::test_every_catalog_referenced_file_has_description_frontmatter` —— 每份 referenced 文件必有非空 `description` 字段
+
+性能：每次调用纯预编译正则匹配 + 最多 8 次小文件读，远低于
+UserPromptSubmit 80ms 预算。
 
 ## 0.10.21 (2026-05-23)
 

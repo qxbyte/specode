@@ -1,3 +1,7 @@
+---
+description: Use when 涉及 vault / obsidian / doc_root / --set-vault / --detect-vault / spec 找不到 / specs 目录在哪。详述三层 doc_root 解析、Obsidian 自检测、目录结构约定。
+---
+
 # Obsidian / Document Root 解析
 
 specode 的 spec 目录默认放在 Obsidian vault 内（也支持纯文件系统目录）。本文件给出三平台 `obsidian.json` 路径、三层根目录解析顺序、多 vault 选择策略、目录结构约定。

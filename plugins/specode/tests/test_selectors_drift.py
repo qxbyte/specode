@@ -1,30 +1,35 @@
-"""references/selectors.md 与 SELECTOR_PROMPTS 必须 byte-identical。
+"""selectors.md §8 场景总览表 与 SELECTOR_PROMPTS 11 keys 必须一一对应。
 
-selectors.md 是文档来源、spec_session/_selectors.py 的 SELECTOR_PROMPTS 是 hook
-注入时实际拿出来拼字符串的运行时常量库（0.10.22 拆分前在 spec_session.py 里，
-0.10.23 子目录化后搬到 spec_session/_selectors.py）。两边漂移会导致："文档说选项
-A/B/C，运行时注入 A/B/D"——主代理按 hook 内容调 AskUserQuestion，用户体验跟文档
-对不上。
+`spec_session/_selectors.py` 的 `SELECTOR_PROMPTS` 字典是 selector 模板的
+**单一事实源**——hook 在 `UserPromptSubmit` 时按 `pending_selector` 命中
+key 取出对应字符串值，做占位符替换后注入 `additionalContext`。
+
+`selectors.md` 的 §8 场景常量库总览表是这些 key 的目录索引（每行含 §章节号
+/ key / 类型 / 触发 phase / header / _selectors.py 行号），让人类读 SKILL.md
+/ 其他 reference 时能快速跳到代码里的具体模板字面量。
 
 本套测试在 pytest 阶段自动比对：
-- runtime keys 必须与 selectors.md 中 ### / #### 反引号标题命中的 key 集合一致
-- 每个 selector 的 ```text 块内容必须与 SELECTOR_PROMPTS[key] 字符串 strip 后逐字相等
+- selectors.md 总览表中每行的 key 都在 SELECTOR_PROMPTS 里
+- 反向：SELECTOR_PROMPTS 的每个 key 都在总览表里出现一次
+
+不再做"selectors.md ```text 块与字典字面量 byte-identical"全文对账（重构前
+有 ~440 行的字面量副本两边维护，drift test 报警时两边都得改、PR 双份 diff；
+重构后单一事实源在 _selectors.py，selectors.md 只索引，无 byte-level 副本）。
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-import pytest
-
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-SCRIPTS = REPO_ROOT / "plugins" / "specode" / "scripts" / "spec_session" / "_selectors.py"
+SELECTORS_PY = REPO_ROOT / "plugins" / "specode" / "scripts" / "spec_session" / "_selectors.py"
 SELECTORS_MD = REPO_ROOT / "plugins" / "specode" / "skills" / "specode" / "references" / "selectors.md"
 
 
-def _load_runtime_prompts() -> dict[str, str]:
-    src = SCRIPTS.read_text(encoding="utf-8")
+def _load_runtime_keys() -> set[str]:
+    """从 SELECTOR_PROMPTS 字典字面量里提取所有 key。"""
+    src = SELECTORS_PY.read_text(encoding="utf-8")
     m = re.search(
         r"SELECTOR_PROMPTS:\s*dict\[str,\s*str\]\s*=\s*\{(.*?)\n\}\s*$",
         src,
@@ -32,79 +37,66 @@ def _load_runtime_prompts() -> dict[str, str]:
     )
     assert m, "SELECTOR_PROMPTS dict not found in spec_session/_selectors.py"
     body = m.group(1)
-    prompts: dict[str, str] = {}
-    for km in re.finditer(r'"([a-z-]+)":\s*"""(.*?)""",', body, re.DOTALL):
-        prompts[km.group(1)] = km.group(2).strip()
-    return prompts
+    return set(re.findall(r'"([a-z][a-z0-9-]+)":\s*"""', body))
 
 
-def _load_doc_prompts() -> dict[str, str]:
-    """提取 selectors.md 中每个 H3 / H4 反引号 selector key 紧随其后的 ```text 块。
+def _load_doc_keys() -> set[str]:
+    r"""从 selectors.md §8 场景常量库总览表的 markdown table 提取 key 列。
 
-    支持两种结构：
-      ### A1 `key` — 描述           （单 key 一节）
-      ### A3 `doc-confirm-{...}`    （多 key 共享节，下挂多个 #### `key` 子节）
-    第一种 H3 自带 ```text；第二种 H3 是分组介绍 + 多个 H4 各自有 ```text。
+    表格行形如 `| §A0 | \`project-root-choice\` | A | ... |`，第 2 列加了
+    反引号包裹 key——挑这一列。
     """
     md = SELECTORS_MD.read_text(encoding="utf-8")
-    prompts: dict[str, str] = {}
-    pattern = re.compile(
-        r"^(#{3,4})\s+[^\n]*?`([a-z][a-z0-9-]+)`[^\n]*\n(.*?)(?=^#{3,4}\s|\Z)",
+    # 限定在 "## 8 个固定场景常量库" 节内（避免误抓其他章节里的反引号）
+    sec_match = re.search(
+        r"^##\s*8 个固定场景常量库\s*$(.*?)(?=^##\s|\Z)",
+        md,
         re.DOTALL | re.MULTILINE,
     )
-    for m in pattern.finditer(md):
-        key = m.group(2)
-        section = m.group(3)
-        cm = re.search(r"```text\n(.*?)```", section, re.DOTALL)
-        if cm:
-            prompts[key] = cm.group(1).strip()
-    return prompts
+    assert sec_match, "selectors.md §8 场景常量库 section header not found"
+    section = sec_match.group(1)
+    keys: set[str] = set()
+    # 匹配总览表行：第二个 |...| 字段含 `key`
+    for line in section.splitlines():
+        if not line.startswith("| §"):
+            continue
+        m = re.search(r"\|\s*`([a-z][a-z0-9-]+)`\s*\|", line)
+        if m:
+            keys.add(m.group(1))
+    return keys
 
 
-def test_keys_match():
-    py = _load_runtime_prompts()
-    md = _load_doc_prompts()
-    extra_py = set(py) - set(md)
-    extra_md = set(md) - set(py)
-    msg = []
+def test_overview_table_matches_runtime_keys():
+    py_keys = _load_runtime_keys()
+    md_keys = _load_doc_keys()
+    assert py_keys, "no keys parsed from SELECTOR_PROMPTS"
+    assert md_keys, "no keys parsed from selectors.md §8 overview table"
+
+    extra_py = py_keys - md_keys
+    extra_md = md_keys - py_keys
+    msg: list[str] = []
     if extra_py:
         msg.append(
-            "Selectors in SELECTOR_PROMPTS but missing in selectors.md "
-            "(need a ### / #### header with `key` + ```text block): "
-            f"{sorted(extra_py)}"
+            "Keys in SELECTOR_PROMPTS but missing from selectors.md overview "
+            f"table: {sorted(extra_py)} — add a row to the §8 table"
         )
     if extra_md:
         msg.append(
-            "Selectors in selectors.md but not in SELECTOR_PROMPTS runtime: "
-            f"{sorted(extra_md)} — either delete the orphan or add it to spec_session.py"
+            "Keys in selectors.md overview but not in SELECTOR_PROMPTS: "
+            f"{sorted(extra_md)} — either delete the orphan row or add the "
+            "key to _selectors.py"
         )
     assert not msg, "\n".join(msg)
 
 
-@pytest.mark.parametrize("key", sorted(_load_runtime_prompts()))
-def test_byte_identical(key):
-    py = _load_runtime_prompts()
-    md = _load_doc_prompts()
-    if key not in md:
-        pytest.skip(f"selector {key} has no doc block — covered by test_keys_match")
-    a = py[key]
-    b = md[key]
-    if a == b:
-        return
-    for i, (ca, cb) in enumerate(zip(a, b)):
-        if ca != cb:
-            cs = max(0, i - 40)
-            ce = i + 80
-            pytest.fail(
-                f"Drift in selector '{key}' at char {i} "
-                f"(spec_session.py={len(a)} chars, selectors.md={len(b)} chars):\n"
-                f"  py: ...{a[cs:ce]!r}\n"
-                f"  md: ...{b[cs:ce]!r}"
-            )
-    shorter = min(len(a), len(b))
-    longer = a if len(a) > len(b) else b
-    who = "spec_session.py" if len(a) > len(b) else "selectors.md"
-    pytest.fail(
-        f"Drift in selector '{key}': {who} has extra {len(longer) - shorter} chars "
-        f"at tail:\n  extra: {longer[shorter:shorter+200]!r}"
+def test_expected_key_count():
+    """Sanity check: 11 keys total (8 scenes; doc-confirm-* contributes 3 variants).
+
+    Catches a class of regressions where someone accidentally drops a key from
+    SELECTOR_PROMPTS without realizing it.
+    """
+    py_keys = _load_runtime_keys()
+    assert len(py_keys) == 11, (
+        f"expected 11 SELECTOR_PROMPTS keys (8 scenes + 2 extra doc-confirm "
+        f"variants); got {len(py_keys)}: {sorted(py_keys)}"
     )

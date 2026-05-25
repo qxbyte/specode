@@ -92,7 +92,7 @@ CLI 行为：
 
 ### 1.4 Pre-requirements Clarification（Plan-mode）
 
-→ 详见 SKILL.md §Pre-requirements Clarification 与 `references/selectors.md` §Plan-mode 澄清问答示例。
+→ 详见 SKILL.md §Pre-requirements Clarification 与 `_selectors.py` SELECTOR_PROMPTS['clarification-wizard']。
 
 约束摘要：
 
@@ -113,7 +113,7 @@ CLI 行为：
 
 ## 2. Workflow 选择
 
-`workflow-choice` 选择器（类型 A） → 详见 `references/selectors.md` §(1)。
+`workflow-choice` 选择器（类型 A） → 模板详见 `_selectors.py` SELECTOR_PROMPTS['workflow-choice']。
 
 三档定义：
 
@@ -301,7 +301,7 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 1. 先做工具调用（Write/Edit 文档 / Read 验证文档）。
 2. 在 chat 正文输出：文档**绝对路径**、简短摘要、3–8 条关键变更要点、未决问题。
 3. 空一行 → 状态行 footer。
-4. **调 `AskUserQuestion` 工具**呈现选择器（类型按 SKILL.md §Selectors 表查；具体参数见 `references/selectors.md` §8 场景常量库）。
+4. **调 `AskUserQuestion` 工具**呈现选择器（类型按 SKILL.md §Selectors 表查；模板见 `_selectors.py` SELECTOR_PROMPTS[<key>]，索引见 `references/selectors.md` §8 总览表）。
 5. 工具调用本身就是 turn 终止；不需要 sentinel，不需要在工具调用之后追加任何文本。
 
 用户回复（即 `AskUserQuestion` 工具返回值）→ 下一轮按用户选择做对应动作；选 `查看全文`（doc-confirm-* 选项 2）就完整 echo 文档后**再次**调同一选择器工具。

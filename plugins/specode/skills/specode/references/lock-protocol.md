@@ -112,7 +112,7 @@ description: Use when 涉及 lock / takeover / heartbeat / stale / 多窗口同 
 ### 6.2 LockHeld 三选项
 
 1. 输出锁状态摘要：`持有者 session_id 前 8 位 + 最近 heartbeat 时间`。
-2. 呈现 `takeover-options` 选择器（类型 A，详见 `references/selectors.md` §(6)）。**无推荐项**——让用户根据对方是否仍活跃自己判断。
+2. 呈现 `takeover-options` 选择器（类型 A，详见 `_selectors.py` SELECTOR_PROMPTS['takeover-options']）。**无推荐项**——让用户根据对方是否仍活跃自己判断。
 3. End turn 等用户选。
 
 | 选项 | 后续操作 |

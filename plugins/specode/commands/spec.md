@@ -106,9 +106,9 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 `spec_init.py` `exit 0` 后 spec 已进入 **active 模式**（`mode=active` / `pending_selector=project-root-choice`）。**`/specode:spec` 是持续流程入口，不需要用户再输命令推进**——本 turn hook 未刷新，主代理按 SKILL.md §Status Footer「新 spec 创建/接管的当 turn」走（chat 简报 + 状态行 footer），然后**依次**：
 
-1. **立即调 `AskUserQuestion` 呈现 `project-root-choice` selector**（决定代码写到哪个目录；详见 `references/selectors.md` §A0）
+1. **立即调 `AskUserQuestion` 呈现 `project-root-choice` selector**（决定代码写到哪个目录；模板见 `_selectors.py` SELECTOR_PROMPTS['project-root-choice']）
 2. 拿到用户选择后**本 turn 内**调 `spec_session.py set-project-root --spec <dir> --session <id> --root <选定路径>`
-3. CLI 成功后立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（详见 `references/selectors.md` §A1）
+3. CLI 成功后立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（模板见 `_selectors.py` SELECTOR_PROMPTS['workflow-choice']）
 
 **两步都不要 end turn 让用户再输命令**——project-root 选完直接进 workflow 选择。
 

@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+## 0.10.23 (2026-05-26)
+
+### Changed — `requirements.md` / `bugfix.md` 模板重设计
+
+两份模板从「机器验收文档」改写为「需求/缺陷描述」。
+
+**根因**：旧模板在「验收标准 / 当前行为 / 期望行为」等节预填 `WHEN ... THE System SHALL ...` 占位句，模型按填空模式扩写，整篇文档丢失"用人话讲需求"的语感，读起来像 EARS 句堆而非需求说明。
+
+**v3 设计要点**：
+
+- **主体改为自然语言**：requirements 用「背景与动机 / 目标用户与场景 / 用户故事 / 主流程 / 异常流程」描述 WHY + WHAT；bugfix 用「问题陈述 / 复现路径 / 证据 / 根因分析」描述现象 + 诊断。
+- **EARS 收敛到末尾「验收要点」可选段**——仅在需要机器可读契约时用，不再强制预填。
+- **「范围之外（Scope Out）」前置到第一节**，与「目标」放同一视野，比放在文末更能锚定边界。
+- **新增「典型使用路径（Happy Path）」编号步骤**——比纯散文更具象，复杂分支可附 Mermaid `flowchart`。
+- **bugfix 新增「根因分析」假设表**——三列结构（假设 / 支持证据 / 反对证据 或验证方式）强制把"猜测"与"结论"分开，状态机相关 bug 可附 Mermaid `stateDiagram-v2` 标错误流转点。
+- **「待澄清问题」前置到正文之前**，与本版同步落地的 Pre-requirements Clarification 铁律联动。
+- **新增 Priority / Severity 一行元信息**（可省）。
+
+**向后兼容**：
+
+- 保留 `### 需求 1` / `### 需求 2` 章节锚点（`spec_lint.py REQ_TAG_RE` 反向引用依赖）。
+- 保留 `Spec Type / Workflow / Status / Review Status` 元信息块（`spec_session` 业务依赖）。
+- `spec_lint.py rule_ears_shall` 仅对已存在的 SHALL 行校验，不预填不会触发任何 warning。
+- 全套 228 项测试无回归。
+
+### Fixed — 验收通过不再自动弹 iteration-scope（acceptance → iteration 路径）
+
+`_selectors.py` acceptance-gate 模板和 `_business.py _auto_pending_selector` 互相加强地把"验收通过"等价于"立刻追问要不要继续迭代"——与 `references/iteration.md` §2 / §7「不自动呈现 iteration-scope」自相矛盾。
+
+- `_selectors.py` acceptance-gate「用户选定后流程」：验收通过 → 仅做 phase-transition + chat 一句简报 → end turn，不再串接 iteration-scope。
+- `_selectors.py` iteration-scope 模板：「目的」/「前置动作」改写为只在用户**显式提出**迭代调整时呈现；新增「触发条件（必须满足之一才可呈现）」节列三种禁用场景。
+- `_business.py _auto_pending_selector`：`phase == "iteration"` 返回 `None`，合并冗余分支并加注释，让 hook 不再自动注入 iteration-scope。
+- `SKILL.md` 退出 spec 模式判定：移除「acceptance-gate 通过且 iteration-scope ESC」这条等价条件——只剩 `/specode:end` 一条。
+- 新增回归测试 `test_phase_transition_to_iteration_clears_pending_selector`。
+
+### Added — Pre-requirements Clarification 铁律（接通 clarification-wizard 触发链路）
+
+`clarification-wizard` selector 模板早已存在但**永不触发**：`_auto_pending_selector(intake)` 硬编码返回 `"workflow-choice"`，主代理也没有"何时该问、何时可跳"的指引。本次接通主流程，把它做成主代理在 workflow-choice 选定后**必走的歧义自检**：
+
+- `SKILL.md` §「Pre-requirements Clarification」改写为「铁律」形态：六维歧义自检（scope / behavior / UX / data / validation / acceptance）、四种必呈现场景、唯一例外（用户明确放权"由你决定"/"按业界默认"/"先 MVP"等）+ 反例三条。
+- `_selectors.py` workflow-choice「用户选定后流程」拆 **Step A 歧义自检 + Step B 文档生成**两段式 routing，写文档过程中发现新歧义须停写补 wizard。
+- `commands/spec.md` 第四步成功后必做加第 4 步指引，明确"严禁在源需求不明确时绕过 clarification-wizard 直接写文档——澄清铁律的违反不是'风格瑕疵'而是 spec 失真根因"。
+
 ## 0.10.22 (2026-05-26)
 
 ### Refactored — `spec_session.py` 拆分 + 两大 CLI 子目录化

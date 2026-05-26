@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+## 0.10.24 (2026-05-26)
+
+### Changed — 模板精简「铁律」段 + `FALLBACK_TEMPLATES` 极简化
+
+延续 0.10.23 模板重设计，进一步分离"描述文档结构"与"约束模型行为"两类内容。
+
+**根因**：v3 模板的「待澄清问题」节（requirements §三 / bugfix §五）保留了"**铁律**：源需求里**任何一处**模糊措辞……**必须**通过 `clarification-wizard` 与用户确认"这段长说教。但它对模型当前生成行为**几乎没有约束力**：
+
+- 模板是**被生成的产物**——模型在写文档**之前**读不到自己将写入的模板内容。
+- "要不要先 wizard"的判断发生在生成**之前**，靠的是 `SKILL.md` / `commands/spec.md` / selector 模板等**前置上下文**。
+- 模板里的铁律段只有事后兜底价值（主代理在 iteration 阶段回读 requirements.md 时的软指引），却写到每个 spec 永久落盘，信号被稀释。
+
+**改动**：
+
+- `assets/templates/requirements.md` §三 / `bugfix.md` §五「待澄清问题」：删掉"铁律 / 必须 / 不允许"等约束语言，只保留**结构占位**——"如有歧义，列在下方；无歧义可整节删掉"。
+- 真正的"必须 wizard"约束**已在 0.10.23 接通**且本次保持不变：
+  - `SKILL.md §「Pre-requirements Clarification（铁律）」`
+  - `commands/spec.md` 第四步成功后必做第 4 条
+  - `_selectors.py workflow-choice` Step A
+- 模板的本职从此明确：**只描述文档结构**，不夹塞行为约束。约束放在 host agent 系统级 prompt / 命令上下文 / hook 注入这些**模型决策前真正会读到**的位置。
+
+### Changed — `spec_init.py:FALLBACK_TEMPLATES` 极简化（方案 C）
+
+`FALLBACK_TEMPLATES` 是 `assets/templates/*.md` 读取失败时的兜底，正常路径不命中。0.10.23 之前内嵌的 `requirements.md` / `bugfix.md` 字符串保留着旧 SHALL/WHEN 占位句（未跟随 v3 改写），与当前 assets 模板风格矛盾。
+
+方案 C：fallback 不再复刻 v3 全量，只保留**应急可用的最小骨架**：
+
+- `# 需求文档` / `# Bugfix 文档` 标题
+- 元信息块（`Spec Type / Workflow / Status / Review Status`）—— `spec_session` 业务依赖
+- `{{summary}}` 占位 + `## 需求 1：` 章节锚点（`spec_lint REQ_TAG_RE` 兼容）
+- 一行明确提示"这是 fallback 骨架——assets 缺失时才使用，完整模板请查仓库或 README"
+
+`design.md` / `tasks.md` / `implementation-log.md` 三份 fallback 维持原状（未受本次模板风格变化影响）。
+
+228 项测试无回归。
+
 ## 0.10.23 (2026-05-26)
 
 ### Changed — `requirements.md` / `bugfix.md` 模板重设计

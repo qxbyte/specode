@@ -73,36 +73,36 @@ FALLBACK_TEMPLATES: dict[str, str] = {
 Spec Type: Feature
 Workflow: requirements-first
 Status: Requirements Draft
+Review Status: unreviewed
+
+> 这是 fallback 骨架——`assets/templates/requirements.md` 缺失时才使用。
+> 完整模板请查仓库 `plugins/specode/assets/templates/requirements.md` 或 README。
 
 ## 简介
 
 {{summary}}
 
-## 需求
+## 需求 1：
 
-### 需求 1：核心能力
-
-#### 验收标准
-
-1. WHEN 用户触发该能力，THE System SHALL 按需求描述执行预期行为。
+（请补充）
 """,
     "bugfix.md": """# Bugfix 文档
 
 Spec Type: Bugfix
 Workflow: bugfix
 Status: Bug Analysis Draft
+Review Status: unreviewed
 
-## 问题摘要
+> 这是 fallback 骨架——`assets/templates/bugfix.md` 缺失时才使用。
+> 完整模板请查仓库 `plugins/specode/assets/templates/bugfix.md` 或 README。
+
+## 问题陈述
 
 {{summary}}
 
-## 当前行为
+## 根因分析
 
-1. WHEN 缺陷触发条件满足，THEN THE System 出现当前错误行为。
-
-## 期望行为
-
-1. WHEN 缺陷触发条件满足，THE System SHALL 执行正确行为。
+（请补充）
 """,
     "design.md": """# 设计文档：{{name}}（{{slug}}）
 

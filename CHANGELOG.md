@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.10.22 (2026-05-26)
+
 ### Refactored — `spec_session.py` 拆分 + 两大 CLI 子目录化
 
 **两步走的纯重构，无行为变化。**

@@ -186,6 +186,33 @@ def test_phase_transition_updates_both_files(
     assert sess["pending_selector"] == "doc-confirm-requirements"
 
 
+def test_phase_transition_to_iteration_clears_pending_selector(
+    run_script, init_spec, fake_home
+):
+    """acceptance → iteration 不再自动注入 iteration-scope；停在 chat 等用户提。
+
+    回归防护：曾经 `_auto_pending_selector(phase="iteration")` 返回
+    `"iteration-scope"`，导致验收通过后立刻追问"本轮要调整什么"，与
+    iteration.md §2 / §7「不自动呈现」设计冲突。0.10.23 起统一返回 None。
+    """
+    slug, sid, spec_dir, _ = init_spec()
+    cfg = _spec_cfg(spec_dir)
+    cfg["phase"] = "acceptance"
+    (spec_dir / ".config.json").write_text(
+        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    cp = run_script("spec_session.py", "phase-transition",
+                    "--spec", str(spec_dir), "--session", sid,
+                    "--from", "acceptance", "--to", "iteration")
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    assert out["ok"] is True
+    assert out["phase"] == "iteration"
+    assert out["pending_selector"] is None
+    assert _spec_cfg(spec_dir)["pending_selector"] is None
+    assert _sess(fake_home, sid)["pending_selector"] is None
+
+
 def test_phase_transition_lock_lost_returns_exit_1(
     run_script, init_spec, fake_home, make_session_id
 ):

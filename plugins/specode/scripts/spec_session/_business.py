@@ -269,8 +269,9 @@ def _auto_pending_selector(phase: str, cfg: dict) -> Optional[str]:
         return None
     if phase == "acceptance":
         return "acceptance-gate"
-    if phase == "iteration":
-        return "iteration-scope"
+    # phase == "iteration" / "implementation" / 其它：不自动注入 selector。
+    # iteration 是已交付常驻态，停在 chat 等用户显式提出下一轮调整意图后，
+    # 主代理判断到调整范围明确时再主动呈现 iteration-scope。
     return None
 
 

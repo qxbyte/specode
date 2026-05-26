@@ -95,14 +95,23 @@ questions:
 
 **用户选定后流程（同一 turn 内继续，不要 end turn 让用户输命令）**
 
-拿到 AskUserQuestion 选项后**本 turn 内**按选项继续：
+拿到 AskUserQuestion 选项后**先做歧义自检**（SKILL.md §「Pre-requirements Clarification（铁律）」），再决定下一步：
+
+**Step A — 歧义自检（必做）**：通读 `<spec-dir>/.config.json.source_text` + 用户最近 turn 的补充，按 scope / behavior / UX / data / validation / acceptance 六维自问"要写 SHALL 或 design 时，是否任一维度需要我编一条规则填空？"
+
+- **有阻塞性歧义且用户未明确放权** → 立即调 `AskUserQuestion` 呈现 `clarification-wizard`（类型 B，2-4 个子问题），**不**做 phase-transition、**不**写任何文档；用户答完 → 呈现 `clarification-done` 决定再问 / 进入文档生成。
+- **无歧义** 或 **用户已明确放权**（说过"由你决定"/"按业界默认"/"先 MVP" 等）→ 在 chat 显式声明"已自检无阻塞性歧义"或"用户已放权 X 部分"，再进 Step B。
+
+**Step B — 按工作流选项生成文档**：
 
 - 选 "Requirements first" → 调 `phase-transition --from intake --to requirements` → 按 SKILL.md §「Spec 文档生成」生成 `requirements.md` → 报路径 + 3-8 条变更要点 → 立即调 `AskUserQuestion` 呈现 `doc-confirm-requirements` selector → end turn 等用户对文档做决策
 - 选 "Technical Design first" → 同上但 `--to design` + 生成 `design.md` + 呈现 `doc-confirm-design`
 - 选 "Bugfix" → 同上但 `--to bugfix` + 生成 `bugfix.md` + 呈现 `doc-confirm-bugfix`
 - "Other"（用户文字输入）→ 按用户文字调整，必要时重新呈现 selector
 
-详细 phase 链见 `references/workflow.md` §2-§5。
+**写文档过程中冒出新歧义** → 立即**停写**，回到 Step A 补一轮 wizard，不要边写边 invent。
+
+详细 phase 链见 `references/workflow.md` §2-§5；澄清铁律完整定义见 SKILL.md §「Pre-requirements Clarification（铁律）」。
 """,
     "clarification-wizard": """## 选择器节点：需求澄清问答（wizard）
 
@@ -392,16 +401,21 @@ questions:
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "验收通过，进入 iteration" → 调 `phase-transition --from acceptance --to iteration` → 立即调 `AskUserQuestion` 呈现 `iteration-scope` selector
+- 选 "验收通过，进入 iteration" → 调 `phase-transition --from acceptance --to iteration` → 在 chat 用 1-2 行告知"已进入 iteration（已交付常驻态），如需新一轮调整请直接提出（如『加个 X 功能』『改一下 Y 需求』），或 `/specode:end` 退出 spec 模式" → **end turn**。**不要**自动呈现 `iteration-scope`——它只在用户后续显式提出迭代调整时才呈现。
 - 选 "继续修改" → end turn 等用户文字反馈 → 下一 turn 根据反馈判断回到哪个 phase：改需求 → `phase-transition --to requirements`；改设计 → `--to design`；改任务 → `--to tasks`；改实现 → 留 implementation phase Edit 代码 + 更新 `tasks.md`
 """,
     "iteration-scope": """## 选择器节点：iteration 调整范围（多选）
 
-**目的**：用户从 acceptance-gate 选了"验收通过"或显式提出迭代调整；确定本轮 iteration 调整哪些文档/动作。
+**目的**：用户在 iteration 默认停留态**显式**提出了新一轮调整意图（如"加个 X 功能"/"改下 Y 需求"/"重跑下测试"）；确定本轮 iteration 调整哪些文档/动作。
+
+**触发条件（必须满足之一才可呈现）**：
+- 用户当前 turn 在 chat 里明确表达了下一轮迭代/调整意图；
+- **不**在 `acceptance-gate` 选「验收通过」后自动呈现——验收通过只切 phase 到 iteration，end turn 等用户提；
+- **不**在 `/specode:continue` 一个 phase=iteration 的 spec 时自动呈现——恢复后停在 chat 等用户提。
 
 **上下文**：active spec=<slug>，phase=iteration。
 
-**前置动作（chat 简报，≤2 行）**：写一句"进入 iteration 子循环，请选择本轮调整范围（可多选）。"
+**前置动作（chat 简报，≤2 行）**：用 1-2 行复述用户提出的调整意图（如"你提到要加 X 功能 + 调整 Y 验收标准，请勾选本轮调整范围"），让用户确认 selector 选项与意图对得上。
 
 **调用 `AskUserQuestion` 工具**，注意 **multiSelect=true**：
 

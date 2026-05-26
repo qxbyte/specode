@@ -109,9 +109,12 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 1. **立即调 `AskUserQuestion` 呈现 `project-root-choice` selector**（决定代码写到哪个目录；模板见 `_selectors.py` SELECTOR_PROMPTS['project-root-choice']）
 2. 拿到用户选择后**本 turn 内**调 `spec_session.py set-project-root --spec <dir> --session <id> --root <选定路径>`
 3. CLI 成功后立即调 `AskUserQuestion` 呈现 `workflow-choice` selector（模板见 `_selectors.py` SELECTOR_PROMPTS['workflow-choice']）
+4. 用户选完工作流后**先做需求歧义自检**——见 SKILL.md §「Pre-requirements Clarification（铁律）」：有阻塞性歧义且用户未明确放权 → 先调 `clarification-wizard` 与用户讨论，**禁止假设/invent**；自检无歧义或用户已放权 → 再 `phase-transition` + 生成 `requirements.md` / `bugfix.md` / `design.md`。
 
 **两步都不要 end turn 让用户再输命令**——project-root 选完直接进 workflow 选择。
 
 **严禁**说 "使用 `/specode:continue` 进入下一阶段" / "你可以使用 ... 推进" / "下一步请输入 ..." 这类让用户再输命令的引导——流程由 selector 推进。
+
+**严禁**在源需求不明确时绕过 clarification-wizard 直接写文档——澄清铁律的违反不是"风格瑕疵"而是 spec 失真根因，详见 SKILL.md §「Pre-requirements Clarification（铁律）」。
 
 **为什么要先选 project_root**：spec 文档目录（`<doc_root>/specs/<slug>/`）只放 `.md` 文档和 `.task-swarm/` 状态；代码实际写到的目录是 `project_root`。两者解耦后，task-swarm subagent 能明确知道"代码写哪里"，避免 0.10.13 之前那种"代码错写到 spec dir 污染文档目录"的事故。

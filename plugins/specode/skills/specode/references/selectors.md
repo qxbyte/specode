@@ -114,11 +114,40 @@ string，markdown 语法直接渲染可读。运行时 hook 命中 `pending_sele
 4. 每个 selector 模板末尾都有 **「用户选定后流程」** 段，描述
    "user 点完选项后**同一 turn 内**继续做什么"——必须读完那段再决定下一步。
 
+### 0.10.27+：PreToolUse 机器阻断 + cheat sheet 注入
+
+上方"硬约束"段的四条规则从**软约束**（仅 SKILL 文本提醒）升级为**机器执行**：
+
+| 时机 | 机制 | 失败行为 |
+|---|---|---|
+| **写之前**（前置） | UserPromptSubmit hook 在 `pending_selector` 存在时把 SELECTOR_OUTLINES 对应条目作为 cheat sheet 注入 `additionalContext` —— fixed selector 列 verbatim labels 集合；dynamic selector（仅 `clarification-wizard`）列结构约束 | advisory：把 cheat sheet 当 checklist 直接传参 |
+| **调用瞬间**（拦截） | PreToolUse hook 拦 AskUserQuestion → 按 SELECTOR_OUTLINES 比对 `questions` / `options[*].label` / `multiSelect` —— 集合不等 / 结构不符 即 `sys.exit(2)` | **硬阻断**：stderr 报"哪个 label 缺失 / 哪个是 hallucinate / 正确名单是什么"，主代理需要**重新调** AskUserQuestion 传 verbatim 参数 |
+
+### 11 个 selector 的 fixed vs dynamic kind 划分
+
+| kind | selector keys | 比对策略 |
+|---|---|---|
+| **fixed**（10 个）| `project-root-choice`, `workflow-choice`, `clarification-done`, `doc-confirm-{requirements,bugfix,design}`, `tasks-execution`, `takeover-options`, `acceptance-gate`, `iteration-scope` | `labels` 集合相等比对 + `multiSelect` 比对 |
+| **dynamic**（1 个）| `clarification-wizard` | 仅结构：`questions` 数组 2-4 个 / 每个 `multiSelect=false` / 每个 `options ≥ 2`；labels 内容由主代理生成 |
+
+### 反例：用户血淋淋的现场（0.10.26 已发版后）
+
+主代理在 codebuddy 上调 `workflow-choice` 时把三选项 invent 成：
+
+```
+1. TDD (test-first)       — 测试驱动开发：先写测试，再写实现代码
+2. RAPID (test-last)      — 快速原型开发：先写实现，再补充测试
+3. TASK_SWARM (multi-agent) — 多 agent 并行开发：自动拆分子任务并行执行
+```
+
+这三个 label **不存在于 specode 任何代码 / 文档里**——正确名单是 `Requirements first` / `Technical Design first` / `Bugfix`。0.10.27 PreToolUse hook 会拦下这种 hallucinate（`exit 2 + stderr` 给出正确名单），主代理重新调一次 AskUserQuestion 传 verbatim 参数即可恢复。
+
 ### Drift 守卫
 
-`tests/test_catalog.py` 与 `tests/test_selectors_drift.py` 共同保证：
+`tests/test_catalog.py` / `tests/test_selectors_drift.py` / `tests/test_selector_outlines_drift.py` 共同保证：
 - `_selectors.py` 的 `SELECTOR_PROMPTS` 字典 11 个 key 与本表 11 行一一对应；
-- 本表每个 key 在 `_selectors.py` 中实际存在。
+- 本表每个 key 在 `_selectors.py` 中实际存在；
+- `_selector_skeleton.py:SELECTOR_OUTLINES` 与 `SELECTOR_PROMPTS` 解析结果一致（模板改了忘 regen 会红）。
 
 不再做"selectors.md ```text 块与字典字面量 byte-identical"全文对账——单一
 事实源就是 `_selectors.py`，本表是它的目录索引。

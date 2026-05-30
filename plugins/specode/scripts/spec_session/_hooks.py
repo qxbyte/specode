@@ -43,6 +43,11 @@ from spec_session._template_skeleton import (
     TEMPLATE_OUTLINES,
     format_outline_notice,
 )
+from spec_session._selector_skeleton import (
+    SELECTOR_OUTLINES,
+    format_selector_cheatsheet,
+    validate_ask_user_question_input,
+)
 
 
 _THIS_DIR = Path(__file__).resolve().parents[1]  # = scripts/（本文件在 scripts/spec_session/）
@@ -348,11 +353,22 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
         sel = _fill_selector(pending, ctx)
         if sel:
             parts.append(sel)
+            # 0.10.27+：附加 selector 参数铁律 cheat sheet
+            # （fixed 列 verbatim labels 集合；dynamic 列结构约束）。PreToolUse hook 会按
+            # 这份 outline 校验主代理传给 AskUserQuestion 的参数；这里前置注入让主代理
+            # 在决策传参之前就能看到完整名单，最大化避免 hallucinate。
+            cheat = format_selector_cheatsheet(pending)
+            if cheat:
+                parts.append(cheat)
     elif mode == "readonly" and pending:
         parts.append(
             "## ℹ️ 只读模式：当前 pending_selector="
             f"`{pending}` （仅信息提示，只读不能确认）\n"
         )
+        # readonly 也注入 cheat sheet —— takeover-options 等场景需要
+        cheat = format_selector_cheatsheet(pending)
+        if cheat:
+            parts.append(cheat)
 
     # (c) 文档优先提醒
     if mode == "active":
@@ -711,15 +727,44 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
     sess = read_session(session_id)
     if sess is None:
         return
-    if sess.get("mode") != "active":
+    mode = sess.get("mode") or "idle"
+    if mode in ("idle", "ended"):
+        return  # 不在 spec 模式：全放行
+
+    tool_input = payload.get("tool_input") or {}
+    if not isinstance(tool_input, dict):
+        return
+    tool_name = payload.get("tool_name") or payload.get("toolName") or ""
+
+    # === 0.10.27+：AskUserQuestion selector 参数校验（active + readonly 都拦） ===
+    # 主代理调 AskUserQuestion 时按 pending_selector 对应的 SELECTOR_OUTLINES
+    # verbatim 校验 questions / options[*].label —— hallucinate（如把 workflow-choice
+    # invent 成 TDD/RAPID/TASK_SWARM）直接 exit 2 阻断。
+    if tool_name == "AskUserQuestion":
+        pending = sess.get("pending_selector")
+        if not pending:
+            return  # 主代理在合法场景外用 AskUserQuestion（例如自主澄清），放行
+        outline = SELECTOR_OUTLINES.get(pending)
+        if outline is None:
+            return  # 未知 selector key，不拦（防御性）
+        violation = validate_ask_user_question_input(pending, tool_input, outline)
+        if violation:
+            sys.stderr.write(
+                f"specode 阻断：AskUserQuestion 参数与 `{pending}` selector 模板不符。\n\n"
+                f"{violation}\n\n"
+                f"参考：`scripts/spec_session/_selectors.py` 的 "
+                f"SELECTOR_PROMPTS[{pending!r}]，所有字段必须 verbatim 传入。\n"
+            )
+            sys.exit(2)
+        return  # 校验通过
+
+    # === Edit/Write/MultiEdit 路径（现有逻辑，仅 active 时执行） ===
+    if mode != "active":
         return
     spec_dir_str = sess.get("active_spec_dir")
     if not spec_dir_str:
         return
 
-    tool_input = payload.get("tool_input") or {}
-    if not isinstance(tool_input, dict):
-        return
     file_path = tool_input.get("file_path") or ""
     if not file_path or not isinstance(file_path, str):
         return
@@ -729,7 +774,6 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
     except Exception:
         return
     spec_dir = Path(spec_dir_str)
-    tool_name = payload.get("tool_name") or payload.get("toolName") or ""
 
     # --- 1. task-swarm 强阻断：仅当 task-swarm run 进行中触发 ---
     run_id = sess.get("task_swarm_run_id")

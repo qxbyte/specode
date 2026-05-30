@@ -2,6 +2,52 @@
 
 ## Unreleased
 
+## 0.10.27 (2026-05-30)
+
+### Added -- selector 参数硬约束三处（A 层 SKILL 铁律 + C 层 PreToolUse 阻断 + UserPromptSubmit cheat sheet 前置）
+
+针对 0.10.26 已发版后用户在 codebuddy 现场观察到的 `workflow-choice` selector 自由发挥事故（主代理把三选项 invent 成 `TDD (test-first)` / `RAPID (test-last)` / `TASK_SWARM (multi-agent)`），按 0.10.26 模板章节铁律同型方法论扩展到 AskUserQuestion 选项集合。
+
+**根因**：SKILL.md §Selectors 已经明确要求"必须用 `SELECTOR_PROMPTS[<key>]` 的 question / header / options[*].label / options[*].description **逐字**传参，**禁止**自己改写成简化版"，但**没有任何机器机制阻止主代理 invent**——和 0.10.26 之前模板章节"软约束零执行力"是完全同型问题。
+
+**改动**：
+
+- **A 层（SKILL 铁律加固）**：`SKILL.md §Selectors` 加 §「0.10.27+：selector 参数硬约束（PreToolUse 阻断）」段；`references/selectors.md` 加 §「PreToolUse 机器阻断 + cheat sheet 注入」+ fixed/dynamic kind 划分表 + 用户血淋淋反例。
+- **C 层（PreToolUse 阻断）**：`spec_session/_hooks.py:hook_on_pre_tool_use` 加 AskUserQuestion 分支——`pending_selector` 存在时按 `SELECTOR_OUTLINES` 比对主代理传入的 questions / options[*].label / multiSelect：
+  - **fixed selector**（10 个）：labels 集合相等比对 → 缺一个 / 多一个 / hallucinate（如 `TDD` 这种全新词）即 `sys.exit(2)` 阻断
+  - **dynamic selector**（仅 `clarification-wizard`）：仅结构校验 questions 数量 2-4 / 每个 `multiSelect=false` / 每个 `options ≥ 2`
+  - `hooks.json` PreToolUse matcher 加 `AskUserQuestion`；handler 重构让 `active + readonly` 都拦（takeover-options 等场景需要）
+- **UserPromptSubmit cheat sheet 前置注入**：`hook_on_user_prompt` 在 `pending_selector` 存在时把 SELECTOR_OUTLINES 对应 verbatim labels（或 dynamic 结构约束）注入 `additionalContext`——主代理在调 AskUserQuestion **之前**就能看到 checklist，最大化避免 hallucinate。
+- **codegen + drift 守门**：`spec_session/_selector_skeleton.py` 是 SELECTOR_OUTLINES 常量字典（11 个 selector outline，零 IO 零解析，满足 PreToolUse <100ms budget）；`scripts/_gen_selector_outlines.py` 是开发期重生工具；`tests/test_selector_outlines_drift.py` 守门（含"clarification-wizard 是唯一 dynamic"与"iteration-scope 是唯一 multiSelect=true" 不变式断言）。
+
+### Added -- spec_init `-n` 目录已存在三态 fallback
+
+针对用户反馈"spec_init.py 见目录存在就 exit 3 报错很反人类——应该直接进入流程"，从单态拒绝升级为三态语义：
+
+- **空目录** → 正常 init（用户提前 mkdir 占位 / 残留空壳不再误伤）
+- **含 `.config.json`**（已有 spec）→ fallback 到 `cmd_continue` 接管，**保留既有 `source_text` 不覆盖**；同 session 抢锁成功 exit 0；不同 session 锁冲突 → cmd_continue 推 `pending_selector=takeover-options` + exit 4
+- **脏目录**（无 `.config.json` 但含其它文件）→ 仍 exit 3 报错，stderr 列前 5 个文件名 + 总数提示，避免覆盖既有非 specode 内容
+
+老用例 `test_spec_init_duplicate_slug_refuses` 已重命名为 `test_spec_init_duplicate_slug_falls_back_to_continue_with_lock_conflict` 反映新语义。
+
+### Fixed -- `obsidianRoot` 双重 `spec-in/<device>` 路径
+
+针对用户现场报告"Spec 创建失败，因为 doc_root 目录不存在：`/Volumes/External HD/Obsidian/Notes/spec-in/macos-xueqiang/spec-in/macos-xueqiang`"——路径里 `spec-in/macos-xueqiang` 重复了两次。
+
+**根因**：用户 `~/.config/specode/config.json` 把 `obsidianRoot` 字段错误地设成了 `<vault>/spec-in/<device>` 完整路径（语义契约本应是 vault 根）；0.10.6 加入的 `resolve_doc_root` 自动追加 `spec-in/<device>` 段没做去重防御，结果叠加成双重路径。0.10.6 修复时只补了追加逻辑，没保护这类配置错位。
+
+**改动**：
+
+- `spec_vault.py:resolve_doc_root` 在 source=config 时检测 `obsidianRoot` 尾段是否已是 `spec-in/<device>`——是则不再追加（self-heal 现有错配的 config.json）。
+- `spec_vault.py:cmd_set --vault` 在用户传入路径以 `spec-in/<device>` 结尾时，抹掉尾段规范化为 vault 根再写，并 stderr 提示用户已规范化。
+- `task_swarm` 模块完全不读 `obsidianRoot` / `vaultPath` —— 全 grep 零命中（task-swarm 用 sessions 文件的绝对 spec_dir 路径），改 obsidianRoot 对 task-swarm 零影响（已用测试验证）。
+
+**兼容性**：
+
+- 用户现场的双重路径配置**无需手工修改 config.json** —— 0.10.27 read 时自动 self-heal 返回单层路径。
+- 既有 spec 文档若已落在双重路径下需要手工 `mv` 到单层位置；但用户截图里 spec 创建失败了（doc_root 不存在），所以**无旧 spec 需要迁移**。
+- 全套测试无回归，新增 33 项（selector drift 14 + spec_init 三态 4 + spec_vault 去重 5 + AskUserQuestion 拦截 14 + UserPromptSubmit cheat sheet 6 - 老用例改写 -10 = 净增 33）。
+
 ## 0.10.26 (2026-05-30)
 
 ### Added -- 模板章节强约束三层：SKILL 铁律 + spec_lint 后置 + PreToolUse Write 前置

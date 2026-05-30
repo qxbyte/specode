@@ -212,7 +212,14 @@ def resolve_doc_root(override: Optional[str] = None) -> Tuple[Optional[Path], st
         return (Path(override_root).expanduser(), "config")
     obs_root = cfg.get("obsidianRoot") or cfg.get("docRoot")
     if obs_root and isinstance(obs_root, str):
-        return (Path(obs_root).expanduser() / "spec-in" / _device_segment(), "config")
+        p = Path(obs_root).expanduser()
+        # 0.10.27+：防御性去重——如果 obsidianRoot 已经以 spec-in/<device> 结尾，
+        # 不再追加（防止用户配置或老 set --vault 写入完整路径导致
+        # `.../spec-in/<device>/spec-in/<device>` 双重）。
+        device = _device_segment()
+        if len(p.parts) >= 2 and p.parts[-2] == "spec-in" and p.parts[-1] == device:
+            return (p, "config")
+        return (p / "spec-in" / device, "config")
 
     # 3. auto-detect → vault 根 + 追加 device 段
     vaults = _load_obsidian_vaults()
@@ -276,6 +283,17 @@ def cmd_set(args: argparse.Namespace) -> int:
     cfg = _load_specode_config()
     if args.vault:
         # --vault：写 obsidianRoot；resolve_doc_root 会追加 spec-in/<device>
+        # 0.10.27+：用户传入路径若已以 spec-in/<device> 结尾，则抹掉再写（规范化为 vault 根），
+        # 配合 resolve_doc_root 的去重防御避免双重路径。
+        device = _device_segment()
+        if len(p.parts) >= 2 and p.parts[-2] == "spec-in" and p.parts[-1] == device:
+            normalized = Path(*p.parts[:-2])
+            sys.stderr.write(
+                f"提示：--vault 路径已含 spec-in/{device} 尾段，已规范化为 vault 根：\n"
+                f"  原值: {p}\n"
+                f"  规范化后: {normalized}\n"
+            )
+            p = normalized
         cfg["obsidianRoot"] = str(p)
         cfg.pop("rootOverride", None)
     else:

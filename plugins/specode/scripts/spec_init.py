@@ -292,11 +292,35 @@ def main(argv: Optional[list[str]] = None) -> int:
     specs_root = root / "specs"
     spec_dir = specs_root / slug
     if spec_dir.exists():
-        sys.stderr.write(
-            f"spec 目录已存在：{spec_dir}\n"
-            "请换一个 --name slug，或使用 /specode:continue 接管已有 spec。\n"
-        )
-        return 3
+        # 0.10.27+：三态处理目录已存在的情况——
+        #   空目录   → 继续 init（用户提前 mkdir 占位 / 残留空壳）
+        #   含 .config.json → fallback 到 cmd_continue（接管已有 spec；保留既有 source_text）
+        #   脏目录   → exit 3（避免覆盖污染）
+        contents = list(spec_dir.iterdir())
+        if not contents:
+            # 空目录：放行；下方 mkdir(exist_ok=True) 不报错
+            pass
+        elif (spec_dir / ".config.json").exists():
+            from spec_session._business import cmd_continue  # noqa: E402
+            sys.stderr.write(
+                f"spec 目录已存在且含 .config.json：{spec_dir}\n"
+                "→ fallback 到 cmd_continue 接管（既有 source_text 保留不变）。\n"
+            )
+            cont_ns = argparse.Namespace(
+                spec=str(spec_dir),
+                session=args.session,
+                force=False,
+                readonly=False,
+            )
+            return cmd_continue(cont_ns) or 0
+        else:
+            file_list = ", ".join(p.name for p in contents[:5])
+            more = f" (+{len(contents) - 5} more)" if len(contents) > 5 else ""
+            sys.stderr.write(
+                f"spec 目录已存在但缺少 .config.json（脏目录：{file_list}{more}）：{spec_dir}\n"
+                "请清空该目录后重试，或换一个 --name slug。\n"
+            )
+            return 3
 
     spec_id = str(uuid.uuid4())
     created_at = _now_iso()
@@ -393,7 +417,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     try:
         # 3. 创建 spec_dir + 6 份文档 + .config.json
-        spec_dir.mkdir(parents=True, exist_ok=False)
+        # 0.10.27+：exist_ok=True 配合上面的「空目录放行」分支，避免用户提前 mkdir 占位时 fail
+        spec_dir.mkdir(parents=True, exist_ok=True)
         created_paths.append(spec_dir)
         for fname, content in doc_files.items():
             fp = spec_dir / fname

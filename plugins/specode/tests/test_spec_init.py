@@ -130,10 +130,15 @@ def test_spec_init_missing_root_exits_3(
     assert "doc_root" in cp.stderr or "vault" in cp.stderr
 
 
-def test_spec_init_duplicate_slug_refuses(
+def test_spec_init_duplicate_slug_falls_back_to_continue_with_lock_conflict(
     run_script, doc_root, fake_home, make_session_id
 ):
-    """Re-running with the same slug must fail without clobbering existing data."""
+    """0.10.27+：同 slug 重 spec_init 不再 exit 3 拒绝，而是 fallback 到 cmd_continue。
+
+    sid1 已持有 spec lock 时，sid2 来 init 同 slug：cmd_continue 检测到锁冲突 →
+    pending_selector=takeover-options + exit 4。既有 .config.json 保留不变（specId
+    与 source_text 都不被覆盖）。
+    """
     sid1 = make_session_id()
     cp1 = run_script(
         "spec_init.py",
@@ -155,13 +160,16 @@ def test_spec_init_duplicate_slug_refuses(
         "--source-text", "second",
         "--session", sid2,
     )
-    assert cp2.returncode == 3
-    assert "已存在" in cp2.stderr
-    # The original config is untouched
+    # cmd_continue LockHeld → exit 4
+    assert cp2.returncode == 4
+    assert "fallback" in cp2.stderr
+    assert "takeover-options" in cp2.stdout
+    # 既有 spec config 保留 — specId 与 source_text 不被覆盖
     again_cfg = json.loads(
         (doc_root / "specs" / "dupe" / ".config.json").read_text(encoding="utf-8")
     )
     assert again_cfg["specId"] == first_cfg["specId"]
+    assert again_cfg["source_text"] == first_cfg["source_text"] == "first"
 
 
 def test_spec_init_missing_session_arg_errors(run_script, doc_root, fake_home):

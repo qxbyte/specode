@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.10.26 (2026-05-30)
+
+### Added -- 模板章节强约束三层：SKILL 铁律 + spec_lint 后置 + PreToolUse Write 前置
+
+针对"主代理写 spec 文档时跑偏、不按 `assets/templates/*.md` 章节结构"的反复问题，落地 A+B+C 三层强约束。
+
+**根因**：0.10.23/0.10.24 已经把模板里的"必须/铁律"行为指令下沉到 SKILL / commands / selector / hook 层（[[feedback-template-vs-constraint]]），但**章节结构**这块一直只是软提醒——SKILL §Spec 文档生成只说"Read 模板骨架 + 按 source_text 填空"，没说"`## ` 二级标题逐字保留 / 禁止改名合并拆分"；写完也没有任何机器在事后比对章节集合。主代理"决定章节改名 / 合并 / 拆分 / 新增"的瞬间没有任何信号阻拦，于是看到的就是"模板形同虚设"。
+
+**改动**：
+
+- **A 层（SKILL 铁律）**：`skills/specode/SKILL.md` §「Spec 文档生成」加 §模板章节铁律；`references/templates.md` 加 §0.5 详细约束表（mandatory / optional / dynamic 三类章节 + 五条禁令 + 两道闸门）。
+- **B 层（spec_lint 后置）**：`scripts/spec_lint.py` 加 `rule_template_structure` —— 对 4 份核心文档（requirements / bugfix / design / tasks）做 `## ` 章节集合 vs `TEMPLATE_OUTLINES` 比对：缺 mandatory 报 `[WARN][tmpl]`、多 unknown 报 `[WARN][tmpl]`，动态前缀（`阶段 N: …`）合规放行。acceptance phase WARN 类目从三类扩到四类。
+- **C 层（PreToolUse Write 前置）**：`spec_session/_hooks.py:hook_on_pre_tool_use` 加 Write 分支——active 模式下主代理 Write spec-dir 内 4 份核心文档之一时，通过 `additionalContext` 注入当前 phase 的 mandatory / optional / dynamic 名单作为 checklist。**仅 Write 触发**，Edit / MultiEdit 不触发（让 B 层后置兜底，减少 80%+ 噪声场景，参 plan 讨论）。
+- **codegen + drift 守门**：`scripts/spec_session/_template_skeleton.py` 是模板章节常量字典（O(1) 查表，零 IO 零解析，满足 PreToolUse <100ms budget）；`scripts/_gen_template_outline.py` 是开发期重生工具（模板改完手动跑 → 复制粘贴覆盖 AUTO-MAINTAINED 区块）；`tests/test_template_outlines_drift.py` 每次跑测试都自动比对常量与 `assets/templates/*.md` 解析结果——模板改了忘 regen 会红。
+
+**白名单与共存**：
+
+- C 层 Write 注入要求 `file_path.parent == spec_dir.resolve()`，避免对项目里其它 `.md` 误报。
+- 与 0.10.21 task-swarm 受控路径 / tasks.md 直写强阻断**完全独立**：先走 exit 2 阻断分支，没阻断才到模板注入；`task_swarm_run_id` 不再是 PreToolUse 早返条件（requirements/design phase 仍能触发模板注入）。
+- `SPECODE_GUARD=off` 与 non-active 模式照旧静默。
+
+**兼容性**：
+
+- 旧 spec（章节结构不符合 v3 模板的）：进 acceptance 时会刷出新的 `[WARN][tmpl]` —— advisory 而非阻断，不影响验收决策；只是提醒主代理把章节结构改齐。
+- 测试 helper `_bootstrap_spec_dir`（`tests/test_spec_lint.py`）升级为合规模板章节，旧 5 项 spec_lint 测试无回归。
+- 全套测试无回归，新增 25 项（drift 5 + lint 8 + hook 12）。
+
 ## 0.10.25 (2026-05-27)
 
 ### Docs -- CHANGELOG em-dash 折叠到 `--`

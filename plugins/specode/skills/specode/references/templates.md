@@ -29,6 +29,52 @@ Status: <Requirements Draft | Bug Analysis Draft | Design Draft | Tasks Draft | 
 Review Status: <unreviewed | reviewed | accepted>
 ```
 
+## 0.5 模板章节铁律（0.10.26+，强约束）
+
+**结构骨架是模板唯一的强约束面**。Write 4 份核心文档时章节标题必须严格对齐
+`assets/templates/<phase>.md`，由 `spec_lint.py rule_template_structure` 后置兜底，
+PreToolUse hook 在 Write 时前置注入名单。
+
+### 三类章节
+
+| 类别 | 来源 | 行为约束 |
+|---|---|---|
+| **mandatory** | 模板里**没有** `（可选）` 标记的 `## ` 二级标题 | 必须**逐字保留**；缺失即 `[WARN][tmpl]` |
+| **optional** | 模板里**标了** `（可选）` 的 `## ` 二级标题（如 requirements 的 `## 五、非功能 / 约束（可选）`、bugfix 的 `## 九、验收要点（可选）`） | 可**整段删除**；不可只保留标题留空、或写"待补充 / 暂无" |
+| **dynamic** | 模板里以"动态前缀"开头的标题（目前只有 tasks.md 的 `## 阶段 N: …`） | 可按需重复 N 次；前缀本身（"阶段 "/数字/`:`）不可改 |
+
+`### ` 三级标题不在本铁律覆盖范围（如 requirements 的 `### 需求 1` / `### 需求 2`
+可自由扩展）。
+
+### 五条禁令
+
+1. **禁止改名**：`## 一、背景 / 目标 / 范围` 不许改成 `## 背景` / `## 目标与范围`。
+2. **禁止合并**：`## 五、非功能 / 约束（可选）` + `## 六、依赖与风险（可选）`
+   不许合并成 `## 五、非功能与风险（可选）`。
+3. **禁止拆分**：`## 四、需求详述` 不许拆成 `## 四、用户需求` + `## 五、系统需求`。
+4. **禁止调序**：mandatory 之间不许互换位置（即使顺序校验未启用，未来可能加）。
+5. **禁止新增**：不许凭主代理判断添加 `## 八、随便发挥的一节` 这种未在模板里的章节。
+
+### 何时可以删
+
+只有 optional / dynamic 可以「不写」：
+
+- optional 整节删（连 `## ` 标题一起删）：合规
+- optional 只删正文留标题、或写"待补充"：违规（`[WARN][tmpl]` 不会直接报，但
+  SKILL §Spec 文档生成段视为"违反铁律"）
+- dynamic 写 0 个：合规（虽然实际上 tasks.md 至少要 1 个阶段才能开 task-swarm）
+
+### 两道闸门
+
+| 时机 | 机制 | 失败行为 |
+|---|---|---|
+| **写之前**（前置） | PreToolUse hook 注入当前 phase 的 mandatory/optional/dynamic 名单 | advisory：把名单当 checklist 用 |
+| **写之后**（后置） | `spec_lint.py rule_template_structure` 比对 `## ` 集合 | `[WARN][tmpl]` 缺 mandatory / 多 unknown；hook 自动注入下一轮 |
+
+详细常量字典见 `scripts/spec_session/_template_skeleton.py:TEMPLATE_OUTLINES`；
+模板改动后跑 `scripts/_gen_template_outline.py` 重生常量；
+`tests/test_template_outlines_drift.py` 守住常量与模板的一致性。
+
 ## 1. `requirements.md` 写作约束
 
 骨架见 `assets/templates/requirements.md`。章节：简介 / 词汇表 / 需求 / 边界
@@ -162,8 +208,8 @@ WHEN [condition], THE [system/component] SHALL CONTINUE TO [existing behavior].
 
 ## 8. Document Style 总则
 
-- 章节结构稳定（见各 `assets/templates/<phase>.md` 骨架），不要随意改
-  H2 / H3 标题。
+- 章节结构稳定（见 §0.5 模板章节铁律 + 各 `assets/templates/<phase>.md` 骨架），
+  不要随意改 H2 标题；H3 仅 `### 需求 N` / `### 任务 N.M` 等动态扩展允许。
 - 中文叙述；技术名 / 命令 / 路径 / 函数名 / 变量名保持英文原样。
 - 禁止使用「假设」/「Assumptions」节 —— 用 `待确认问题` 节主动问。
 - 禁止使用模糊措辞（"大概"、"可能"、"应该差不多"）—— 不确定就走澄清 wizard。

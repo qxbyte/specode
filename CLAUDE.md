@@ -71,6 +71,17 @@ Rules:
 - Use `init_spec` fixture to scaffold a spec directory the way `spec_init.py` would.
 - Every persisted-schema change needs a "legacy file migration" regression test.
 
+### Templates describe structure, not behavior
+`assets/templates/*.md` are the *output* of the workflow — the host agent reads them only *after* deciding what to write. So **never put behavioral constraints (rules, "必须", gating checks) into templates**: they get stamped into every spec on disk, dilute the signal, and have zero authority over the agent's pre-write decisions.
+
+Behavioral constraints belong in places the agent reads *before* it generates content:
+- `skills/specode/SKILL.md` (always-loaded persona/rules)
+- `commands/*.md` (loaded when the user invokes the command)
+- `spec_session/_selectors.py SELECTOR_PROMPTS` (injected at phase gates)
+- Hook `additionalContext` injections (`spec_session/_hooks.py`, `_catalog.py`)
+
+`spec_init.py:FALLBACK_TEMPLATES` is the in-code emergency skeleton if `assets/templates/*.md` fails to load — keep it minimal (titles, metadata block, lint-required anchors like `### 需求 1`), not a full v3 mirror. See 0.10.23 / 0.10.24 CHANGELOG for the principle in context.
+
 ## Architecture — the parts that span multiple files
 
 ### scripts/ layout
@@ -138,5 +149,5 @@ Semver "API surface" for this plugin = slash command set, agent names, hook even
 
 - **README.md** — what the plugin does, install/usage, architecture map.
 - **CONTRIBUTING.md** — the full version of the conventions summarised above (stdlib rule, CLI wrapper contract, hook safety, schema evolution, performance budgets, release).
-- **CHANGELOG.md** — narrative history; useful when a behavior seems weird because it documents past bugs and the reasoning behind subtle fixes (e.g. 0.10.21 writeback line-safe, 0.10.13 / 0.10.17 task-swarm STATUS recovery).
+- **CHANGELOG.md** — narrative history; useful when a behavior seems weird because it documents past bugs and the reasoning behind subtle fixes (e.g. 0.10.21 writeback line-safe, 0.10.13 / 0.10.17 task-swarm STATUS recovery, 0.10.23–0.10.24 template-vs-constraint separation).
 - **plugins/specode/skills/specode/SKILL.md** + **references/** — the runtime behavior spec the *host agent* follows. When modifying selectors, phase order, or the lock protocol, the SKILL.md and the corresponding `references/<topic>.md` need to stay in sync with the CLI behavior; selector drift is enforced by `tests/test_selectors_drift.py`.

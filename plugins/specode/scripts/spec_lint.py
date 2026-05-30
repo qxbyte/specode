@@ -10,6 +10,9 @@
      文件引用 (`.py` / `.md` 等) → WARNING（"空 log 等于没改过"）
   3. requirements.md 中的 EARS SHALL 行缺动词或缺 trigger
      （形如 WHEN / IF / WHILE / WHERE 关键字开头）→ WARNING
+  4. 4 份核心文档 (requirements/bugfix/design/tasks).md 的 `## ` 章节集合必须与
+     `assets/templates/<phase>.md` 一致：缺 mandatory / 多 unknown 即报 WARNING。
+     动态前缀（如 tasks.md 的 `阶段 N: …`）合规放行；详 `_template_skeleton.py`。
 
 接入：acceptance phase 进入前由主代理调一次，把 WARNING 列给用户参考
 （详见 SKILL.md §Phase Order 中 acceptance 部分）。
@@ -26,6 +29,17 @@ import re
 import sys
 from pathlib import Path
 from typing import Optional
+
+
+THIS_DIR = Path(__file__).resolve().parent
+if str(THIS_DIR) not in sys.path:
+    sys.path.insert(0, str(THIS_DIR))
+
+from spec_session._template_skeleton import (  # type: ignore  # noqa: E402
+    TEMPLATE_OUTLINES,
+    extract_h2_titles,
+    matches_template_section,
+)
 
 
 # -------------------------------------------------------------------------
@@ -96,6 +110,35 @@ def rule_log_entries(spec_dir: Path, warnings: list[str]) -> None:
                   f"implementation-log.md 条目「{title[:30]}」未引用任何源码 / 文档文件路径。")
 
 
+def rule_template_structure(spec_dir: Path, warnings: list[str]) -> None:
+    """4 份核心文档 `## ` 章节集合 vs TEMPLATE_OUTLINES。
+
+    - 文档不存在：跳过（spec 可能只有 requirements 或只有 bugfix）。
+    - mandatory 中有标题在文档里找不到 → WARNING。
+    - 文档里出现的 `## ` 标题既不在 mandatory/optional，也不匹配动态前缀 → WARNING。
+    - 不做顺序校验（第一版保守）。
+    """
+    for phase_md, outline in TEMPLATE_OUTLINES.items():
+        text = _read(spec_dir / phase_md)
+        if text is None:
+            continue
+        actual_titles = extract_h2_titles(text)
+        actual_set = set(actual_titles)
+        mand_set = set(outline.get("mandatory", []))
+        opt_set = set(outline.get("optional", []))
+        for missing in sorted(mand_set - actual_set):
+            _warn(warnings, "tmpl",
+                  f"{phase_md} 缺少 mandatory 章节「{missing}」（模板要求 verbatim 保留）。")
+        for title in actual_titles:
+            if title in mand_set or title in opt_set:
+                continue
+            if matches_template_section(title, outline):
+                continue
+            _warn(warnings, "tmpl",
+                  f"{phase_md} 含未知章节「{title}」"
+                  "（不在 assets/templates 模板 mandatory/optional 名单，且非动态前缀）。")
+
+
 def rule_ears_shall(spec_dir: Path, warnings: list[str]) -> None:
     req = _read(spec_dir / "requirements.md")
     if not req:
@@ -135,6 +178,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     rule_task_traceability(spec_dir, warnings)
     rule_log_entries(spec_dir, warnings)
     rule_ears_shall(spec_dir, warnings)
+    rule_template_structure(spec_dir, warnings)
 
     if not warnings:
         sys.stdout.write("spec_lint: 0 warnings.\n")

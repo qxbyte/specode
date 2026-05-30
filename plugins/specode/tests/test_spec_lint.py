@@ -7,16 +7,30 @@ import pytest
 
 
 def _bootstrap_spec_dir(doc_root: Path, slug: str = "lint-spec") -> Path:
-    """Create a minimal spec directory with placeholder files."""
+    """Create a minimal spec dir with template-compliant `## ` sections.
+
+    Sections mirror `assets/templates/{requirements,tasks}.md` mandatory set so
+    `rule_template_structure` stays clean. `### 需求 1.1` is preserved under
+    `## 四、需求详述` to keep `rule_task_traceability` and EARS-SHALL paths happy.
+    """
     sd = doc_root / "specs" / slug
     sd.mkdir(parents=True, exist_ok=True)
     (sd / "requirements.md").write_text(
-        "# 需求文档\n\n## 需求 1\n\n### 需求 1.1\n\n"
+        "# 需求文档\n\n"
+        "## 一、背景 / 目标 / 范围\n\n测试用 spec。\n\n"
+        "## 二、目标用户与场景\n\n占位。\n\n"
+        "## 三、待澄清问题\n\n无。\n\n"
+        "## 四、需求详述\n\n"
+        "### 需求 1.1\n\n"
         "WHEN 用户登录，THE System SHALL 返回 token。\n",
         encoding="utf-8",
     )
     (sd / "tasks.md").write_text(
-        "# 任务\n\n- [ ] 1. 实现登录 _需求：1.1_\n",
+        "# 任务\n\n"
+        "## 概述\n\n占位。\n\n"
+        "## 阶段 1: 占位阶段\n\n- [ ] 1. 实现登录 _需求：1.1_\n\n"
+        "## 测试要点\n\n占位。\n\n"
+        "## 验收\n\n占位。\n",
         encoding="utf-8",
     )
     (sd / "implementation-log.md").write_text(

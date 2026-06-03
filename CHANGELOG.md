@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.10.28 (2026-06-03)
+
+### Fixed -- Stop/SessionStart hook Claude Code schema 校验失败
+
+Claude Code 的 `hookSpecificOutput` schema 只支持 `PreToolUse` / `UserPromptSubmit` / `PostToolUse` / `PostToolBatch` 四种事件类型，`Stop` 和 `SessionStart` hook 输出 `hookSpecificOutput` + `additionalContext` 时 JSON schema 校验失败（`Invalid input`）。
+
+**修复**：`_emit_hook_additional_context` 对 `Stop` / `SessionStart` 同时输出顶层 `systemMessage`（Claude Code 读取）和 `hookSpecificOutput`（CodeBuddy 读取），双宿主各取所需。
+
 ## 0.10.27 (2026-05-30)
 
 ### Added -- selector 参数硬约束三处（A 层 SKILL 铁律 + C 层 PreToolUse 阻断 + UserPromptSubmit cheat sheet 前置）

@@ -251,23 +251,24 @@ def test_resolve_abort_sets_status(tmp_path, run_swarm):
     assert out["status"] == "aborted"
 
 
-def test_resolve_clears_session_task_swarm_run_id(tmp_path, run_swarm, monkeypatch):
+def test_init_resolve_never_touch_host_session(tmp_path, run_swarm, monkeypatch):
+    """0.10.x 解耦:task-swarm 不再读/写 ~/.specode/sessions/<id>.json。
+
+    --session 仅作为日志维度透传,init/resolve 都不得碰宿主 session 文件
+    （task_swarm_run_id 字段彻底移除）。"""
     monkeypatch.setenv("HOME", str(tmp_path / "_home"))
-    sessions_dir = tmp_path / "_home" / ".specode" / "sessions"
-    sessions_dir.mkdir(parents=True, exist_ok=True)
     sid = "test-sess-123"
-    sess_file = sessions_dir / f"{sid}.json"
-    sess_file.write_text(json.dumps({"session_id": sid, "mode": "active",
-                                     "task_swarm_run_id": None}), encoding="utf-8")
     p = _write_tasks_md(tmp_path, num_stages=1)
     init = json.loads(run_swarm("init", "--tasks", str(p), "--session", sid).stdout)
-    # 验证 init 写了 task_swarm_run_id
-    saved = json.loads(sess_file.read_text(encoding="utf-8"))
-    assert saved["task_swarm_run_id"] == init["run_id"]
-    # resolve 后应清空
+    # init 不应创建任何宿主 session 文件
+    sess_file = tmp_path / "_home" / ".specode" / "sessions" / f"{sid}.json"
+    assert not sess_file.exists()
+    # session_id 仍被记录进 state.json
+    state = json.loads((Path(init["run_dir"]) / "state.json").read_text(encoding="utf-8"))
+    assert state["session_id"] == sid
+    # resolve 同样不碰宿主 session
     run_swarm("resolve", "--run", init["run_id"])
-    saved2 = json.loads(sess_file.read_text(encoding="utf-8"))
-    assert saved2["task_swarm_run_id"] is None
+    assert not (tmp_path / "_home" / ".specode").exists()
 
 
 def test_v_fix_prompt_files_match_state_in_flight(tmp_path, run_swarm):

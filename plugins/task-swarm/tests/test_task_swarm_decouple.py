@@ -110,3 +110,17 @@ def test_plan_finds_run_in_workdir_without_sessions(tmp_path):
     assert cp.returncode == 0, cp.stderr
     plan = json.loads(cp.stdout)
     assert plan["phase"] in ("coding", "init")
+
+
+def test_full_cycle_creates_no_specode_dir(tmp_path):
+    home = tmp_path / "_home"
+    home.mkdir()
+    work = tmp_path / "proj"
+    work.mkdir()
+    tasks = _tasks_md(tmp_path)
+    init = json.loads(_run("init", "--tasks", str(tasks), "--workdir", str(work),
+                           "--session", "sid-xyz", home=home).stdout)
+    run_id = init["run_id"]
+    _run("plan", "--run", run_id, cwd=work, home=home)
+    _run("resolve", "--run", run_id, "--abort", cwd=work, home=home)
+    assert not (home / ".specode").exists()

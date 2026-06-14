@@ -46,7 +46,7 @@ except Exception:
         return None
 
 from task_swarm._parse_md import parse_tasks_md, group_by_file_conflict  # noqa: E402
-from task_swarm._state import StateMachine, StageEntry, _atomic_write_json  # noqa: E402
+from task_swarm._state import StateMachine, StageEntry  # noqa: E402
 from task_swarm._outbox import (  # noqa: E402
     ParseError, parse_coder_result, parse_reviewer_review, parse_validator_validation,
 )
@@ -75,32 +75,6 @@ def _gen_run_id() -> str:
 
 def _emit(payload: Any) -> None:
     sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-
-
-def _sessions_dir() -> Path:
-    return Path.home() / ".specode" / "sessions"
-
-
-def _session_path(session_id: str) -> Path:
-    return _sessions_dir() / f"{session_id}.json"
-
-
-def _read_session(session_id: str) -> Optional[dict]:
-    p = _session_path(session_id)
-    if not p.exists():
-        return None
-    try:
-        with p.open("r", encoding="utf-8") as fh:
-            data = json.load(fh)
-        if isinstance(data, dict):
-            return data
-    except Exception:
-        return None
-    return None
-
-
-def _write_session(session_id: str, data: dict) -> None:
-    _atomic_write_json(_session_path(session_id), data)
 
 
 def _runs_root_for(workdir: Path) -> Path:
@@ -216,14 +190,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         "skip_validator": sm.skip_validator,
     })
     sm.save()
-
-    # 同步 sessions/<id>.json.task_swarm_run_id
-    if args.session:
-        sess = _read_session(args.session) or {}
-        sess["task_swarm_run_id"] = run_id
-        sess["last_activity_at"] = _now_iso()
-        with contextlib.suppress(Exception):
-            _write_session(args.session, sess)
 
     out = {
         "run_id": run_id,
@@ -1253,14 +1219,6 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sm.failed_status = sm.failed_status or "done"
         sm.events_append({"type": "resolve", "status": sm.failed_status})
     sm.save()
-    # 清理 sessions.task_swarm_run_id
-    if sm.session_id:
-        sess = _read_session(sm.session_id)
-        if sess is not None and sess.get("task_swarm_run_id") == sm.run_id:
-            sess["task_swarm_run_id"] = None
-            sess["last_activity_at"] = _now_iso()
-            with contextlib.suppress(Exception):
-                _write_session(sm.session_id, sess)
     _emit({
         "ok": True,
         "run_id": sm.run_id,

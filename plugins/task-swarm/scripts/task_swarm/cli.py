@@ -108,57 +108,23 @@ def _runs_root_for(workdir: Path) -> Path:
     return workdir / ".task-swarm" / "runs"
 
 
-def _resolve_run_dir(run_id: str, hint_dirs: list[Path]) -> Path:
-    """根据 run_id 查找 run_dir。
+def _find_run_dir(run_id: str) -> Path:
+    """定位 run 目录,不依赖任何 specode session。
 
-    hint_dirs：可能的 .task-swarm/runs/ 父目录候选。
-    若 run_id 是绝对路径直接返回。
+    顺序:
+      1. run_id 本身是已存在的绝对/相对路径(含 state.json) → 直接用
+      2. <cwd>/.task-swarm/runs/<run_id>/
+      3. 向上递归 cwd 的父目录,找 .task-swarm/runs/<run_id>/
     """
     p = Path(run_id)
-    if p.is_absolute() and p.exists():
-        return p
-    # 在 hint_dirs 下查找
-    for hd in hint_dirs:
-        candidate = hd / run_id
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"找不到 run_dir for run_id={run_id}（hints={hint_dirs}）")
-
-
-def _collect_run_dirs() -> list[Path]:
-    """扫描当前目录 / 当前目录上层若干层下的 .task-swarm/runs/*。"""
-    candidates: list[Path] = []
+    if p.exists() and (p / "state.json").exists():
+        return p.resolve()
     cwd = Path.cwd()
-    for base in (cwd, cwd.parent, cwd.parent.parent):
-        runs = base / ".task-swarm" / "runs"
-        if runs.exists():
-            candidates.append(runs)
-    return candidates
-
-
-def _find_run_dir(run_id: str) -> Path:
-    # 第一步：如果 run_id 是绝对路径直接用
-    p = Path(run_id)
-    if p.is_absolute() and p.exists():
-        return p
-    # 第二步：扫描 sessions 找到 spec_dir
-    sessions_dir = _sessions_dir()
-    spec_dirs: list[Path] = []
-    if sessions_dir.exists():
-        for sf in sessions_dir.glob("*.json"):
-            try:
-                with sf.open("r", encoding="utf-8") as fh:
-                    sess = json.load(fh)
-                sd = sess.get("active_spec_dir")
-                if sd:
-                    spec_dirs.append(Path(sd))
-            except Exception:
-                continue
-    hint_dirs: list[Path] = []
-    for sd in spec_dirs:
-        hint_dirs.append(sd / ".task-swarm" / "runs")
-    hint_dirs.extend(_collect_run_dirs())
-    return _resolve_run_dir(run_id, hint_dirs)
+    for base in [cwd, *cwd.parents]:
+        cand = base / ".task-swarm" / "runs" / run_id
+        if (cand / "state.json").exists():
+            return cand.resolve()
+    return cwd / ".task-swarm" / "runs" / run_id
 
 
 # -------------------------------------------------------------------------

@@ -97,3 +97,16 @@ def test_coder_prompt_includes_spec_dir_when_provided(tmp_path):
     assert cp2.returncode == 0, cp2.stderr
     text = _coder_task_md(run_dir).read_text(encoding="utf-8")
     assert str(spec_dir) in text, text
+
+
+def test_plan_finds_run_in_workdir_without_sessions(tmp_path):
+    work = tmp_path / "proj"
+    work.mkdir()
+    tasks = _tasks_md(tmp_path)
+    init = json.loads(_run("init", "--tasks", str(tasks), "--workdir", str(work),
+                           home=tmp_path / "_home").stdout)
+    run_id = init["run_id"]
+    cp = _run("plan", "--run", run_id, cwd=work, home=tmp_path / "_home")
+    assert cp.returncode == 0, cp.stderr
+    plan = json.loads(cp.stdout)
+    assert plan["phase"] in ("coding", "init")

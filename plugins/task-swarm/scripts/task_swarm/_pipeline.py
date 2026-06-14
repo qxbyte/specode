@@ -53,3 +53,37 @@ def validate(data) -> list:
             if n not in gids:
                 errors.append(f"task_group {g.get('id')!r} needs unknown group: {n}")
     return errors
+
+
+def to_stages(data: dict) -> list:
+    """Map a parsed pipeline.yml dict to the existing Stage/StageItem model.
+
+    Each task_group becomes a Stage (1-based number); each task becomes a
+    StageItem (number "<group>.<task>"). A group's `needs` references other
+    groups by id; we resolve each to the referenced group's 1-based index and
+    push that down into every StageItem.depends_on (as a str), because
+    Stage.depends_on is a read-only aggregate property that derives the
+    int-stage list from its items — mirroring markdown's item-level
+    @depends-on behavior.
+    """
+    groups = data.get("task_groups") or []
+    id_to_index = {g.get("id"): i + 1 for i, g in enumerate(groups)}
+    stages = []
+    for i, g in enumerate(groups):
+        dep_idx = [str(id_to_index[n]) for n in (g.get("needs") or []) if n in id_to_index]
+        items = []
+        for j, t in enumerate(g.get("tasks") or []):
+            items.append(StageItem(
+                number=f"{i+1}.{j+1}",
+                title=t.get("title", ""),
+                writes=list(t.get("writes") or []),
+                reads=list(t.get("reads") or []),
+                requirements=[str(r) for r in (t.get("requirements") or [])],
+                depends_on=list(dep_idx),
+                raw_line="", checkbox=" ", line_no=0,
+            ))
+        stages.append(Stage(
+            number=i + 1, title=g.get("name", ""), items=items,
+            header_line_no=0, end_line_no=0,
+        ))
+    return stages

@@ -17,7 +17,7 @@ sys.path 注入）。完整业务/hook 实现见同包内：
 hook 子命令（仅由 hooks/hooks.json 调用；全部 exit 0，仅注入提示；唯一例外：
 PreToolUse 对 task-swarm 受控路径与 tasks.md 直写的 exit 2 强阻断）：
   on-session-start / on-user-prompt / on-user-prompt-catalog / on-stop
-  on-session-end / on-task-completed / on-heartbeat-quiet / on-pre-tool-use
+  on-session-end / on-heartbeat-quiet / on-pre-tool-use
   on-log-pre-tool-use / on-log-post-tool-use
 
 强制写入语义：
@@ -67,7 +67,6 @@ from spec_session._hooks import (  # noqa: E402
     hook_on_session_end,
     hook_on_session_start,
     hook_on_stop,
-    hook_on_task_completed,
     hook_on_user_prompt,
 )
 from spec_session._catalog import hook_on_user_prompt_catalog  # noqa: E402
@@ -134,7 +133,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "on-user-prompt-catalog",
         "on-stop",
         "on-session-end",
-        "on-task-completed",
         "on-heartbeat-quiet",
         "on-pre-tool-use",
         "on-log-pre-tool-use",
@@ -167,7 +165,6 @@ COMMANDS = {
     "on-user-prompt-catalog": hook_on_user_prompt_catalog,
     "on-stop": hook_on_stop,
     "on-session-end": hook_on_session_end,
-    "on-task-completed": hook_on_task_completed,
     "on-heartbeat-quiet": hook_on_heartbeat_quiet,
     "on-pre-tool-use": hook_on_pre_tool_use,
     "on-log-pre-tool-use": hook_on_log_pre_tool_use,

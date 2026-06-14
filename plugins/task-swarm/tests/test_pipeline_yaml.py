@@ -27,3 +27,19 @@ def test_nested_map():
 
 def test_bool_only_true_false_not_yes():
     assert parse("a: yes\nb: no\nc: on\n") == {"a": "yes", "b": "no", "c": "on"}
+
+
+# --- Step B: block list + nesting ---
+
+def test_block_list_of_scalars():
+    assert parse("items:\n  - a\n  - b\n") == {"items": ["a", "b"]}
+
+
+def test_list_of_maps():
+    text = "task_groups:\n  - id: g1\n    name: A\n  - id: g2\n    name: B\n"
+    assert parse(text) == {"task_groups": [{"id": "g1", "name": "A"}, {"id": "g2", "name": "B"}]}
+
+
+def test_deep_nest_map_list_map():
+    text = "task_groups:\n  - id: g1\n    tasks:\n      - id: g1.1\n        title: t\n"
+    assert parse(text) == {"task_groups": [{"id": "g1", "tasks": [{"id": "g1.1", "title": "t"}]}]}

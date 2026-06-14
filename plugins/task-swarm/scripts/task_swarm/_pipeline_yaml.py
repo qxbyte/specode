@@ -46,6 +46,11 @@ def parse(text):
         rows.append((i, indent, line.strip(), line))
 
     def build(rows, base_indent):
+        if rows and rows[0][2].startswith("- ") or rows and rows[0][2] == "-":
+            return build_list(rows, base_indent)
+        return build_map(rows, base_indent)
+
+    def build_map(rows, base_indent):
         result = {}
         idx = 0
         while idx < len(rows):
@@ -65,6 +70,33 @@ def parse(text):
             else:
                 result[key] = _scalar(val, lineno)
                 idx += 1
+        return result
+
+    def build_list(rows, base_indent):
+        result = []
+        idx = 0
+        while idx < len(rows):
+            lineno, indent, content, raw = rows[idx]
+            if indent < base_indent:
+                break
+            # content begins with "- " (or bare "-"); everything after is the
+            # first virtual row of this item, sitting at indent + 2.
+            rest = content[1:].lstrip(" ") if content == "-" else content[2:]
+            item_indent = indent + 2
+            item_rows = []
+            if rest != "":
+                item_rows.append((lineno, item_indent, rest, raw))
+            j = idx + 1
+            while j < len(rows) and rows[j][1] > indent:
+                item_rows.append(rows[j])
+                j += 1
+            if not item_rows:
+                result.append(None)
+            elif len(item_rows) == 1 and ":" not in item_rows[0][2]:
+                result.append(_scalar(item_rows[0][2], item_rows[0][0]))
+            else:
+                result.append(build(item_rows, item_indent))
+            idx = j
         return result
 
     return build(rows, 0)

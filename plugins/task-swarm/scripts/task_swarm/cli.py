@@ -173,6 +173,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     workdir = Path(args.workdir).resolve() if args.workdir else Path.cwd()
     spec_id = args.spec_id or None
+    spec_dir = getattr(args, "spec_dir_arg", None) or None
     project_root = str(Path(args.project_root).resolve()) if args.project_root else str(workdir)
 
     stages = parse_tasks_md(tasks_md)
@@ -231,6 +232,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         session_id=args.session,
         workdir=str(workdir),
         spec_id=spec_id,
+        spec_dir=spec_dir,
         project_root=project_root,
         groups=groups,
         current_group_index=0,
@@ -1322,6 +1324,8 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="可选:回溯用的 spec 标识;独立模式可省")
     pi.add_argument("--project-root", dest="project_root", default=None,
                     help="被改动代码的根目录;默认 = --workdir")
+    pi.add_argument("--spec-dir", dest="spec_dir_arg", default=None,
+                    help="可选:spec 文档目录(*.md 所在);specode 委托模式用,独立模式可省")
     pi.add_argument("--skip-validator", action="store_true",
                     help="人工验收模式：review/p0-fix 完成后直接 writeback，跳过 validation/v-fix")
 

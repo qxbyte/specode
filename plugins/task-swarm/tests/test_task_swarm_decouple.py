@@ -55,3 +55,45 @@ def test_init_stores_project_root_from_flag(tmp_path):
     state = json.loads((Path(out["run_dir"]) / "state.json").read_text(encoding="utf-8"))
     assert state["project_root"] == str(pr)
     assert state["workdir"] == str(work)
+
+
+def _coder_task_md(run_dir: Path) -> Path:
+    matches = sorted((run_dir / "agents").glob("coder-*/task.md"))
+    assert matches, f"未找到 coder task.md，run_dir={run_dir}"
+    return matches[0]
+
+
+def test_coder_prompt_omits_spec_dir_when_absent(tmp_path):
+    work = tmp_path / "proj"
+    work.mkdir()
+    tasks = _tasks_md(tmp_path)
+    home = tmp_path / "_home"
+    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work), home=home)
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    run_dir = Path(out["run_dir"])
+    cp2 = _run("plan", "--run", out["run_id"], cwd=work, home=home)
+    assert cp2.returncode == 0, cp2.stderr
+    text = _coder_task_md(run_dir).read_text(encoding="utf-8")
+    # 无 spec_dir：既不出现空 spec_dir: 行，也不出现「严禁写到 spec_dir/」误导文案
+    assert "spec_dir" not in text, text
+    assert "严禁" in text  # 「严禁评价自己产物 / 严禁改 @writes 之外」是合法协议行，应保留
+    assert "写到 `spec_dir/`" not in text, text
+
+
+def test_coder_prompt_includes_spec_dir_when_provided(tmp_path):
+    work = tmp_path / "proj"
+    work.mkdir()
+    spec_dir = tmp_path / "spec-docs"
+    spec_dir.mkdir()
+    tasks = _tasks_md(tmp_path)
+    home = tmp_path / "_home"
+    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work),
+              "--spec-dir", str(spec_dir), home=home)
+    assert cp.returncode == 0, cp.stderr
+    out = json.loads(cp.stdout)
+    run_dir = Path(out["run_dir"])
+    cp2 = _run("plan", "--run", out["run_id"], cwd=work, home=home)
+    assert cp2.returncode == 0, cp2.stderr
+    text = _coder_task_md(run_dir).read_text(encoding="utf-8")
+    assert str(spec_dir) in text, text

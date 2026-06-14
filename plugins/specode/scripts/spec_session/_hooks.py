@@ -1,8 +1,8 @@
 '''spec_session package 内部实现：所有 hook 子命令（hook_on_*）+ safe wrapper。
 
 hook 子命令仅由 hooks/hooks.json 调用；全部 exit 0、任何异常通过 @_safe_hook
-内部 catch（PreToolUse 对 task-swarm 受控路径与 tasks.md 的 exit 2 强阻断除外，
-见 hook_on_pre_tool_use）。
+内部 catch（PreToolUse 对 AskUserQuestion selector 参数 hallucinate 的 exit 2
+校验除外，见 hook_on_pre_tool_use）。
 
 不要直接运行本文件。stdlib-only。
 '''
@@ -529,39 +529,7 @@ def hook_on_heartbeat_quiet(args: argparse.Namespace) -> None:
     # 不输出 additionalContext
 
 
-# ---- v0.8 on-pre-tool-use（tasks.md 直写提醒 + task-swarm 受控路径阻断） ----
-
-def _task_swarm_protected_reason(spec_dir: Path, edited: Path) -> Optional[str]:
-    """若 edited 落在 task-swarm 管理路径下（state.json / agent task.md /
-    agent outbox/*），返回简短的拒绝标签；否则返回 None。
-
-    阻断动机：这些文件是 task_swarm.py advance/writeback 的内部状态与产物。
-    主代理直接 Edit 会破坏状态机契约（典型事故：state in_flight 与磁盘
-    agent 目录的 round 号对不上时，手工抹平 state.json 反而越改越乱）。
-    所有变更必须通过 task_swarm.py CLI 走。
-    """
-    try:
-        ts_root = (spec_dir / ".task-swarm" / "runs").resolve()
-    except Exception:
-        return None
-    try:
-        rel = edited.relative_to(ts_root)
-    except ValueError:
-        return None
-    parts = rel.parts
-    if len(parts) < 2:
-        return None
-    # parts[0] = <run_id>
-    if parts[1] == "state.json":
-        return "state.json"
-    if parts[1] == "agents" and len(parts) >= 4:
-        # parts[2] = <agent_key>
-        if parts[3] == "task.md":
-            return "agent task.md"
-        if parts[3] == "outbox":
-            return "agent outbox"
-    return None
-
+# ---- v0.8 on-pre-tool-use（模板章节大纲注入） ----
 
 @_safe_hook
 def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
@@ -624,71 +592,7 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
         return
     spec_dir = Path(spec_dir_str)
 
-    # --- 1. task-swarm 强阻断：仅当 task-swarm run 进行中触发 ---
-    run_id = sess.get("task_swarm_run_id")
-    if run_id:
-        # 强阻断：task-swarm 受控路径（state.json / agent task.md / agent outbox/*）
-        protected = _task_swarm_protected_reason(spec_dir, edited)
-        if protected:
-            if protected == "state.json":
-                target_hint = "task_swarm.py advance --run <run> --phase <phase>"
-                why = (
-                    "`state.json` 是 task_swarm.py 状态机的唯一事实来源。手工 Edit 会让\n"
-                    "in_flight / done / phase / round 与磁盘 agent 目录脱节（已知事故：\n"
-                    "state 是 r2、磁盘是 r3 时，手工把 r2 改成 r3 抹平差异 → 再 advance\n"
-                    "时状态机走错分支 → validator/coder 名字越漂越远）。"
-                )
-            elif protected == "agent task.md":
-                target_hint = "task_swarm.py advance（让状态机重新 render prompt）"
-                why = (
-                    "`agents/<key>/task.md` 是 task_swarm.py 为 subagent 生成的 prompt。\n"
-                    "主代理改它不会让 subagent 重新读——只会让产物与意图脱节。"
-                )
-            else:  # agent outbox
-                target_hint = "重新 fork 对应 subagent 让它输出合规产物"
-                why = (
-                    "`agents/<key>/outbox/*` 是 subagent 的产物。主代理手工补 STATUS / 改\n"
-                    "result.md 等同于伪造 subagent 工作，advance 解析时看似 ok，但实际\n"
-                    "代码未改。请重新 fork subagent 或汇报 task_swarm.py 解析 bug。"
-                )
-            reason = (
-                f"specode 阻断：主代理不得直接 Edit/Write task-swarm 受控路径"
-                f"（{protected}）。\n\n"
-                f"文件: {edited}\n"
-                f"run_id: {run_id}\n\n"
-                f"{why}\n\n"
-                f"正确路径: {target_hint}\n"
-            )
-            sys.stderr.write(reason)
-            sys.exit(2)
-
-        # 0.10.21+：tasks.md 直写从软提醒升级为强阻断
-        # 理由：login-page 现场显示主代理见 writeback 越界报错就手工 Edit tasks.md
-        # 把 `[ ]` 改成 `[x]`，破坏了 state.json 与 tasks.md 行号一致性，后续
-        # writeback 永远过不去。跟 state.json / outbox 同等待遇——只能走 CLI。
-        try:
-            tasks_md = (spec_dir / "tasks.md").resolve()
-        except Exception:
-            tasks_md = None
-        if tasks_md is not None and edited == tasks_md:
-            reason = (
-                f"specode 阻断：主代理不得直接 Edit/Write `tasks.md`\n\n"
-                f"文件: {edited}\n"
-                f"run_id: {run_id}\n\n"
-                "`tasks.md` 在 task-swarm run 进行中是受控产物——所有 checkbox toggle "
-                "（`[ ]` → `[x]`）和评审注释块都必须通过 `task_swarm.py writeback` CLI 走，\n"
-                "走 line-safe diff 算法保证 state.json 行号引用不被破坏。\n\n"
-                "已知反模式：见 writeback 越界报错就手工改 tasks.md → state.json 行号失效 → 后续\n"
-                "writeback 永远过不去 → 主代理陷入死循环（参 0.10.13 user-login / 0.10.21 login-page 事故）。\n\n"
-                "正确路径: task_swarm.py writeback --run <run_id> --group <N>\n"
-                "若 writeback 本身报越界，请保留现场报告用户，让 task-swarm 算法层修，**不要**\n"
-                "手工抹平。\n"
-            )
-            sys.stderr.write(reason)
-            sys.exit(2)
-
-    # --- 2. 模板章节大纲注入：Write 4 份核心文档时前置提醒（0.10.26+） ---
-    # 与 task-swarm 阻断独立；requirements/design phase 没有 run_id 时这里仍会触发。
+    # --- 模板章节大纲注入：Write 4 份核心文档时前置提醒（0.10.26+） ---
     # 仅 Write（不含 Edit/MultiEdit）—— Edit 类工具的章节漂移由 B 层 spec_lint 后置兜底。
     if tool_name != "Write":
         return

@@ -41,7 +41,6 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
         "spec_id": None,
         "phase": None,
         "lock_state": "released",
-        "task_swarm_run_id": None,
         "pending_selector": None,
     }
     base.update(overrides)
@@ -51,9 +50,8 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
 
 
 def _prep_active_spec(fake_home: Path, doc_root: Path, sid: str,
-                      slug: str = "tmpl-notice", phase: str = "requirements",
-                      run_id: Optional[str] = None) -> Path:
-    """造一个 active spec（不强制 task_swarm_run_id）。"""
+                      slug: str = "tmpl-notice", phase: str = "requirements") -> Path:
+    """造一个 active spec。"""
     spec_dir = doc_root / "specs" / slug
     spec_dir.mkdir(parents=True, exist_ok=True)
     (spec_dir / ".config.json").write_text(json.dumps({
@@ -70,7 +68,6 @@ def _prep_active_spec(fake_home: Path, doc_root: Path, sid: str,
         active_spec_dir=str(spec_dir),
         phase=phase,
         lock_state="ok",
-        task_swarm_run_id=run_id,
     )
     return spec_dir
 
@@ -259,40 +256,3 @@ def test_specode_guard_off_no_inject(
     )
     assert cp.returncode == 0
     assert cp.stdout.strip() == ""
-
-
-def test_with_task_swarm_run_write_requirements_still_injects(
-    run_script, fake_home, make_session_id, doc_root
-):
-    """task-swarm run 进行中 + Write requirements.md（不是受控 tasks.md）→ 模板注入照常。"""
-    sid = make_session_id()
-    run_id = "20260101-tmpl01"
-    spec_dir = _prep_active_spec(fake_home, doc_root, sid, run_id=run_id)
-    # 建出 task-swarm runs 目录占位（_task_swarm_protected_reason 解析用）
-    (spec_dir / ".task-swarm" / "runs" / run_id).mkdir(parents=True, exist_ok=True)
-    target = spec_dir / "requirements.md"
-
-    cp = run_script("spec_session.py", "on-pre-tool-use",
-                    stdin=_payload(sid, "Write", str(target)))
-    assert cp.returncode == 0
-    ctx = _ctx(_parse_hook(cp.stdout))
-    assert "requirements.md" in ctx
-    assert "mandatory" in ctx
-
-
-def test_with_task_swarm_run_write_tasks_md_blocks_not_inject(
-    run_script, fake_home, make_session_id, doc_root
-):
-    """task-swarm run 进行中 + Write tasks.md → exit 2 阻断；注入文案不该出现。"""
-    sid = make_session_id()
-    run_id = "20260101-tmpl02"
-    spec_dir = _prep_active_spec(fake_home, doc_root, sid, run_id=run_id)
-    (spec_dir / ".task-swarm" / "runs" / run_id).mkdir(parents=True, exist_ok=True)
-    target = spec_dir / "tasks.md"
-
-    cp = run_script("spec_session.py", "on-pre-tool-use",
-                    stdin=_payload(sid, "Write", str(target)))
-    assert cp.returncode == 2
-    # 阻断走 stderr；不应该在 stdout 输出注入 JSON
-    assert cp.stdout.strip() == ""
-    assert "tasks.md" in cp.stderr

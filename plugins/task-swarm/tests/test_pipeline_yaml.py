@@ -86,3 +86,19 @@ def test_unsupported_constructs_raise(text, frag):
 def test_tab_indent_raises():
     with pytest.raises(PipelineYamlError):
         parse("run:\n\tspec_id: x\n")
+
+
+def test_merge_key_raises():
+    with pytest.raises(PipelineYamlError):
+        parse("a: 1\n<<: *x\n")
+
+
+def test_odd_indent_raises():
+    with pytest.raises(PipelineYamlError):
+        parse("run:\n   spec_id: x\n")  # 3-space indent
+
+
+def test_quoted_special_chars_not_raise():
+    assert parse('name: "a & b"\n') == {"name": "a & b"}
+    assert parse('name: "*x"\n') == {"name": "*x"}
+    assert parse('name: "| pipe"\n') == {"name": "| pipe"}

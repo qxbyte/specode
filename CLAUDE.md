@@ -4,9 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A single-plugin marketplace for **specode** — a specification-driven workflow plugin for Claude Code and CodeBuddy CLIs. The plugin walks a host agent through a fixed phase pipeline (requirements → design → tasks → implementation → acceptance) using five Markdown documents as the single source of truth, with advisory hooks and `AskUserQuestion` selectors at phase gates.
+A two-plugin marketplace for Claude Code and CodeBuddy CLIs:
 
-All implementation lives under `plugins/specode/`. The repo root only contains the marketplace manifest (`.claude-plugin/marketplace.json`), the README, the CHANGELOG, and CONTRIBUTING. Plugin internals are listed in README §Architecture — do not re-derive the file tree, read the README.
+- **specode** (`plugins/specode/`) — a specification-driven workflow plugin. It walks a host agent through a fixed phase pipeline (requirements → design → tasks → implementation → acceptance) using five Markdown documents as the single source of truth, with advisory hooks and `AskUserQuestion` selectors at phase gates. **This is the plugin this `CLAUDE.md` documents** unless stated otherwise.
+- **task-swarm** (`plugins/task-swarm/`) — a standalone implementation-phase orchestrator (multi-coder fork + reviewer/validator state machine) extracted out of specode in milestone M1. It has its own CLI, state machine, agents, and concerns; it should eventually get its own `CLAUDE.md`. specode currently hands off to it only manually (see the `tasks-execution` selector and the "task-swarm" pointer under Architecture below) — automatic delegation is a later milestone.
+
+Most implementation referenced here lives under `plugins/specode/`. The repo root only contains the marketplace manifest (`.claude-plugin/marketplace.json`, which now lists **both** plugins), the README, the CHANGELOG, and CONTRIBUTING. Plugin internals are listed in README §Architecture — do not re-derive the file tree, read the README.
 
 ## Commands
 
@@ -52,7 +55,7 @@ Hooks in `spec_session.py` are advisory. Every handler MUST:
 3. Honour `SPECODE_GUARD=off` for global bypass (early-return with no output and no state writes).
 4. Tolerate non-TTY stdin (`_read_stdin_payload()` handles this).
 
-Performance budgets (CONTRIBUTING §Performance budget): `UserPromptSubmit` <80ms (fires every user turn), `PreToolUse`/`PostToolUse Task` <100ms, `Stop` <300ms, `SessionStart`/`SessionEnd` <500ms.
+Performance budgets (CONTRIBUTING §Performance budget): `UserPromptSubmit` <80ms (fires every user turn), `PreToolUse`/`PostToolUse` <100ms, `Stop` <300ms, `SessionStart`/`SessionEnd` <500ms.
 
 ### On-disk schema evolution
 Two schemas the plugin owns:
@@ -85,24 +88,22 @@ Behavioral constraints belong in places the agent reads *before* it generates co
 ## Architecture — the parts that span multiple files
 
 ### scripts/ layout
-Both heavyweight CLIs (`spec_session.py`, `task_swarm.py`) are subdirectory packages with a thin same-name launcher at the `scripts/` root. Python's FileFinder gives package precedence over module within a path entry, and the launcher is exec'd (not imported), so `spec_session.py` (launcher) and `spec_session/` (package) coexist safely. The launcher injects `scripts/` into `sys.path` and calls `<pkg>.cli.main()`.
+The one heavyweight CLI in specode (`spec_session.py`) is a subdirectory package with a thin same-name launcher at the `scripts/` root. Python's FileFinder gives package precedence over module within a path entry, and the launcher is exec'd (not imported), so `spec_session.py` (launcher) and `spec_session/` (package) coexist safely. The launcher injects `scripts/` into `sys.path` and calls `<pkg>.cli.main()`. (task-swarm used to ship a parallel `task_swarm.py` launcher + `task_swarm/` package here; both moved to the standalone `plugins/task-swarm/` plugin in M1 — see the "task-swarm" pointer below.)
 
 | `scripts/` member | Role |
 |---|---|
 | `spec_session.py` | Thin launcher (~40 lines: utf-8 stdout reconfigure + sys.path + `from spec_session.cli import main`). Filename preserved because `hooks.json`, every `commands/*.md`, and `tests/conftest.py:run_script` reference it by name. |
 | `spec_session/` package | `__init__.py` (re-exports `read_session` / `read_spec_config` / `_session_short` / `_is_lock_stale` for `spec_status.py:25`), `cli.py` (argparse + `COMMANDS` dispatch + main), `_io.py`, `_selectors.py`, `_reminders.py`, `_business.py`, `_hooks.py`, `_catalog.py` |
-| `task_swarm.py` | Thin launcher (~25 lines: sys.path + `from task_swarm.cli import main`). |
-| `task_swarm/` package | Empty `__init__.py` (no external `from task_swarm import ...` consumer), `cli.py` (main CLI), `_state.py`, `_parse_md.py`, `_outbox.py`, `_prompt.py`, `_writeback.py` |
-| `spec_init.py` / `spec_lint.py` / `spec_log.py` / `spec_status.py` / `spec_vault.py` | Single-file CLIs at the top level. `spec_log.py` is also shared (defensively imported by both packages' modules for session logging). |
+| `spec_init.py` / `spec_lint.py` / `spec_log.py` / `spec_status.py` / `spec_vault.py` | Single-file CLIs at the top level. `spec_log.py` is also shared (defensively imported by several `spec_session/` modules for session logging). |
 | `run.sh` / `run.cmd` | Python interpreter probes (`python3 → python → py`) — Windows alias-stub handling lives here. |
 
-**Do not rename** `spec_session.py` or `task_swarm.py` (those filenames are the API surface). **Do not delete** `spec_session/__init__.py` re-exports (spec_status.py depends on them). Inside the packages, intra-package imports are absolute (`from spec_session._io import …`) for clear error messages.
+**Do not rename** `spec_session.py` (that filename is the API surface). **Do not delete** `spec_session/__init__.py` re-exports (spec_status.py depends on them). Inside the package, intra-package imports are absolute (`from spec_session._io import …`) for clear error messages.
 
-### `_THIS_DIR` convention inside packages
-Modules under `spec_session/` and `task_swarm/` that need to find sibling top-level scripts (e.g. `_hooks.py:_run_task_swarm_plan` calling `task_swarm.py`) define `_THIS_DIR = Path(__file__).resolve().parents[1]` — that resolves to `scripts/`, keeping `_THIS_DIR / "task_swarm.py"` and `_THIS_DIR.parent / ".claude-plugin"` semantically identical to the pre-split layout. Don't use `parents[0]` (it points inside the package).
+### `_THIS_DIR` convention inside the package
+Modules under `spec_session/` that need to find sibling top-level scripts or the plugin manifest (e.g. `_catalog.py` locating `skills/specode/references/`, `_reminders.py` reading `.claude-plugin/plugin.json`) define `_THIS_DIR = Path(__file__).resolve().parents[1]` — that resolves to `scripts/`, keeping `_THIS_DIR.parent / ".claude-plugin"` semantically identical to the pre-split layout. Don't use `parents[0]` (it points inside the package).
 
 ### Hook → CLI → state-file flow
-1. Host CLI fires a hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse Task`, `Stop`, `SessionEnd`) per `hooks/hooks.json`.
+1. Host CLI fires a hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`) per `hooks/hooks.json`.
 2. The hook command shells into `run.sh` → `spec_session.py <hook-subcommand>` (the launcher), which imports `spec_session.cli.main` and dispatches the hook subcommand handler.
 3. Handlers (wrapped in `@_safe_hook` from `spec_session/_hooks.py`) read `~/.specode/sessions/<session_id>.json` and the active spec's `.config.json`, then emit `additionalContext` JSON to stdout to inject guidance (status footer, selector reminder, doc-sync nag, B2 catalog hits) into the next agent turn.
 4. The host agent, following `skills/specode/SKILL.md`, responds to the injection by calling `AskUserQuestion` for selectors or by invoking a `spec_session.py` business subcommand (`acquire` / `phase-transition` / etc.) which atomically updates both state files.
@@ -122,15 +123,12 @@ If all three miss, `spec_init.py` exits 3 with a setup hint. Do NOT add a cwd or
 Valid phases (`VALID_PHASES` in `spec_session/_io.py`): `intake → requirements/bugfix → design → tasks → implementation → acceptance → iteration`. Transitions go through `spec_session.py phase-transition`, which also sets `pending_selector` so the next hook turn knows which `AskUserQuestion` skeleton to remind about. The 7 fixed selector scenarios are defined in `SELECTOR_PROMPTS` (in `spec_session/_selectors.py`) and documented in `skills/specode/references/selectors.md`; `tests/test_selector_prompts.py` snapshots them, and `tests/test_selectors_drift.py` parses the file by regex (keep the `SELECTOR_PROMPTS: dict[str, str] = {...}` literal grep-able).
 
 ### Reference catalog (description-as-trigger)
-Every `skills/specode/references/*.md` file carries a YAML frontmatter `description: Use when …` that captures *when* a reader should pick it up (superpowers style — trigger-first, not summary-first). The `on-user-prompt-catalog` hook (`spec_session/_catalog.py`) maintains a `CATALOG` dict of keyword regex → reference key (e.g. `lock|takeover|接管` → `lock-protocol`, `task-swarm|@writes|reviewer` → `task-swarm`); each `UserPromptSubmit` it scans the prompt, lists hit references with their descriptions, and emits an advisory injection. Active-only (silent for `idle`/`readonly`/`ended`). `tests/test_catalog.py` enforces: every `CATALOG` key has a real reference file, every targeted reference has a non-empty `description` field. When adding a new reference or extending keyword coverage, update both the frontmatter and `CATALOG`.
+Every `skills/specode/references/*.md` file carries a YAML frontmatter `description: Use when …` that captures *when* a reader should pick it up (superpowers style — trigger-first, not summary-first). The `on-user-prompt-catalog` hook (`spec_session/_catalog.py`) maintains a `CATALOG` dict of keyword regex → reference key (e.g. `lock|takeover|接管` → `lock-protocol`, `iteration|迭代|变更` → `iteration`); each `UserPromptSubmit` it scans the prompt, lists hit references with their descriptions, and emits an advisory injection. Active-only (silent for `idle`/`readonly`/`ended`). `tests/test_catalog.py` enforces: every `CATALOG` key has a real reference file, every targeted reference has a non-empty `description` field. When adding a new reference or extending keyword coverage, update both the frontmatter and `CATALOG`.
 
-### task-swarm orchestration
-`task_swarm.py` (launcher → `task_swarm.cli`) is a separate state machine for the implementation phase. The state file is the single source of truth (`<spec-dir>/.task-swarm/runs/<run_id>/state.json`). The flow is `init → plan → fork (N coders) → advance → writeback → resolve`, with reviewer (advisory, one round of P0 fixes if findings carry evidence tags) and validator (blocking pass/fail loop, deadloop guard after 3 identical failures). The four subagent role definitions live in `agents/task-swarm-{coder,planner,reviewer,validator}.md`; they are intentionally tool-restricted (reviewer/validator have no Edit/Write — physical isolation). Submodules under `task_swarm/`:
-- `_state.py` — state machine load/save with legacy migration
-- `_parse_md.py` — parses `tasks.md` `## 阶段 N:` sections + `@writes` / `@depends-on` tags
-- `_outbox.py` — parses subagent `result.md` / `review.md` / `validation.md` per the schemas in `references/task-swarm.md` §4
-- `_writeback.py` — line-safe diff back into `tasks.md` (exits 1 on out-of-bounds; see 0.10.21 CHANGELOG entry for the multi-line `reproduce_cmd` bug)
-- `_prompt.py` — materializes per-agent prompts into `agents/<key>/prompt.md`
+### task-swarm orchestration (now a separate plugin)
+The implementation-phase orchestrator (multi-coder fork + reviewer/validator state machine) is **no longer part of specode**. It was extracted in M1 into the standalone `plugins/task-swarm/` plugin, which owns its own CLI, state machine (`<spec-dir>/.task-swarm/runs/<run_id>/state.json`), subagent role definitions, and references — document those internals in task-swarm's own `CLAUDE.md`, not here.
+
+specode's only coupling to it today is a manual hand-off: after `tasks.md` is generated, the `tasks-execution` selector (in `spec_session/_selectors.py`) offers an option that tells the user to run the standalone `task-swarm` plugin (its `/task-swarm` command) against this spec's `tasks.md`. The `tasks.md` format specode emits (`## 阶段 N:` sections + `- [ ] N.M ... @writes:...` tags) is intentionally kept task-swarm-compatible. Automatic delegation (specode driving task-swarm directly) is a later milestone — for now it is user-initiated.
 
 ### Session logging
 `spec_log.py` writes append-only JSONL events to `~/.specode/logs/<session_id>.jsonl` (hook fires, tool calls, CLI invocations, phase/lock changes). Default redaction of secret-like keys (`password`, `api_key`, `token`, `secret`, `authorization`, `cookie`) and 500-char string truncation. Disable with `SPECODE_LOG=off` or `~/.config/specode/config.json.logging=false`. Any logging exception is swallowed — logging never blocks business flow. When adding a new hook or CLI subcommand, call `_log_event("event_name", payload, session_id)` at the entry point to keep replay useful.
@@ -149,5 +147,5 @@ Semver "API surface" for this plugin = slash command set, agent names, hook even
 
 - **README.md** — what the plugin does, install/usage, architecture map.
 - **CONTRIBUTING.md** — the full version of the conventions summarised above (stdlib rule, CLI wrapper contract, hook safety, schema evolution, performance budgets, release).
-- **CHANGELOG.md** — narrative history; useful when a behavior seems weird because it documents past bugs and the reasoning behind subtle fixes (e.g. 0.10.21 writeback line-safe, 0.10.13 / 0.10.17 task-swarm STATUS recovery, 0.10.23–0.10.24 template-vs-constraint separation).
+- **CHANGELOG.md** — narrative history; useful when a behavior seems weird because it documents past bugs and the reasoning behind subtle fixes (e.g. 0.10.23–0.10.24 template-vs-constraint separation, and the M1 entry recording task-swarm's extraction into its own plugin). Older task-swarm-specific fixes (0.10.21 writeback line-safe, 0.10.13 / 0.10.17 STATUS recovery) are now history of the standalone task-swarm plugin.
 - **plugins/specode/skills/specode/SKILL.md** + **references/** — the runtime behavior spec the *host agent* follows. When modifying selectors, phase order, or the lock protocol, the SKILL.md and the corresponding `references/<topic>.md` need to stay in sync with the CLI behavior; selector drift is enforced by `tests/test_selectors_drift.py`.

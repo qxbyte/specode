@@ -117,4 +117,4 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 **严禁**在源需求不明确时绕过 clarification-wizard 直接写文档——澄清铁律的违反不是"风格瑕疵"而是 spec 失真根因，详见 SKILL.md §「Pre-requirements Clarification（铁律）」。
 
-**为什么要先选 project_root**：spec 文档目录（`<doc_root>/specs/<slug>/`）只放 `.md` 文档和 `.task-swarm/` 状态；代码实际写到的目录是 `project_root`。两者解耦后，task-swarm subagent 能明确知道"代码写哪里"，避免 0.10.13 之前那种"代码错写到 spec dir 污染文档目录"的事故。
+**为什么要先选 project_root**：spec 文档目录（`<doc_root>/specs/<slug>/`）只放 `.md` 文档；代码实际写到的目录是 `project_root`（即 coder / 实现 agent 的 cwd）。两者解耦后，实现 agent 能明确知道"代码写哪里"，避免 0.10.13 之前那种"代码错写到 spec dir 污染文档目录"的事故。

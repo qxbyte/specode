@@ -152,11 +152,10 @@ CLI 行为：
  - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
  - 验收节固定四行：所有 required 任务完成 / 所有验证命令通过 / 跳过 optional 已记录 / 用户确认验收。
 2. 报路径 + 摘要（任务总数 / required 数 / optional 数 / 主要阶段 + traceability / 同文件冲突 stage）。
-3. 呈现 `tasks-execution` 选择器（类型 A，一步完成确认 + 执行方式选择 + 回退入口）：
- - 选 1 `用 task-swarm 多 agent 并发（推荐）` → 调 `task_swarm.py init --tasks <spec_dir>/tasks.md --session <id>` 切到 task-swarm 编排模式；详见 `references/task-swarm.md`。required + optional 一并处理。
+3. 呈现 `tasks-execution` 选择器（类型 A，一步完成确认 + 执行方式选择 + 回退入口；3 个固定选项）：
+ - 选 1 `用 task-swarm plugin 执行（独立）` → task-swarm 已拆为独立 plugin；若用户已安装，提示其用该 plugin 的 `/task-swarm` 命令把本 spec 的 `tasks.md` 交给它（多 coder 并发 + reviewer/validator）。specode 自身不再 fork task-swarm subagent。
  - 选 2 `顺序执行（同时处理 optional）` → phase-transition → implementation，单 agent 顺序推进 required + optional。如用户在 Other 里说"只跑 required"则跳过 optional。
- - 选 3 `需要调整 tasks.md` → 留在 tasks phase；接收用户反馈 → 改 tasks.md → 重出本选择器。
- - 选 4 `暂不 coding` → 留在 tasks phase；告知用户随时 `/specode:end` 或后续 `/specode:continue` 继续。
+ - 选 3 `暂停 / 调整 tasks.md` → 留在 tasks phase；接收用户反馈 → 改 tasks.md → 重出本选择器，或暂不 coding 随时 `/specode:end` / `/specode:continue`。
 
 ## 4. Technical-design-first Flow
 
@@ -308,11 +307,9 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 绝不在同一轮里"先调工具再继续到下一阶段"——工具调用结束了本轮，下一阶段在新一轮处理。
 
-## 11. 与 task-swarm 的交接
+## 11. 与独立 task-swarm plugin 的交接
 
-`tasks-execution` 选项 3 `用 task-swarm 多 agent 并发` 由 `task_swarm.py` 编排器实现。
-
-选 3 → 主会话切到 task-swarm 编排模式（按 `commands/task-swarm.md` 协议），所有 group 完成后回到 implementation → acceptance 通路。详见 `references/task-swarm.md`。
+`tasks-execution` 选项 1 `用 task-swarm plugin 执行（独立）`：task-swarm 已从 specode 拆出为独立 plugin。specode 只负责生成 task-swarm 兼容格式的 `tasks.md`（`## 阶段 N:` + `@writes` 标签）；编排由独立 plugin 的 `/task-swarm` 命令完成，不在本 plugin 范围内。选此项时主代理提示用户手动调用独立 plugin，自动委托衔接见后续里程碑。
 
 ## 12. CLI 命令参考
 

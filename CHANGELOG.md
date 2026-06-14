@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Changed -- task-swarm 拆为独立 plugin（从 specode 移出多 agent 编排）
+
+task-swarm 多 agent 编排不再内置于 specode，迁出为同一 marketplace 下的独立 `task-swarm` plugin。specode 自身只保留「生成 task-swarm 兼容格式的 `tasks.md`（`## 阶段 N:` stage + `@writes` / `@depends-on` 标签）」+「在 `tasks-execution` selector 提供把 `tasks.md` 交给独立 plugin 的出口」。
+
+**specode 侧移除/改写**：
+
+- 删除 `scripts/task_swarm.py` + `scripts/task_swarm/` 包（state / parse_md / outbox / prompt / writeback / cli）、`agents/task-swarm-{planner,coder,reviewer,validator}.md`、`commands/task-swarm.md`、`references/task-swarm.md` + `references/task-swarm-example.md` 及对应测试。
+- 移除 `on-task-completed`（PostToolUse Task）hook 链与 `hook_on_pre_tool_use` 的 task-swarm 受控路径阻断分支（PreToolUse 仅保留 AskUserQuestion 参数校验 + tasks.md 直写软提醒）。
+- session 状态去掉 `task_swarm_run_id` 字段；`cmd_end` 不再清该字段；`_catalog.py` 去掉 task-swarm 关键词条目。
+- `tasks-execution` selector 从 4 选项收敛为 3 选项（**用 task-swarm plugin 执行（独立）** / 顺序执行 / 暂停或调整 tasks.md）；`project-root-choice` selector 措辞由 "task-swarm subagent cwd" 改为通用 "coder / 实现 agent 的 cwd"（已重生 `SELECTOR_OUTLINES`）。
+- `/specode:task-swarm` 命令与 SKILL 激活触发词移除；`SKILL.md` / `references/{workflow,templates,lock-protocol}.md` / `commands/{spec,end}.md` / `plugin.json` / README / CONTRIBUTING 中的 task-swarm 描述改为指向独立 plugin。
+
+无持久 schema 破坏：`task_swarm_run_id` 是仅在 task-swarm 运行期写入的可选字段，移除后读侧不再引用，旧 session 文件照常加载。
+
 ## 0.10.27 (2026-05-30)
 
 ### Added -- selector 参数硬约束三处（A 层 SKILL 铁律 + C 层 PreToolUse 阻断 + UserPromptSubmit cheat sheet 前置）

@@ -256,7 +256,7 @@ def hook_on_user_prompt(args: argparse.Namespace) -> None:
         elif flag == "sync-status":
             # v0.6 暂未实现 sync-status CLI；输出占位
             content = json.dumps({
-                "note": "sync-status 在 v0.6 尚未实现；将随 v0.7 task-swarm 引入。",
+                "note": "sync-status 暂未实现；占位输出。",
             }, ensure_ascii=False, indent=2)
         else:
             content = "(unknown vault fast-path)"

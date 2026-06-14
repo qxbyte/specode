@@ -62,7 +62,7 @@ PreToolUse hook 在 Write 时前置注入名单。
 - optional 整节删（连 `## ` 标题一起删）：合规
 - optional 只删正文留标题、或写"待补充"：违规（`[WARN][tmpl]` 不会直接报，但
   SKILL §Spec 文档生成段视为"违反铁律"）
-- dynamic 写 0 个：合规（虽然实际上 tasks.md 至少要 1 个阶段才能开 task-swarm）
+- dynamic 写 0 个：合规（虽然实际上 tasks.md 至少要 1 个阶段才能交给任务执行）
 
 ### 两道闸门
 
@@ -112,23 +112,23 @@ PreToolUse hook 在 Write 时前置注入名单。
 
 ## 4. `tasks.md` 写作约束
 
-骨架见 `assets/templates/tasks.md`。**采用 task-swarm 兼容格式**：顶层
+骨架见 `assets/templates/tasks.md`。**采用独立 task-swarm plugin 兼容格式**：顶层
 `## 阶段 N: 标题` 段对应一个 stage（task-swarm fork 粒度）；每条具体任务
 `- [ ] N.M 任务 @writes:文件 @reads:文件 @depends-on:N _需求：x.y_`。
 
-- **顶层段落必须用 `## 阶段 N: 标题`** 格式（`task_swarm/_parse_md.py` 强制
-  要求；不符合解析器会报 `tasks.md 中未解析出任何 ## 阶段 N: 段`）。
+- **顶层段落必须用 `## 阶段 N: 标题`** 格式（独立 task-swarm plugin 的解析器据此
+  切 stage；不符合会报 `tasks.md 中未解析出任何 ## 阶段 N: 段`）。
 - **每条具体任务编号 `N.M`**（不能仅 `N`），任务行末必须带 `_需求：x.y_`
   或 `_需求：可选_` traceability。
 - **`@writes`**（task-swarm 据此切 group 避免并发冲突）；**`@reads`** 可选；
   **`@depends-on:N`** 可选（不写则仅靠 `@writes` 冲突切 group）。
 - 可选任务把 `[ ]` 改 `[*]`；checkpoint 任务把标题写成 `检查点 —— ...`。
-- 文件路径直接写裸路径（不用反引号；task-swarm parse_md 按裸路径切分）。
+- 文件路径直接写裸路径（不用反引号；task-swarm 按裸路径切分）。
 - 「验收」节固定四行（顺序、措辞与骨架一致），不要改写。
 - 同一 stage 内多条任务并入 single coder 顺序执行；要拆 coder 必须把它们分
   到不同 stage（不同 `## 阶段 N: ...` 段）。
 
-详细切 group 规则与 `@depends-on` 语义见 `references/task-swarm-example.md`。
+详细切 group 规则与 `@depends-on` 语义由独立 task-swarm plugin 的文档说明。
 
 ### 4.1 任务标记语义
 

@@ -71,7 +71,7 @@ description: Use when 涉及 lock / takeover / heartbeat / stale / 多窗口同 
 
 1. **每次写 spec 文档前**（Edit / Write 工具调用之前一行）。
 2. **每次回答用户消息前**，如果距上次心跳超过 5 分钟。
-3. **每次完成一个 task-swarm subagent 后**。
+3. **每次完成一个实现子任务后**。
 
 只读命令（`spec_status.py` / `spec_lint.py` / `load --json` / `read-session` / `verify-lock`）**不**触发心跳。
 

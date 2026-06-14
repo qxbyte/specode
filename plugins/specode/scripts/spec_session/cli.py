@@ -7,7 +7,7 @@ sys.path 注入）。完整业务/hook 实现见同包内：
   _selectors.py SELECTOR_PROMPTS 字典 + _fill_selector
   _reminders.py reminder 模板字符串 + help 文本渲染
   _business.py  所有 cmd_* 业务命令
-  _hooks.py     所有 hook_on_* + safe wrapper + task-swarm plan 辅助
+  _hooks.py     所有 hook_on_* + safe wrapper
   _catalog.py   on-user-prompt-catalog reference 提示 hook
 
 业务子命令（被 SKILL.md 引导主会话调用；都接 --session）：
@@ -15,7 +15,7 @@ sys.path 注入）。完整业务/hook 实现见同包内：
   load / continue / end / status / read-session / list-specs / set-project-root
 
 hook 子命令（仅由 hooks/hooks.json 调用；全部 exit 0，仅注入提示；唯一例外：
-PreToolUse 对 task-swarm 受控路径与 tasks.md 直写的 exit 2 强阻断）：
+PreToolUse 对 AskUserQuestion selector 参数 hallucinate 的 exit 2 强阻断）：
   on-session-start / on-user-prompt / on-user-prompt-catalog / on-stop
   on-session-end / on-heartbeat-quiet / on-pre-tool-use
   on-log-pre-tool-use / on-log-post-tool-use

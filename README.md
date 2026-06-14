@@ -40,15 +40,11 @@ windows, or merge unreviewed code, specode is the rails.
   one of three selector skeletons (single-select / wizard /
   multi-select) drawn from 11 fixed scenarios — you steer, the
   agent executes.
-- **task-swarm: built-in orchestrator that implements `tasks.md` in
-  parallel.** After `tasks.md` is approved, task-swarm fans out
-  multiple **coder** subagents that work concurrently (auto-grouped
-  to avoid file-write conflicts via `@writes` and respect
-  `@depends-on` task ordering), then funnels their output through a
-  single **reviewer** (advisory findings, P0 issues trigger one fix
-  round) and a single **validator** (binary pass/fail, fail triggers
-  a fix loop until pass). A deadloop guard trips after three rounds
-  of identical failures.
+- **Parallel task execution is a separate plugin.** specode emits
+  `tasks.md` in a task-swarm-compatible format (`## 阶段 N:` stages +
+  `@writes` / `@depends-on` tags); multi-agent orchestration now lives
+  in the standalone **task-swarm** plugin, which you can hand the
+  approved `tasks.md` to from the `tasks-execution` selector.
 - **Obsidian-aware doc root.** Three-tier resolution
   (env > config > auto-detected Obsidian vault) keeps your specs in
   your knowledge base, not scattered across project folders.
@@ -172,29 +168,15 @@ phase gates) a selector for the next step.
 State is keyed by host `session_id`, so each terminal window keeps
 its own thread.
 
-### 4. Run tasks in parallel with task-swarm
+### 4. Run tasks (sequential, or hand off to task-swarm)
 
-Once `tasks.md` is approved and you pick the `task-swarm` path on the
-`tasks-execution` selector, the orchestrator takes over:
-
-```
-init  →  plan  →  fork (N coders)  →  advance  →  writeback  →  resolve
-                ↑                                 ↓
-                └─────── reviewer / validator ────┘
-```
-
-- **coder** agents run in parallel, auto-partitioned by `@writes`
-  file conflicts.
-- **reviewer** runs once per group; P0 findings carrying evidence tags
-  (`[req:x.y]` / `[security]` / `[contract]`) trigger one round of
-  `p0-fix`; everything else is advisory.
-- **validator** runs once per group; `fail` triggers a `v-fix` loop
-  until `pass`, or three identical-failure rounds (deadloop guard).
-- `--skip-validator` is a selectable option for human-acceptance
-  mode.
-
-`/specode:task-swarm` is the entry point; the full state-machine
-spec lives in `references/task-swarm.md`.
+Once `tasks.md` is approved, the `tasks-execution` selector offers
+three paths: sequential single-agent execution, a pause/adjust loop,
+or handing the `tasks.md` to the standalone **task-swarm** plugin for
+multi-agent parallel execution. task-swarm used to ship inside
+specode; it has since been extracted into its own plugin. specode
+still emits `tasks.md` in the task-swarm-compatible format, so the
+handoff is just pointing the other plugin at the approved file.
 
 ### 5. Inspect session logs
 
@@ -227,15 +209,13 @@ plugins/specode/
   .claude-plugin/plugin.json      plugin manifest
   hooks/hooks.json                7 advisory hook handlers
   commands/                       /specode:spec, :continue, :end,
-                                  :status, :task-swarm
-  agents/                         task-swarm-{planner,coder,
-                                  reviewer,validator}
+                                  :status
   scripts/                        spec_vault / spec_init /
                                   spec_session / spec_lint /
-                                  spec_status / task_swarm*
+                                  spec_status / spec_log
   skills/specode/                 SKILL.md + references/
   assets/templates/               seed templates
-  tests/                          152 pytest cases
+  tests/                          pytest suite
 ```
 
 ## Contributing

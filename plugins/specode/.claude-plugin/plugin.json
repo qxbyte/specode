@@ -1,7 +1,7 @@
 {
   "name": "specode",
   "version": "0.10.27",
-  "description": "Specification-driven workflow with advisory hooks, selector prompts, session-bound state, and task-swarm multi-agent orchestration.",
+  "description": "Specification-driven workflow with advisory hooks, selector prompts, and session-bound state.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

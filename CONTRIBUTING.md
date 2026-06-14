@@ -50,13 +50,13 @@ Run the suite from the repo root:
 python3 -m pytest plugins/specode/tests/ -v
 ```
 
-153 tests cover: 3-tier vault resolution, spec scaffolding with
-rollback, business lock state machine, all 7 hooks across the mode
+The test suite covers: 3-tier vault resolution, spec scaffolding with
+rollback, business lock state machine, all hooks across the mode
 matrix, `SELECTOR_PROMPTS` snapshot, lint rules (3 surviving rules
 after the 0.9.0 cleanup), legacy-field migration for `session_id`,
-the task-swarm CLI / state machine / outbox parser / writeback / hook,
 and an end-to-end SessionStart → /specode:spec → /specode:end →
-SessionEnd event chain.
+SessionEnd event chain. (Multi-agent orchestration was migrated to the
+standalone task-swarm plugin.)
 
 When adding behavior, prefer:
 

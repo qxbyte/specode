@@ -50,7 +50,6 @@ def _update_session_for_spec(session_id: str, spec_dir: Path, cfg: dict,
         "spec_id": cfg.get("specId"),
         "phase": cfg.get("phase"),
         "lock_state": lock_state,
-        "task_swarm_run_id": existing.get("task_swarm_run_id"),
         "pending_selector": pending,
     }
     return payload
@@ -412,12 +411,11 @@ def cmd_end(args: argparse.Namespace) -> int:
     existing["ended_at"] = _now_iso()
     existing["lock_state"] = "released"
     existing["pending_selector"] = None
-    # 对齐 end.md 文档：清 active_spec_* / task_swarm_run_id
+    # 对齐 end.md 文档：清 active_spec_*
     existing["active_spec_slug"] = None
     existing["active_spec_dir"] = None
     existing["spec_id"] = None
     existing["phase"] = None
-    existing["task_swarm_run_id"] = None
     # 标记：下一次 UserPromptSubmit 时由 hook 注入一次性反向提醒，
     # 抵消此前 N 个 turn 注入的 STATUS_FOOTER_TEMPLATE / SPEC_MODE_CONTINUE_REMINDER
     existing["post_end_reminder_pending"] = True

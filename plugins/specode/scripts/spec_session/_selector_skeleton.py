@@ -277,8 +277,7 @@ SELECTOR_OUTLINES: dict[str, dict] = {
         "header": "执行方式",
         "multi_select": False,
         "labels": [
-            "task-swarm + validator 自动验收（推荐）",
-            "task-swarm + 人工验收（跳过 validator）",
+            "用 task-swarm plugin 执行（独立）",
             "顺序执行（同时处理 optional）",
             "暂停 / 调整 tasks.md",
         ],

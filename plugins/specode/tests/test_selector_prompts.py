@@ -26,7 +26,6 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
         "spec_id": "snap",
         "phase": "intake",
         "lock_state": "ok",
-        "task_swarm_run_id": None,
         "pending_selector": None,
     }
     base.update(overrides)
@@ -159,15 +158,12 @@ def test_doc_confirm_design_snapshot(run_script, fake_home, selector_setup):
 
 
 def test_tasks_execution_snapshot(run_script, fake_home, selector_setup):
-    """0.10.20+：tasks-execution 4 选项含两种 task-swarm 模式（full vs skip-validator）。"""
+    """M1b：tasks-execution 3 选项（独立 task-swarm plugin / 顺序执行 / 暂停）。"""
     sid = selector_setup("tasks-execution", phase="tasks")
     ctx = _fetch_ctx(run_script, fake_home, sid)
     assert "任务执行选择" in ctx
-    # 两种 task-swarm 模式都要在
-    assert "task-swarm + validator 自动验收（推荐）" in ctx
-    assert "task-swarm + 人工验收（跳过 validator）" in ctx
-    # --skip-validator flag 在用户选定后流程中被引用
-    assert "--skip-validator" in ctx
+    # 独立 task-swarm plugin 选项
+    assert "用 task-swarm plugin 执行（独立）" in ctx
     # 顺序执行 + 暂停/调整保留
     assert "顺序执行（同时处理 optional）" in ctx
     assert "暂停 / 调整 tasks.md" in ctx

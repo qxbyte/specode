@@ -255,12 +255,11 @@ def test_end_sets_mode_ended_and_releases_lock(
     assert sess["mode"] == "ended"
     assert sess["ended_at"]
     assert sess["pending_selector"] is None
-    # 对齐 end.md 文档：active_spec_* / task_swarm_run_id 必须清空
+    # 对齐 end.md 文档：active_spec_* 必须清空
     assert sess["active_spec_slug"] is None
     assert sess["active_spec_dir"] is None
     assert sess["spec_id"] is None
     assert sess["phase"] is None
-    assert sess["task_swarm_run_id"] is None
     # 下一 turn 由 hook 注入一次性反向提醒
     assert sess["post_end_reminder_pending"] is True
     # lock cleared because end-holder == session

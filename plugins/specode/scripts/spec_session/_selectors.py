@@ -308,7 +308,7 @@ required 任务数：<n_required>，optional 任务数：<n_optional>。
 **前置动作（chat 简报，≤8 行）**：
 - 列出**任务计数**（required N 个，optional M 个）
 - 列出**主要阶段**与 traceability（`_需求：x.y_` 标签）
-- 标注同文件冲突的 stage（影响 task-swarm group 切分）
+- 标注同文件冲突的 stage
 
 **调用 `AskUserQuestion` 工具**：
 
@@ -317,24 +317,21 @@ questions:
     header: "执行方式"
     multiSelect: false
     options:
-      - label: "task-swarm + validator 自动验收（推荐）"
-        description: "多 coder 并发 + reviewer + validator 自动 fix loop 到 pass。最稳但 validator 一轮耗时长。"
-      - label: "task-swarm + 人工验收（跳过 validator）"
-        description: "多 coder 并发 + reviewer + p0-fix，**跳过** validator/v-fix 循环；代码正确性由用户事后人工核验。省 validator 那一轮耗时；有问题再跟模型常规对话沟通。"
+      - label: "用 task-swarm plugin 执行（独立）"
+        description: "task-swarm 已拆为独立 plugin；若已安装，用其 `/task-swarm` 命令把本 spec 的 `tasks.md` 交给它（多 coder 并发 + 每个任务组 reviewer/validator）；自动委托衔接见后续里程碑。"
       - label: "顺序执行（同时处理 optional）"
         description: "单 agent 逐个推进 required + optional 任务，[ ] → [~] → [x]。如需只跑 required，可在 Other 输入说明。"
       - label: "暂停 / 调整 tasks.md"
         description: "tasks 不符合预期需要调整，或暂不开始 coding（Other 输入说明具体哪种）。"
 
 **约束**：
-- 4 个选项已占满工具上限；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
+- 3 个选项；细化需求（如只跑 required / 跳过某 optional）走 "Other" 输入。
 - 调用工具后立即 end turn。
 - 简报必须在工具调用**之前**输出。
 
 **用户选定后流程（同一 turn 内继续）**
 
-- 选 "task-swarm + validator 自动验收" → 走 `/specode:task-swarm` 第二步 `init`（默认 full 模式）+ 第三步 7 步循环（详见 `commands/task-swarm.md` + `references/task-swarm.md`）
-- 选 "task-swarm + 人工验收（跳过 validator）" → 同上但 `init` 时加 `--skip-validator` flag；流程走到 p0-fix 完成后直接 writeback，不进 validation/v-fix；writeback 后提醒用户人工 review 代码 + `/specode:end` 退出 spec 模式后跟模型常规对话沟通调整
+- 选 "用 task-swarm plugin 执行（独立）" → 提示用户调用独立 task-swarm plugin（手动）
 - 选 "顺序执行" → 调 `phase-transition --from tasks --to implementation` → 单 agent 按 `tasks.md` checkbox 顺序逐个推进
 - 选 "暂停 / 调整 tasks.md" → end turn 等用户反馈：若是调整 → 下一 turn Edit `tasks.md` → 重新呈现本 selector；若是暂停 → 留在 tasks phase，随时 `/specode:end` 退出或后续 `/specode:continue <slug>` 续接
 """,

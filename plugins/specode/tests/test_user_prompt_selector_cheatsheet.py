@@ -37,7 +37,6 @@ def _write_session(fake_home: Path, sid: str, **overrides) -> Path:
         "spec_id": "x",
         "phase": "intake",
         "lock_state": "ok",
-        "task_swarm_run_id": None,
         "pending_selector": None,
     }
     base.update(overrides)

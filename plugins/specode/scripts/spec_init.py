@@ -449,7 +449,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             "spec_id": spec_id,
             "phase": "intake",
             "lock_state": "ok",
-            "task_swarm_run_id": None,
             "pending_selector": "project-root-choice",
         }
         _atomic_write_json(sessions_path, session_payload)

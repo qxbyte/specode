@@ -134,9 +134,6 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"tasks          : total={task_counts['total']} done={task_counts['done']} "
             f"in_progress={task_counts['in_progress']} pending={task_counts['pending']}"
         )
-    if sess.get("task_swarm_run_id"):
-        lines.append(f"task_swarm_run : {sess.get('task_swarm_run_id')}")
-
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
 

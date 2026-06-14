@@ -172,7 +172,6 @@ def hook_on_session_start(args: argparse.Namespace) -> None:
             "spec_id": None,
             "phase": None,
             "lock_state": "released",
-            "task_swarm_run_id": None,
             "pending_selector": None,
         }
         try:

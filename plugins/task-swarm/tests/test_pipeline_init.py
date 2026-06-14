@@ -43,3 +43,27 @@ def test_init_pipeline_then_plan_runs(tmp_path):
     plan = json.loads(cp.stdout)
     assert plan["phase"] in ("coding", "init")
     assert plan.get("action") in ("coding-fork", None) or plan.get("fork") is not None
+
+def test_neither_tasks_nor_pipeline_errors(tmp_path):
+    cp = _run("init", "--workdir", str(tmp_path), home=tmp_path / "_home")
+    assert cp.returncode == 1
+    assert "tasks" in cp.stderr.lower() or "pipeline" in cp.stderr.lower()
+
+def test_both_tasks_and_pipeline_errors(tmp_path):
+    yml = _write_yml(tmp_path)
+    (tmp_path / "t.md").write_text("## 阶段 1: A\n- [ ] 1.1 x @writes:a.py\n", encoding="utf-8")
+    cp = _run("init", "--tasks", str(tmp_path / "t.md"), "--pipeline", str(yml),
+              "--workdir", str(tmp_path), home=tmp_path / "_home")
+    assert cp.returncode == 1
+    assert "二选一" in cp.stderr or "both" in cp.stderr.lower()
+
+def test_invalid_pipeline_schema_errors(tmp_path):
+    bad = tmp_path / "bad.yml"; bad.write_text("version: 1\ntask_groups: []\n", encoding="utf-8")
+    cp = _run("init", "--pipeline", str(bad), "--workdir", str(tmp_path), home=tmp_path / "_home")
+    assert cp.returncode == 1 and "task_groups" in cp.stderr
+
+def test_malformed_yaml_errors(tmp_path):
+    bad = tmp_path / "bad.yml"; bad.write_text("task_groups:\n  - id: g1\n    review: {reviewer: true}\n", encoding="utf-8")
+    cp = _run("init", "--pipeline", str(bad), "--workdir", str(tmp_path), home=tmp_path / "_home")
+    assert cp.returncode == 1
+    assert "flow map" in cp.stderr.lower() or "解析失败" in cp.stderr

@@ -93,7 +93,7 @@ writeback 后，阶段 3 末尾会追加：
 
 - 测试失败 → validation.md 的"按子任务的验证结果"那行写明 `_需求：x.y_`
 - writeback → tasks.md 注释里也保留该编号
-- spec_lint.py 在 acceptance phase 时会再校验"全部 SHALL 是否都有对应测试"
+- (集成 specode 时,specode 侧会在 acceptance 阶段另做 SHALL↔测试 校验;独立模式不涉及)
 
 ---
 

@@ -4,7 +4,7 @@ description: Use when 涉及 task-swarm / reviewer / validator / v-fix / p0-fix 
 
 # task-swarm 协议参考（references/task-swarm.md）
 
-本文档是 `/specode:task-swarm` 命令背后的完整协议。
+本文档是 task-swarm `/task-swarm` 命令背后的完整协议。
 主代理在 task-swarm run 期间必须严格按本协议工作。
 
 ---
@@ -16,7 +16,8 @@ description: Use when 涉及 task-swarm / reviewer / validator / v-fix / p0-fix 
 | `task-swarm-coder` | **多实例并行** | `Bash, Read, Edit, Write, Grep, Glob` | coding / p0-fix / v-fix 各 phase |
 | `task-swarm-reviewer` | **单实例** | `Bash, Read, Grep, Glob`（无 Edit/Write） | review phase（每 review-round 一次） |
 | `task-swarm-validator` | **单实例** | `Bash, Read, Grep, Glob`（无 Edit/Write） | validation phase（每 validation-round 一次） |
-| `task-swarm-planner` | 视情况 | `Bash, Read, Grep, Glob, Write` | 可选：tasks.md 不够细时 |
+
+> planner 由主代理自己担任，不是子 agent。
 
 reviewer / validator 单实例的理由：
 - reviewer = 一个上帝视角的读代码人，要对全部 coder 产物有整体判断；切成多份会破坏交叉关联检测。
@@ -220,9 +221,10 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 
 ---
 
-## 6. on-task-completed hook 提醒矩阵
+## 6. plan 提醒矩阵(主代理主动轮询)
 
-`PostToolUse` matcher=`Task` 每次 subagent 返回都触发。hook 读 sessions/<id>.json 看是否在 run 中 → 调 `task_swarm.py plan --run <id>` 拿提示。
+task-swarm 独立运行,**无 hook**。主代理每完成一个 subagent(或每完成一组 fork)后,
+**自己**调 `task_swarm.py plan --run <id>` 拿下一步提示。下表是 `plan` 在各状态下的输出提示:
 
 | 当前 state | 注入文本要点 |
 |---|---|
@@ -235,7 +237,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 | validation 返回 fail | "validator fail。请按 validation.md 的 fix_targets 各文件 fork **N 个** `task-swarm-coder`（v-fix）。" |
 | v-fix 全部返回 | "v-fix coder 已返回。请 fork **1 个** `task-swarm-validator` 验证。" |
 | v-fix 已连续 3 轮同 fail 签名 | "⚠️ 死循环检测：g{g} 已连续 3 轮同一 fail。建议停止本 group，向用户报告 `failed-deadloop`。" |
-| 所有 group 完成 | "全部 group 已完成。请按 SKILL.md 退出 task-swarm 模式，回到 spec-mode acceptance phase。" |
+| 所有 group 完成 | "全部 group 已完成。请调 `task_swarm.py resolve` 收尾，再 `report` 出报告。" |
 
 所有提醒**末尾固定加**："本提醒仅供参考；fork 谁、是否 fork、何时 writeback 仍由你判断；可忽略。"
 
@@ -244,7 +246,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 ## 7. 信息流总览
 
 ```
-主代理（spec-mode 主会话，持锁）
+主代理（task-swarm 编排会话）
  │
  ├─[调]── task_swarm.py init ─────────────► state.json (groups, stages)
  │ ┌──────────────────────────────────────┘
@@ -255,7 +257,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
  │ [fork]── Task(coder2)─┼─► （并发执行）
  │ [fork]── Task(coderN)─┘
  │ ┌─► 各自写 outbox/result.md
- │ ←─── PostToolUse hook 注入（每返回一个）
+ │ ←─── 主代理每返回一个后主动调 plan
  │
  ├─[调]── task_swarm.py advance --phase coding ──► state.json 更新
  │
@@ -290,7 +292,7 @@ writeback 严格 line-safe：禁止改动 stage 标题、`@writes` / `@reads` / 
 - 连续 3 轮 v-fix → validation 出现**完全相同**的 fail 签名（测试名 + assertion 文本哈希）→ 整个 group 标 `failed-deadloop`。
 - state.json 不再推进；主代理向用户报告并退出 task-swarm。
 - writeback 该 group 时注释块会写明"failed-deadloop（连续 3 轮同一 fail 签名）"。
-- 用户介入后可：手改源码 → 重跑 `/specode:task-swarm`；或调 `task_swarm.py resolve --run <id> --abort` 中止。
+- 用户介入后可：手改源码 → 重跑 `/task-swarm`；或调 `task_swarm.py resolve --run <id> --abort` 中止。
 
 ---
 
@@ -321,8 +323,7 @@ task_swarm.py writeback --run <run_id> --group <N>
 
 task_swarm.py heartbeat --run <run_id>
  → 刷新 state.json.last_activity_at
- # ⚠️ 仅 specode 集成模式：spec 锁续期需主代理另调 spec_session.py heartbeat；
- # 独立安装 task-swarm 无 spec_session.py，无 session 锁概念，省略即可。
+ # heartbeat 只刷新 state.json.last_activity_at（长流程保活，状态层）；独立模式无 spec 锁。
 
 task_swarm.py resolve --run <run_id> [--abort]
  → 标记完成或中止；清理 sessions.task_swarm_run_id

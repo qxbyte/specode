@@ -243,6 +243,62 @@ def test_phase_transition_phase_mismatch_blocks(
     assert _spec_cfg(spec_dir)["phase"] == "intake"
 
 
+def test_phase_transition_design_to_delegated(
+    run_script, init_spec, fake_home
+):
+    """M4：design → delegated 合法（VALID_PHASES 已含 delegated）。"""
+    slug, sid, spec_dir, _ = init_spec()
+    cfg = _spec_cfg(spec_dir)
+    cfg["phase"] = "design"
+    (spec_dir / ".config.json").write_text(
+        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    cp = run_script("spec_session.py", "phase-transition",
+                    "--spec", str(spec_dir), "--session", sid,
+                    "--from", "design", "--to", "delegated")
+    assert cp.returncode == 0, cp.stderr
+    rs = run_script("spec_session.py", "read-session", "--session", sid)
+    assert rs.returncode == 0, rs.stderr
+    assert json.loads(rs.stdout)["phase"] == "delegated"
+
+
+def test_phase_transition_delegated_to_acceptance(
+    run_script, init_spec, fake_home
+):
+    """M4：delegated → acceptance 合法。"""
+    slug, sid, spec_dir, _ = init_spec()
+    cfg = _spec_cfg(spec_dir)
+    cfg["phase"] = "delegated"
+    (spec_dir / ".config.json").write_text(
+        json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    cp = run_script("spec_session.py", "phase-transition",
+                    "--spec", str(spec_dir), "--session", sid,
+                    "--from", "delegated", "--to", "acceptance")
+    assert cp.returncode == 0, cp.stderr
+    rs = run_script("spec_session.py", "read-session", "--session", sid)
+    assert rs.returncode == 0, rs.stderr
+    assert json.loads(rs.stdout)["phase"] == "acceptance"
+
+
+# --- set-delegated-run ----------------------------------------------------
+
+def test_set_delegated_run_id(run_script, init_spec, fake_home):
+    """M4：set-delegated-run 写/清 session.delegated_run_id（纯 session 字段）。"""
+    slug, sid, spec_dir, _ = init_spec()
+    cp = run_script("spec_session.py", "set-delegated-run",
+                    "--session", sid, "--run-id", "rid-abc")
+    assert cp.returncode == 0, cp.stderr
+    rs = run_script("spec_session.py", "read-session", "--session", sid)
+    assert json.loads(rs.stdout)["delegated_run_id"] == "rid-abc"
+    # 清空
+    cp = run_script("spec_session.py", "set-delegated-run",
+                    "--session", sid, "--clear")
+    assert cp.returncode == 0, cp.stderr
+    rs = run_script("spec_session.py", "read-session", "--session", sid)
+    assert json.loads(rs.stdout).get("delegated_run_id") is None
+
+
 # --- end ------------------------------------------------------------------
 
 def test_end_sets_mode_ended_and_releases_lock(

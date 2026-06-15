@@ -53,6 +53,7 @@ from spec_session._business import (  # noqa: E402
     cmd_phase_transition,
     cmd_read_session,
     cmd_release,
+    cmd_set_delegated_run,
     cmd_set_project_root,
     cmd_status,
     cmd_verify_lock,
@@ -122,6 +123,13 @@ def _build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("read-session")
     p.add_argument("--session", required=True)
 
+    p = sub.add_parser("set-delegated-run")
+    p.add_argument("--session", required=True)
+    p.add_argument("--run-id", dest="run_id", default=None,
+                   help="要写入 session.delegated_run_id 的 run_id")
+    p.add_argument("--clear", action="store_true",
+                   help="清空 delegated_run_id（与 --run-id 互斥）")
+
     p = sub.add_parser("list-specs")
     p.add_argument("--root", default=None,
                    help="doc root override；缺省按三层 resolve_doc_root")
@@ -159,6 +167,7 @@ COMMANDS = {
     "set-project-root": cmd_set_project_root,
     "status": cmd_status,
     "read-session": cmd_read_session,
+    "set-delegated-run": cmd_set_delegated_run,
     "list-specs": cmd_list_specs,
     "on-session-start": hook_on_session_start,
     "on-user-prompt": hook_on_user_prompt,

@@ -18,7 +18,15 @@ CLI **只守 4 处机械完整性**,其余编排判断全归你,CLI 不压你思
 4. 原子写 + 禁手改受控文件
 
 task-swarm **独立运行,不依赖 specode**。若同时装了 specode,由 specode 侧
-委托接入(后续里程碑),那也是 specode 调 task-swarm 的独立接口,不是反向耦合。
+委托接入,那也是 specode 调 task-swarm 的独立接口,不是反向耦合。
+
+### 委托模式(被上层 spec 工作流集成时)
+
+被上层 spec 工作流委托执行时,`init` 会额外带 `--spec-id <id>` / `--spec-dir <dir>`
+两个**可选回溯参数**(已支持,见 §2 / commands),仅用于把本 run 标注到来源
+需求,方便报告回溯;task-swarm 自身行为、state 落盘位置、状态机都不变。
+run `resolve` 收尾后,由调用方主代理(按其自身工作流的规则)决定下一步——
+task-swarm 不感知、也不驱动调用方的后续阶段。
 
 ## §1 独立流程总览(7 步)
 

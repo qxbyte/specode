@@ -9,11 +9,11 @@ SKILL.md §Phase Order / §Workflow Selection 的运维细节版本。本文件*
 ## 0. Phase 序列总图
 
 ```
-intake ──► requirements / bugfix ──► design ──► tasks ──► implementation ──► acceptance ──► iteration
- │ │ │ │ │ │
- │ ▼ ▼ ▼ ▼ ▼
- │ doc-confirm-* doc-confirm-* tasks-execution 推进 [ ] → [~] → [x] acceptance-gate iteration 子循环
- │ 选择器 选择器 选择器
+intake ──► requirements / bugfix ──► design ──► delegated ──► acceptance ──► iteration
+ │ │ │ │ │
+ │ ▼ ▼ ▼ ▼
+ │ doc-confirm-* doc-confirm-* delegation 委托 task-swarm / acceptance-gate iteration 子循环
+ │ 选择器 选择器 选择器 specode 自执行 选择器
  │
  ├─ 需求有歧义 → clarification-wizard（类型 B）+ clarification-done（类型 A）
  └─ workflow 不明 → workflow-choice（类型 A）
@@ -119,9 +119,9 @@ CLI 行为：
 
 | 选项 | 何时选 | 后续 phase 序列 |
 |---|---|---|
-| **Requirements first**（默认推荐） | 行为优先的新特性；先把 SHALL 写清楚，再补技术设计 | requirements → design → tasks → implementation → acceptance → iteration |
-| **Technical Design first** | 架构约束已知；先把 design.md 框架定下来，再反推 requirements | design → requirements → tasks → implementation → acceptance → iteration |
-| **Bugfix** | 缺陷修复 / 回归测试 | bugfix → design → tasks → implementation → acceptance → iteration |
+| **Requirements first**（默认推荐） | 行为优先的新特性；先把 SHALL 写清楚，再补技术设计 | requirements → design → delegated → acceptance → iteration |
+| **Technical Design first** | 架构约束已知；先把 design.md 框架定下来，再反推 requirements | design → requirements → delegated → acceptance → iteration |
+| **Bugfix** | 缺陷修复 / 回归测试 | bugfix → design → delegated → acceptance → iteration |
 
 用户选完 → 调 `spec_session.py phase-transition --from intake --to requirements / design / bugfix` → 进入对应 phase。
 
@@ -142,20 +142,17 @@ CLI 行为：
 1. **主代理**按 SKILL.md §「Spec 文档生成」生成 `design.md`（章节见 templates.md）。
 2. 报路径 + 摘要。
 3. `doc-confirm-design` 选择器。
-4. End turn 等确认 → 通过则 phase-transition → tasks。
+4. End turn 等确认 → 通过则 phase-transition → delegated（**不生成 tasks.md**；M4 起任务拆分归 delegated 阶段）。
 
-### 3.3 phase=tasks
+### 3.3 phase=delegated
 
-1. **主代理**按 SKILL.md §「Spec 文档生成」生成 `tasks.md`。要求：
- - 嵌套 checkbox（顶层任务 / 子任务 / 检查点任务）。
- - 每条具体任务**必须**带 `_需求：x.y_` 或 `_需求：可选_` traceability 标签。
- - 可选任务用 `[*]` 标记；checkpoint 任务用 `[ ]` 但标题含"检查点"。
- - 验收节固定四行：所有 required 任务完成 / 所有验证命令通过 / 跳过 optional 已记录 / 用户确认验收。
-2. 报路径 + 摘要（任务总数 / required 数 / optional 数 / 主要阶段 + traceability / 同文件冲突 stage）。
-3. 呈现 `tasks-execution` 选择器（类型 A，一步完成确认 + 执行方式选择 + 回退入口；3 个固定选项）：
- - 选 1 `用 task-swarm plugin 执行（独立）` → task-swarm 已拆为独立 plugin；若用户已安装，提示其用该 plugin 的 `/task-swarm` 命令把本 spec 的 `tasks.md` 交给它（多 coder 并发 + reviewer/validator）。specode 自身不再 fork task-swarm subagent。
- - 选 2 `顺序执行（同时处理 optional）` → phase-transition → implementation，单 agent 顺序推进 required + optional。如用户在 Other 里说"只跑 required"则跳过 optional。
- - 选 3 `暂停 / 调整 tasks.md` → 留在 tasks phase；接收用户反馈 → 改 tasks.md → 重出本选择器，或暂不 coding 随时 `/specode:end` / `/specode:continue`。
+M4 起 `tasks` + `implementation` 合并为 `delegated`：specode **不再单独产 `tasks.md`**——委托模式下任务拆分进 task-swarm 的 `pipeline.yml`（主代理读 `design.md` 生成），自执行降级直接照 `design.md` 实现。
+
+1. design 确认后 `phase-transition --from design --to delegated`，hook 下一轮注入 `delegation` 选择器（类型 A，3 个固定选项）。
+2. 呈现 `delegation` 选择器（模板见 `_selectors.py` SELECTOR_PROMPTS['delegation']；详细编排见 SKILL.md §「Delegated / 委托执行」）：
+ - 选 1 `委托 task-swarm 执行（多 agent 并发）` → 主代理在当前会话连续驱动：Read task-swarm SKILL → 读 `design.md` 生成 `<spec-dir>/pipeline.yml` → 呈现 yml 摘要过目 → `task_swarm.py init --pipeline <yml> --workdir <项目根> --spec-id <slug> --spec-dir <spec-dir> --session <id>`（经 task-swarm 的 run.sh） → `spec_session.py set-delegated-run --run-id <rid> --session <id>` → 按 task-swarm SKILL 驱动 plan→fork→advance→writeback→resolve → resolve done 后 `set-delegated-run --clear` + `phase-transition --from delegated --to acceptance`。**未装 task-swarm（init 失败）** → 告知安装或改选自执行。
+ - 选 2 `specode 自执行（顺序，单 agent）` → 不依赖 task-swarm；主代理按 `design.md` 直接 Edit 代码 + 自验（**无 tasks.md**，不 fork subagent）→ 完成后 `phase-transition --from delegated --to acceptance`。
+ - 选 3 `暂停 / 调整 design` → 留在 delegated phase；调整 → Edit `design.md` → 重出本选择器；暂停 → 随时 `/specode:end` / `/specode:continue`。
 
 ## 4. Technical-design-first Flow
 
@@ -163,8 +160,7 @@ CLI 行为：
 2. End turn → `doc-confirm-design` → 确认。
 3. 从已 approved 的 design.md 反推 `requirements.md`。
 4. `doc-confirm-requirements` → 确认。
-5. `tasks.md` 同 §3.3。
-6. `tasks-execution` 同 §3.3。
+5. requirements 确认后 `phase-transition → delegated` → `delegation` 选择器，同 §3.3（委托 task-swarm / specode 自执行 / 调整 design）。
 
 ## 5. Bugfix Flow
 
@@ -173,55 +169,56 @@ CLI 行为：
 2. 调研代码后再断根因 —— 不要凭空断言根因。
 4. `doc-confirm-bugfix` → 确认。
 5. `design.md`：根因 / 修复策略 / 回归风险 / 测试策略。`doc-confirm-design` → 确认。
-6. `tasks.md`：**复现测试 first** → 最小修复 → 不变行为回归测试 → 最终验证。呈现 `tasks-execution`（已合并 doc-confirm-tasks 的确认 + 调整入口）。
+6. design 确认后 `phase-transition → delegated` → `delegation` 选择器，同 §3.3。委托 task-swarm 时，主代理在 `pipeline.yml` 中按「复现测试 first → 最小修复 → 不变行为回归测试 → 最终验证」组织任务组；specode 自执行降级同序照 `design.md` 实施。
 
-## 6. phase=implementation
+## 6. phase=delegated
 
-### 6.1 写代码前
+`delegation` 选择器分两条执行路径（编排总览见 SKILL.md §「Delegated / 委托执行」）。
 
-1. 解析 active spec：从 `sessions/<id>.json` 拿 `active_spec_dir`。
-2. **写前三重校验**（详见 `references/lock-protocol.md`）：specId / 边界 / 锁。任一失败 → 拒写。
-3. 加载 spec 目录下全部文档（**不**碰其他 spec）。
-4. 找目标任务（用户指定）或下一条 pending required 任务。
-5. **Heartbeat**：`spec_session.py heartbeat --spec <dir> --session <id>`（写文档前必调；距上次心跳 > 5 分钟也调）。
-6. 把任务标记从 `[ ]` 改成 `[~]`（in-progress）。
+### 6A 委托 task-swarm 执行（多 agent 并发）
 
-### 6.2 写代码
+task-swarm 是**独立 plugin**，specode 零 import、不知其安装路径——调用一律走它自带的 `/task-swarm` 命令 / `run.sh`。C 模型：主代理在当前会话连续驱动，不 end turn 等用户：
 
-1. 做满足该任务对应 `_需求：x.y_` 的**最小**改动。不要顺手重构无关代码。
-2. 跑该任务对应的验证命令或最近的项目测试。
-3. 验证通过 → 把任务标记从 `[~]` 改成 `[x]`。
-4. 验证不通过 → 留 `[ ]` 或 `[~]`，在 chat 报告 blocker、在 `implementation-log.md` 追加一条 ≥30 字的记录（什么任务、什么 blocker、下一步怎么处理）。
-5. 任务被跳过 → 标 `[-]` 并在 chat / log 说明。
+1. **写前三重校验**（详见 `references/lock-protocol.md`）：specId / 边界 / 锁。任一失败 → 拒写。
+2. **Read task-swarm SKILL.md** 拿其状态机协议（plan→fork→advance→writeback→resolve）。
+3. 读本 spec `design.md` → 生成 `<spec-dir>/pipeline.yml`（任务组 / `@writes` / `needs` 拓扑）→ 呈现 yml 摘要给用户过目。
+4. `task_swarm.py init --pipeline <yml> --workdir <项目根> --spec-id <slug> --spec-dir <spec-dir> --session <id>`（经 task-swarm 的 run.sh 包装；`--spec-id` / `--spec-dir` 供 task-swarm 回溯本 spec）→ 拿 `run_id`。
+5. `spec_session.py set-delegated-run --run-id <rid> --session <id>`（在 session 写 `delegated_run_id` 标记；委托态 footer / Stop 会提醒最终回 acceptance）。
+6. 按 task-swarm SKILL 驱动到 resolve `done`。
+7. resolve done 后：`spec_session.py set-delegated-run --clear --session <id>` + `phase-transition --from delegated --to acceptance`。
 
-### 6.3 turn 结束前自检
+**未装 task-swarm**（`init` / `/task-swarm` 不可用）→ 告知用户安装，或当场改走 6B。
+
+### 6B specode 自执行降级（顺序，单 agent）
+
+不依赖 task-swarm；**无 `tasks.md`**，主代理照 `design.md` 直接实现：
+
+1. **写前三重校验** + **Heartbeat**（`spec_session.py heartbeat`，写文档前必调；距上次心跳 > 5 分钟也调）。
+2. 加载 spec 目录下全部文档（**不**碰其他 spec）。
+3. 按 `design.md` 做**最小**改动满足设计意图，不顺手重构无关代码。
+4. 跑对应验证命令 / 最近项目测试；不通过 → chat 报 blocker + 在 `implementation-log.md` 追加 ≥30 字记录（什么改动、什么 blocker、下一步）。
+5. 全部实现 + 自验通过 → `phase-transition --from delegated --to acceptance`。
+
+### 6C turn 结束前自检
 
 看到 `on-stop` 注入的「🔄 代码-文档同步提醒（输出侧）」时：
 
-1. `tasks.md` 是否更新？（推进 `[ ]` → `[~]` → `[x]` / blocker）
-2. `implementation-log.md` 是否记录？（实现说明、设计偏离、关键决策）
-3. `design.md` 接口契约是否变化？（若改了，**同 turn** Edit）
+1. `implementation-log.md` 是否记录？（实现说明、设计偏离、关键决策）
+2. `design.md` 接口契约是否变化？（若改了，**同 turn** Edit）
 
 任一遗漏 → 在 chat 显式承诺"下一轮第一件事补齐 X"，并在下一轮立刻做到。
 
-### 6.4 任务标记语义
-
-```
-[ ] pending [~] in progress [x] completed
-[-] skipped [*] optional
-```
-
 ## 7. phase=acceptance
 
-1. 触发：所有 required 任务标 `[x]`。
+1. 触发：委托 task-swarm 的 run resolve `done`（`set-delegated-run --clear`）/ 或自执行降级全部实现 + 自验通过。
 2. phase-transition → acceptance。
 3. **先调一次** `spec_lint.py --spec <spec-dir>`（通过 SKILL.md §CLI 调用规约的 run.sh 模板），把 traceability / log / EARS 三类 WARNING 列在 chat 给用户参考。lint 是 advisory，不阻断验收。
-4. 做一份**验收摘要**（chat）：tasks.md 完成度（done/total）/ lint WARNING 列表 / 余留风险 / 未决问题。若 tasks.md 末尾 `## 测试要点` 节存在，简述本次需要测试人员关注的要点（参考信息，不参与验收门判定）。
+4. 做一份**验收摘要**（chat）：实现完成度 / lint WARNING 列表 / 余留风险 / 未决问题。
 5. 呈现 `acceptance-gate`（类型 A）：
- - 若 tasks.md 全 `[x]` → 推荐选项 1 `验收通过，进入 iteration`。
+ - 实现与自验全部完成 → 推荐选项 1 `验收通过，进入 iteration`。
  - 否则 → 无推荐项。
 6. 用户选 1 → 调 `spec_session.py phase-transition --from acceptance --to iteration`（同时 `iterationRound += 1`，记 `iterationHistory`）。
-7. 用户选 2 `继续修改` → 留在 acceptance；视具体未达标项回退到 requirements / design / tasks（**走 phase-transition**，不要手改 `.config.json`）。
+7. 用户选 2 `继续修改` → 留在 acceptance；视具体未达标项回退到 requirements / design / delegated（**走 phase-transition**，不要手改 `.config.json`）。回退到 delegated 即重新委托 task-swarm 或 specode 自执行。
 
 ## 8. phase=iteration
 
@@ -229,8 +226,8 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 简要：
 
-- 用户提"我想加一个 X 功能" → `spec_session.py iterate <spec-dir>` → 进入 `iteration.requirements` 子 phase → 在 requirements.md 末尾追加 `## 迭代 N 新增需求` 节，走 confirm → design → tasks → implementation → acceptance 子循环 → 回到 iteration。
-- 用户提"改 acceptance 里一条规则" → 直接编辑 tasks.md 对应任务或 `## 测试要点` 行，不走完整子循环。
+- 用户提"我想加一个 X 功能" → `spec_session.py iterate <spec-dir>` → 进入 `iteration.requirements` 子 phase → 在 requirements.md 末尾追加 `## 迭代 N 新增需求` 节，走 confirm → design → delegated → acceptance 子循环 → 回到 iteration。
+- 用户提"只改一处小逻辑" → 直接编辑 `design.md` 对应小节（或 implementation-log 记一笔），不走完整子循环。
 - 用户运行 `/specode:end` → 释放锁 + sessions mode=ended，spec 文档保留。
 
 ## 9. `/specode:continue` — 上下文加载 + 多窗口
@@ -285,8 +282,10 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
  requirements.md ← N 条验收标准 | 修改：<time>
  design.md ← | 修改：<time>
- tasks.md ← N/M 已完成，P 待处理 | 修改：<time>
+ implementation-log.md ← N 条记录 | 修改：<time>
 ```
+
+（委托态若 session 有 `delegated_run_id`，附一行提示「委托 task-swarm run <rid> 进行中 / 已完成，最终回 acceptance」。）
 
 6. 状态行 footer。
 7. **End turn 等用户下一句**。不开始任务、不跑验证、不评估验收。
@@ -307,9 +306,14 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 
 绝不在同一轮里"先调工具再继续到下一阶段"——工具调用结束了本轮，下一阶段在新一轮处理。
 
-## 11. 与独立 task-swarm plugin 的交接
+## 11. 与独立 task-swarm plugin 的委托衔接（M4）
 
-`tasks-execution` 选项 1 `用 task-swarm plugin 执行（独立）`：task-swarm 已从 specode 拆出为独立 plugin。specode 只负责生成 task-swarm 兼容格式的 `tasks.md`（`## 阶段 N:` + `@writes` 标签）；编排由独立 plugin 的 `/task-swarm` 命令完成，不在本 plugin 范围内。选此项时主代理提示用户手动调用独立 plugin，自动委托衔接见后续里程碑。
+`delegation` 选项 1 `委托 task-swarm 执行`：M4 起 design 完成后由主代理在当前会话**连续驱动**委托，不再要求用户手动跨 plugin 操作。
+
+- **零硬依赖**：task-swarm 是独立 plugin，specode **零 import** 它、也不知其安装路径——一切调用走 task-swarm 自带的 `/task-swarm` 命令 / 其 `run.sh`（`$CLAUDE_PLUGIN_ROOT` 自解析）。
+- **委托流程（C 模型）**：主代理 Read task-swarm SKILL → 读本 spec `design.md` 生成 `<spec-dir>/pipeline.yml` → 给用户过目 → `task_swarm.py init --pipeline <yml> --workdir <项目根> --spec-id <slug> --spec-dir <spec-dir> --session <id>` → `spec_session.py set-delegated-run --run-id <rid>` → 按 task-swarm SKILL 驱动 plan→fork→advance→writeback→resolve → resolve done 后 `set-delegated-run --clear` + `phase-transition --from delegated --to acceptance`。`--spec-id` / `--spec-dir` 让 task-swarm 能回溯到本 spec。
+- **状态隔离**：task-swarm 自有 run 状态机（`<spec-dir>/.task-swarm/runs/<run_id>/state.json`），specode 侧只在 session 留一个 `delegated_run_id` 标记（委托态 footer / Stop 提醒最终回 acceptance）。
+- **降级**：未装 task-swarm（`init` 失败 / `/task-swarm` 不可用）→ 告知用户安装，或改走 specode 自执行（照 `design.md` 直接实现，无 tasks.md）。
 
 ## 12. CLI 命令参考
 
@@ -321,6 +325,7 @@ iteration 是已交付 spec 的**常驻**状态。子循环规则见 `references
 | `spec_init.py --name <slug> --requirement-name "..." --source-text "..." --session <id>` | 创建新 spec |
 | `spec_session.py acquire / release / heartbeat / verify-lock --spec <dir> --session <id>` | 锁管理 |
 | `spec_session.py phase-transition --spec <dir> --session <id> --from <p> --to <p>` | phase 切换（必走 CLI） |
+| `spec_session.py set-delegated-run --run-id <rid> --session <id>` / `--clear` | 委托 task-swarm 时记 / 清 `delegated_run_id`（M4） |
 | `spec_session.py load --spec <dir>` | 只读加载状态摘要 |
 | `spec_session.py continue --spec <dir> --session <id>` | 接管 / 恢复 |
 | `spec_session.py end --session <id>` | `/specode:end` 入口 |

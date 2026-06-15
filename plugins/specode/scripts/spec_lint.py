@@ -4,21 +4,19 @@
 仅产出 WARNING；所有 lint 一律 exit 0（不阻断模型流程）。
 
 规则：
-  1. tasks.md 中的 `_需求：x.y_` 标签必须在 requirements.md / bugfix.md
-     找到对应 "需求 x" 或 "x.y" 章节标记；找不到 → WARNING
-  2. implementation-log.md 中每个 `## ` 条目正文 < 30 字符或缺
+  1. implementation-log.md 中每个 `## ` 条目正文 < 30 字符或缺
      文件引用 (`.py` / `.md` 等) → WARNING（"空 log 等于没改过"）
-  3. requirements.md 中的 EARS SHALL 行缺动词或缺 trigger
+  2. requirements.md 中的 EARS SHALL 行缺动词或缺 trigger
      （形如 WHEN / IF / WHILE / WHERE 关键字开头）→ WARNING
-  4. 4 份核心文档 (requirements/bugfix/design/tasks).md 的 `## ` 章节集合必须与
+  3. 3 份核心文档 (requirements/bugfix/design).md 的 `## ` 章节集合必须与
      `assets/templates/<phase>.md` 一致：缺 mandatory / 多 unknown 即报 WARNING。
-     动态前缀（如 tasks.md 的 `阶段 N: …`）合规放行；详 `_template_skeleton.py`。
+     详 `_template_skeleton.py`。
 
 接入：acceptance phase 进入前由主代理调一次，把 WARNING 列给用户参考
 （详见 SKILL.md §Phase Order 中 acceptance 部分）。
 
 用法：
-  spec_lint.py --spec <spec-dir>        lint 该 spec 目录下 5 份文档
+  spec_lint.py --spec <spec-dir>        lint 该 spec 目录下核心文档
 
 stdlib-only。
 """
@@ -44,7 +42,6 @@ from spec_session._template_skeleton import (  # type: ignore  # noqa: E402
 
 # -------------------------------------------------------------------------
 
-REQ_TAG_RE = re.compile(r"_需求[：:]\s*([0-9]+(?:\.[0-9]+)?)_")
 FILE_REF_RE = re.compile(r"[A-Za-z0-9_./-]+\.(py|md|js|ts|tsx|jsx|go|rs|java|kt|rb|c|h|cpp|sh|yaml|yml|json)")
 EARS_HEADS = ("WHEN", "IF", "WHILE", "WHERE", "WHENEVER")
 SHALL_LINE_RE = re.compile(r"\bSHALL\b", re.IGNORECASE)
@@ -61,29 +58,6 @@ def _read(p: Path) -> Optional[str]:
     except Exception:
         return None
     return None
-
-
-def rule_task_traceability(spec_dir: Path, warnings: list[str]) -> None:
-    tasks = _read(spec_dir / "tasks.md")
-    if not tasks:
-        return
-    haystack_parts = []
-    for fn in ("requirements.md", "bugfix.md"):
-        s = _read(spec_dir / fn)
-        if s:
-            haystack_parts.append(s)
-    haystack = "\n".join(haystack_parts)
-    if not haystack:
-        # tasks.md 含标签但无 req/bugfix → 全报
-        for tag in set(REQ_TAG_RE.findall(tasks)):
-            _warn(warnings, "trace",
-                  f"tasks.md 引用 _需求：{tag}_ 但 requirements.md / bugfix.md 不存在或为空。")
-        return
-    for tag in sorted(set(REQ_TAG_RE.findall(tasks))):
-        # 容许匹配 "需求 1" / "需求 1.2" / "1.2"
-        if not re.search(rf"需求\s*{re.escape(tag)}\b", haystack) and tag not in haystack:
-            _warn(warnings, "trace",
-                  f"tasks.md 的 _需求：{tag}_ 在 requirements.md / bugfix.md 中找不到对应章节。")
 
 
 def rule_log_entries(spec_dir: Path, warnings: list[str]) -> None:
@@ -111,11 +85,11 @@ def rule_log_entries(spec_dir: Path, warnings: list[str]) -> None:
 
 
 def rule_template_structure(spec_dir: Path, warnings: list[str]) -> None:
-    """4 份核心文档 `## ` 章节集合 vs TEMPLATE_OUTLINES。
+    """3 份核心文档 `## ` 章节集合 vs TEMPLATE_OUTLINES。
 
     - 文档不存在：跳过（spec 可能只有 requirements 或只有 bugfix）。
     - mandatory 中有标题在文档里找不到 → WARNING。
-    - 文档里出现的 `## ` 标题既不在 mandatory/optional，也不匹配动态前缀 → WARNING。
+    - 文档里出现的 `## ` 标题既不在 mandatory/optional 名单 → WARNING。
     - 不做顺序校验（第一版保守）。
     """
     for phase_md, outline in TEMPLATE_OUTLINES.items():
@@ -175,7 +149,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 0  # lint 不阻断；返回 0
 
     warnings: list[str] = []
-    rule_task_traceability(spec_dir, warnings)
     rule_log_entries(spec_dir, warnings)
     rule_ears_shall(spec_dir, warnings)
     rule_template_structure(spec_dir, warnings)

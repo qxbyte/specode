@@ -645,7 +645,6 @@ def cmd_list_specs(args: argparse.Namespace) -> int:
         "requirements.md",
         "bugfix.md",
         "design.md",
-        "tasks.md",
         "implementation-log.md",
     ]
 

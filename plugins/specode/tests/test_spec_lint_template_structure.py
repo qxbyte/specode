@@ -1,8 +1,8 @@
 """Tests for spec_lint.py:rule_template_structure。
 
 每条用例都通过 spec_init.py 拿到"干净的"模板文档，再针对性改写章节集合，
-确认新规则对 mandatory 缺失 / unknown 新增 / dynamic 前缀 / optional 删除
-等四种情况的判定符合预期。
+确认新规则对 mandatory 缺失 / unknown 新增 / optional 删除等情况的判定符合
+预期。M4 起 tasks.md 不再属于 specode 模板（无 dynamic 前缀场景）。
 """
 from __future__ import annotations
 
@@ -24,14 +24,6 @@ def _stub_minimal_spec(spec_dir: Path) -> None:
         "## 二、目标用户与场景\n\n占位。\n\n"
         "## 三、待澄清问题\n\n无。\n\n"
         "## 四、需求详述\n\n占位。\n",
-    )
-    _write_text(
-        spec_dir / "tasks.md",
-        "# 任务\n\n"
-        "## 概述\n\n占位。\n\n"
-        "## 阶段 1: 占位\n\n- [ ] 1.1 占位\n\n"
-        "## 测试要点\n\n占位。\n\n"
-        "## 验收\n\n占位。\n",
     )
 
 
@@ -119,41 +111,21 @@ def test_template_structure_optional_section_kept_is_clean(run_script, doc_root)
     assert "tmpl" not in cp.stdout, cp.stdout
 
 
-def test_template_structure_dynamic_phase_prefix_silent(run_script, doc_root):
-    """tasks.md 的 `## 阶段 N: …` 动态前缀应被视为合规（数量任意）。"""
-    sd = doc_root / "specs" / "tmpl-stages"
-    sd.mkdir(parents=True, exist_ok=True)
+def test_template_structure_tasks_md_ignored(run_script, doc_root):
+    """M4 起 tasks.md 不在 TEMPLATE_OUTLINES 名单——即便存在也完全不被校验。"""
+    sd = doc_root / "specs" / "tmpl-legacy-tasks"
+    _stub_minimal_spec(sd)
+    # 残留的旧 tasks.md（任意章节）不应触发 tmpl WARNING
     _write_text(
         sd / "tasks.md",
         "# 任务\n\n"
-        "## 概述\n\n占。\n\n"
-        "## 阶段 1: 起步\n\n- [ ] 1.1\n\n"
-        "## 阶段 2: 推进\n\n- [ ] 2.1\n\n"
-        "## 阶段 3: 收尾\n\n- [ ] 3.1\n\n"
-        "## 测试要点\n\n占。\n\n"
-        "## 验收\n\n占。\n",
+        "## 随便发挥的章节\n\n占。\n\n"
+        "## 阶段 alpha: 不规范\n\n- [ ] x\n",
     )
     cp = run_script("spec_lint.py", "--spec", str(sd))
     assert cp.returncode == 0
     assert "tmpl" not in cp.stdout, cp.stdout
-
-
-def test_template_structure_phase_label_without_number_is_unknown(run_script, doc_root):
-    """前缀必须严格匹配 `阶段 N:`——`阶段 X:`（X 非数字）不应被视为 dynamic 合规。"""
-    sd = doc_root / "specs" / "tmpl-bad-stage"
-    sd.mkdir(parents=True, exist_ok=True)
-    _write_text(
-        sd / "tasks.md",
-        "# 任务\n\n"
-        "## 概述\n\n占。\n\n"
-        "## 阶段 alpha: 不规范\n\n- [ ] x\n\n"
-        "## 测试要点\n\n占。\n\n"
-        "## 验收\n\n占。\n",
-    )
-    cp = run_script("spec_lint.py", "--spec", str(sd))
-    assert cp.returncode == 0
-    assert "tmpl" in cp.stdout
-    assert "阶段 alpha" in cp.stdout
+    assert "tasks.md" not in cp.stdout, cp.stdout
 
 
 def test_template_structure_missing_file_skipped(run_script, doc_root):

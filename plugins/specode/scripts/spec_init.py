@@ -12,9 +12,8 @@
 行为：
   1. resolve_doc_root（含 --root / SPECODE_ROOT / config / auto）
   2. 三层全 miss → 输出引导 + exit 3
-  3. 在 doc_root 下创建 specs/<slug>/{requirements.md,bugfix.md,design.md,tasks.md,
+  3. 在 doc_root 下创建 specs/<slug>/{requirements.md,bugfix.md,design.md,
                                       implementation-log.md,.config.json}
-     （tasks.md 末尾自带 `## 测试要点` 章节，由 agent 跟随 requirements/bugfix 同步更新）
   4. 更新 <doc_root>/.active-specode.json
   5. 强制写 ~/.specode/sessions/<session_id>.json （atomic tempfile + os.replace + fsync）
   6. 任一失败 → 回滚已写文件 + exit 1
@@ -119,24 +118,6 @@ Status: Design Draft
 ## 组件与接口
 
 待补充。
-""",
-    "tasks.md": """# 实现计划：{{name}}（{{slug}}）
-
-Status: Tasks Draft
-
-## 阶段 1: 待规划阶段标题
-
-- [ ] 1.1 待规划任务描述 @writes:src/path/to/file.py _需求：1.1_
-
-## 测试要点
-
-供测试人员快速了解需要验证的场景。主代理在 tasks phase 按 SHALL 顺手补几行作为参考；非验收硬条件。
-
-- _agent 待填充_：触发场景 → 预期结果（需求 X.Y）
-
-## 验收
-
-- [ ] 所有 required 任务完成。
 """,
     "implementation-log.md": """# 实现记录：{{name}}（{{slug}}）
 
@@ -339,7 +320,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         "requirements.md": _render(_load_template("requirements.md"), ctx),
         "bugfix.md": _render(_load_template("bugfix.md"), ctx),
         "design.md": _render(_load_template("design.md"), ctx),
-        "tasks.md": _render(_load_template("tasks.md"), ctx),
         "implementation-log.md": _render(_load_template("implementation-log.md"), ctx),
     }
 
@@ -416,7 +396,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             pass
 
     try:
-        # 3. 创建 spec_dir + 6 份文档 + .config.json
+        # 3. 创建 spec_dir + 4 份文档 + .config.json
         # 0.10.27+：exist_ok=True 配合上面的「空目录放行」分支，避免用户提前 mkdir 占位时 fail
         spec_dir.mkdir(parents=True, exist_ok=True)
         created_paths.append(spec_dir)

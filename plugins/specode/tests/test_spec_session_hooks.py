@@ -465,7 +465,7 @@ def test_on_stop_active_emits_code_doc_sync(
     )
     ctx = _ctx(_parse_hook(cp.stdout))
     assert "代码-文档同步提醒" in ctx
-    assert "tasks.md" in ctx
+    assert "design.md" in ctx
     assert "implementation-log.md" in ctx
     assert "你仍处于 spec 模式" in ctx
 

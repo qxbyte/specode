@@ -33,10 +33,11 @@ def test_empty_directory_proceeds_to_normal_init(
     cfg = json.loads((pre_existing / ".config.json").read_text("utf-8"))
     assert cfg["slug"] == "empty-precreate"
     assert cfg["source_text"] == "占位目录测试"
-    # 5 份文档应被创建
-    for fname in ("requirements.md", "bugfix.md", "design.md", "tasks.md",
+    # 4 份文档应被创建（M4 起不再产 tasks.md）
+    for fname in ("requirements.md", "bugfix.md", "design.md",
                   "implementation-log.md"):
         assert (pre_existing / fname).exists(), fname
+    assert not (pre_existing / "tasks.md").exists()
 
 
 def test_existing_dir_with_config_same_session_falls_back_to_continue(

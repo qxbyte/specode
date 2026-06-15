@@ -368,15 +368,14 @@ questions:
 """,
     "acceptance-gate": """## 选择器节点：验收门
 
-**目的**：acceptance phase；tasks.md 全部 `[x]` 完成后，判断是否通过验收进入 iteration，或者回到 requirements / design / tasks 继续修改。
+**目的**：acceptance phase；实现（委托 task-swarm 或 specode 自执行）完成后，判断是否通过验收进入 iteration，或者回到 requirements / design 继续修改。
 
 **上下文**：active spec=<slug>，phase=acceptance。
-任务完成度：<n_done>/<n_total>。
 
 **前置动作（chat 简报，≤3 行）**：
-- 列出 tasks.md 完成度（done/total）。
+- 简述实现完成情况（委托模式看 task-swarm `report`；自执行看 `implementation-log.md`）。
 - 调用 `spec_lint.py --spec <spec_dir>` 把 WARNING 列出来（traceability / log / EARS 三类，如有）。
-- 若 tasks.md 末尾 `## 测试要点` 章节存在，简述本次需要测试人员关注的要点；测试要点是参考信息，不参与验收门判定。
+- 简述 `design.md` 「测试策略」/「正确性属性 → 验证：需求 x.y」要点 + task-swarm `report` 中的复现命令，供测试人员参考；测试要点不参与验收门判定。
 
 **调用 `AskUserQuestion` 工具**：
 
@@ -386,18 +385,18 @@ questions:
     multiSelect: false
     options:
       - label: "验收通过，进入 iteration（推荐）"
-        description: "所有任务完成；如有后续调整走 iteration 子循环。"
+        description: "实现完成、lint 无阻断；如有后续调整走 iteration 子循环。"
       - label: "继续修改"
-        description: "仍有未完成任务 / lint WARNING 需处理，回到 requirements / design / tasks 调整。"
+        description: "仍有未完成实现 / lint WARNING 需处理，回到 requirements / design 调整。"
 
 **约束**：
-- n_done == n_total 时推荐选 1；否则**移除"（推荐）"标记**。
+- 实现完成且无阻断性 lint WARNING 时推荐选 1；否则**移除"（推荐）"标记**。
 - 调用工具后立即 end turn。
 
 **用户选定后流程（同一 turn 内继续）**
 
 - 选 "验收通过，进入 iteration" → 调 `phase-transition --from acceptance --to iteration` → 在 chat 用 1-2 行告知"已进入 iteration（已交付常驻态），如需新一轮调整请直接提出（如『加个 X 功能』『改一下 Y 需求』），或 `/specode:end` 退出 spec 模式" → **end turn**。**不要**自动呈现 `iteration-scope`——它只在用户后续显式提出迭代调整时才呈现。
-- 选 "继续修改" → end turn 等用户文字反馈 → 下一 turn 根据反馈判断回到哪个 phase：改需求 → `phase-transition --to requirements`；改设计 → `--to design`；改实现/任务 → `phase-transition --to delegated`（重新委托 task-swarm 或 specode 自执行）
+- 选 "继续修改" → end turn 等用户文字反馈 → 下一 turn 根据反馈判断回到哪个 phase：改需求 → `phase-transition --to requirements`；改设计 → `--to design`；改实现 → `phase-transition --to delegated`（重新委托 task-swarm 或 specode 自执行）
 """,
     "iteration-scope": """## 选择器节点：iteration 调整范围（多选）
 

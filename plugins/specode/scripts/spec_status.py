@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -31,34 +30,6 @@ except Exception:
     def _log_event(event: str, payload: Optional[dict] = None,
                    session_id: Optional[str] = None) -> None:
         return None
-
-
-CHECKBOX_RE = re.compile(r"^\s*[-*]\s*\[(.)\]\s+", re.MULTILINE)
-
-
-def _count_tasks(tasks_md: Optional[str]) -> dict:
-    if not tasks_md:
-        return {"total": 0, "done": 0, "in_progress": 0, "pending": 0}
-    total = done = in_prog = pending = 0
-    for m in CHECKBOX_RE.finditer(tasks_md):
-        ch = m.group(1).strip().lower()
-        total += 1
-        if ch == "x":
-            done += 1
-        elif ch == "~":
-            in_prog += 1
-        else:
-            pending += 1
-    return {"total": total, "done": done, "in_progress": in_prog, "pending": pending}
-
-
-def _read_text(p: Path) -> Optional[str]:
-    try:
-        if p.exists() and p.is_file():
-            return p.read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return None
-    return None
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -79,15 +50,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     spec_dir_str = sess.get("active_spec_dir")
     cfg = None
-    task_counts = None
     lock_state_detail = None
     if spec_dir_str:
         try:
             cfg = read_spec_config(Path(spec_dir_str))
         except Exception:
             cfg = None
-        tasks_md = _read_text(Path(spec_dir_str) / "tasks.md") if spec_dir_str else None
-        task_counts = _count_tasks(tasks_md)
         if cfg:
             lock = cfg.get("lock") or {}
             holder = lock.get("holder")
@@ -104,7 +72,6 @@ def main(argv: Optional[list[str]] = None) -> int:
         "ok": True,
         "session": sess,
         "spec_config": cfg,
-        "task_counts": task_counts,
         "lock_state_detail": lock_state_detail,
     }
     if args.json:
@@ -129,11 +96,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     lines.append(f"lock_state     : {sess.get('lock_state')}")
     if lock_state_detail:
         lines.append(f"lock_detail    : {lock_state_detail}")
-    if task_counts:
-        lines.append(
-            f"tasks          : total={task_counts['total']} done={task_counts['done']} "
-            f"in_progress={task_counts['in_progress']} pending={task_counts['pending']}"
-        )
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
 

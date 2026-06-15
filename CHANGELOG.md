@@ -2,19 +2,34 @@
 
 ## Unreleased
 
-### Changed -- task-swarm 拆为独立 plugin（从 specode 移出多 agent 编排）
+## 0.11.0 (2026-06-15)
 
-task-swarm 多 agent 编排不再内置于 specode，迁出为同一 marketplace 下的独立 `task-swarm` plugin。specode 自身只保留「生成 task-swarm 兼容格式的 `tasks.md`（`## 阶段 N:` stage + `@writes` / `@depends-on` 标签）」+「在 `tasks-execution` selector 提供把 `tasks.md` 交给独立 plugin 的出口」。
+> task-swarm 拆为独立 plugin（M1）+ specode 委托衔接 / `delegated` 阶段（M4）+ tasks.md 退场。**破坏性**：移除 `/specode:task-swarm` 命令、task-swarm-* agent、`tasks`/`implementation` 阶段。phase 取值变更有读端回退迁移，旧 session 照常加载。
 
-**specode 侧移除/改写**：
+### Changed -- task-swarm 移出为独立 plugin（M1）
 
-- 删除 `scripts/task_swarm.py` + `scripts/task_swarm/` 包（state / parse_md / outbox / prompt / writeback / cli）、`agents/task-swarm-{planner,coder,reviewer,validator}.md`、`commands/task-swarm.md`、`references/task-swarm.md` + `references/task-swarm-example.md` 及对应测试。
-- 移除 `on-task-completed`（PostToolUse Task）hook 链与 `hook_on_pre_tool_use` 的 task-swarm 受控路径阻断分支（PreToolUse 仅保留 AskUserQuestion 参数校验 + tasks.md 直写软提醒）。
-- session 状态去掉 `task_swarm_run_id` 字段；`cmd_end` 不再清该字段；`_catalog.py` 去掉 task-swarm 关键词条目。
-- `tasks-execution` selector 从 4 选项收敛为 3 选项（**用 task-swarm plugin 执行（独立）** / 顺序执行 / 暂停或调整 tasks.md）；`project-root-choice` selector 措辞由 "task-swarm subagent cwd" 改为通用 "coder / 实现 agent 的 cwd"（已重生 `SELECTOR_OUTLINES`）。
-- `/specode:task-swarm` 命令与 SKILL 激活触发词移除；`SKILL.md` / `references/{workflow,templates,lock-protocol}.md` / `commands/{spec,end}.md` / `plugin.json` / README / CONTRIBUTING 中的 task-swarm 描述改为指向独立 plugin。
+task-swarm 多 agent 编排不再内置于 specode，迁出为同一 marketplace 下的独立 `task-swarm` plugin（见 task-swarm CHANGELOG）。
 
-无持久 schema 破坏：`task_swarm_run_id` 是仅在 task-swarm 运行期写入的可选字段，移除后读侧不再引用，旧 session 文件照常加载。
+- 删除 `scripts/task_swarm.py` + `scripts/task_swarm/` 包、`agents/task-swarm-*.md`、`commands/task-swarm.md`、`references/task-swarm*.md` 及对应测试。
+- 移除 `on-task-completed`（PostToolUse Task）hook 链与 `hook_on_pre_tool_use` 的 task-swarm 受控路径阻断分支。
+- session 去掉 `task_swarm_run_id` 字段；`_catalog.py` 去掉 task-swarm 关键词条目。
+- `/specode:task-swarm` 命令与 SKILL 激活触发词移除。
+
+### Changed -- 委托衔接 / `delegated` 阶段（M4）
+
+design 完成后由 specode 委托独立 task-swarm 执行，完成后回 acceptance——同一宿主主代理连续驱动（C 模型），specode **零 import** task-swarm。
+
+- **阶段模型**：`tasks` + `implementation` 合并为单个 `delegated`（`design → delegated → acceptance`）。`read_session` 对旧 `phase ∈ {tasks, implementation}` → `delegated`、`pending_selector == tasks-execution` → `delegation` 读端回退迁移（旧 session 照常加载，下次写落新值）。
+- **`tasks-execution` → `delegation` selector**：3 选项——委托 task-swarm 执行（多 agent 并发）/ specode 自执行（顺序单 agent，无 task-swarm 时降级）/ 暂停调整 design。
+- **新增 `set-delegated-run` 命令** + session `delegated_run_id` 标记委托；`delegated` 委托态 status footer + Stop 提醒「resolve 后回 acceptance」。
+- **委托桥**：SKILL `§Delegated` —— 主代理读 `design.md` → 按 task-swarm SKILL 生成 `pipeline.yml`（用户过目）→ `init --pipeline` 驱动 swarm → resolve → 回 acceptance；未装 task-swarm 时走 specode 自执行降级。
+
+### Removed -- tasks.md 退场
+
+specode 不再生成 / 使用 `tasks.md`（任务拆分归 task-swarm 的 planner，由主代理读 `design.md` 生成 `pipeline.yml`）。
+
+- 删 `spec_init` 的 tasks.md scaffold + `FALLBACK_TEMPLATES` + `assets/templates/tasks.md`；删 `spec_lint` 的 `rule_task_traceability` 死规则；`_template_skeleton` 去 tasks.md 动态前缀。
+- doc-sync 提醒、`spec_status` 任务计数、`list-specs` doc 名单、acceptance-gate 验收说明去 tasks.md；traceability / 测试要点收敛到 `design.md`（`## 测试策略` / `## 正确性属性`）。
 
 ## 0.10.29 (2026-06-03)
 

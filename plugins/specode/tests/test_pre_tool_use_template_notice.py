@@ -107,24 +107,18 @@ def test_write_requirements_md_injects_mandatory_and_optional(
     assert "PreToolUse" in cp.stdout  # event name
 
 
-def test_write_tasks_md_includes_dynamic_phase_prefix(
+def test_write_tasks_md_no_inject(
     run_script, fake_home, make_session_id, doc_root
 ):
+    """M4 起 specode 不再产 tasks.md：它不在模板章节字典里 → Write 不注入。"""
     sid = make_session_id()
-    spec_dir = _prep_active_spec(fake_home, doc_root, sid, phase="tasks")
+    spec_dir = _prep_active_spec(fake_home, doc_root, sid, phase="delegated")
     target = spec_dir / "tasks.md"
 
     cp = run_script("spec_session.py", "on-pre-tool-use",
                     stdin=_payload(sid, "Write", str(target)))
     assert cp.returncode == 0
-    ctx = _ctx(_parse_hook(cp.stdout))
-    assert "tasks.md" in ctx
-    assert "概述" in ctx
-    assert "测试要点" in ctx
-    assert "验收" in ctx
-    # 动态前缀
-    assert "阶段 N: …" in ctx
-    assert "dynamic" in ctx
+    assert cp.stdout.strip() == "", f"expected no inject, got: {cp.stdout!r}"
 
 
 def test_write_design_md_silent_no_optional(

@@ -36,16 +36,15 @@ def parsed_outlines() -> dict:
 
 
 def test_template_outlines_phase_set(parsed_outlines):
-    """常量字典 key 集合必须等于 4 份核心模板。"""
+    """常量字典 key 集合必须等于 3 份核心模板（M4 起不再有 tasks.md）。"""
     assert set(TEMPLATE_OUTLINES.keys()) == set(parsed_outlines.keys()) == {
         "requirements.md",
         "bugfix.md",
         "design.md",
-        "tasks.md",
     }
 
 
-@pytest.mark.parametrize("phase", ["requirements.md", "bugfix.md", "design.md", "tasks.md"])
+@pytest.mark.parametrize("phase", ["requirements.md", "bugfix.md", "design.md"])
 def test_template_outline_no_drift(phase, parsed_outlines):
     """每份模板的 mandatory / optional / dynamic_prefixes 必须与常量字典完全一致。
 

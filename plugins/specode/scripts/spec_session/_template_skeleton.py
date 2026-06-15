@@ -1,8 +1,8 @@
 '''spec_session._template_skeleton — 模板章节大纲常量 + 解析/格式化 helpers。
 
 用途：
-  1. `_hooks.py:hook_on_pre_tool_use` 在主代理 Write 4 份核心文档（requirements.md /
-     bugfix.md / design.md / tasks.md）之一时注入章节铁律提醒。
+  1. `_hooks.py:hook_on_pre_tool_use` 在主代理 Write 3 份核心文档（requirements.md /
+     bugfix.md / design.md）之一时注入章节铁律提醒。
   2. `spec_lint.py:rule_template_structure` 对 spec-dir 现有文档校验章节集合
      与 `assets/templates/<phase>.md` 一致（缺 mandatory / 多 unknown 报 WARNING）。
 
@@ -28,12 +28,7 @@ from typing import Optional
 
 
 _H2_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
-_DYNAMIC_PHASE_RE = re.compile(r"^阶段\s+\d+\s*[:：]")
 _OPTIONAL_MARK = "（可选"   # 命中 "（可选）" 或 "（可选，仅 UI 类需求）" 等
-
-# 第一版：仅 tasks.md 含动态章节前缀（`## 阶段 N: …`）。
-# 新增动态前缀时同步扩展 _DYNAMIC_PHASE_RE 与 _matches_dynamic_prefix。
-_DYNAMIC_PREFIX_LABEL = "阶段 N: …"
 
 
 def extract_h2_titles(text: str) -> list[str]:
@@ -44,29 +39,20 @@ def extract_h2_titles(text: str) -> list[str]:
     return [m.group(1).strip() for m in _H2_RE.finditer(text)]
 
 
-def _is_dynamic_phase_heading(title: str) -> bool:
-    return bool(_DYNAMIC_PHASE_RE.match(title))
-
-
 def parse_template_outline(template_text: str) -> dict[str, list[str]]:
     """解析单份模板，抽 mandatory / optional / dynamic_prefixes。
 
     规则：
       - 标题含 `（可选` 字面 → optional
-      - 标题匹配 `^阶段\\s+\\d+[:：]` → 归入 dynamic_prefixes（规范化为 "阶段 N: …"）
       - 其余 → mandatory
       - 出现顺序保留（用于诊断输出，不参与集合比对）
+      - dynamic_prefixes 当前所有核心模板均为空（动态前缀已随 tasks.md 移除）；
+        字段保留以兼容 TEMPLATE_OUTLINES 结构与 drift 测试。
     """
     mandatory: list[str] = []
     optional: list[str] = []
     dynamic_prefixes: list[str] = []
-    seen_dynamic: set[str] = set()
     for title in extract_h2_titles(template_text):
-        if _is_dynamic_phase_heading(title):
-            if _DYNAMIC_PREFIX_LABEL not in seen_dynamic:
-                dynamic_prefixes.append(_DYNAMIC_PREFIX_LABEL)
-                seen_dynamic.add(_DYNAMIC_PREFIX_LABEL)
-            continue
         if _OPTIONAL_MARK in title:
             optional.append(title)
         else:
@@ -79,12 +65,12 @@ def parse_template_outline(template_text: str) -> dict[str, list[str]]:
 
 
 def parse_templates_dir(templates_dir: Path) -> dict[str, dict[str, list[str]]]:
-    """读 `<templates_dir>/{requirements,bugfix,design,tasks}.md` 并解析为 outline 字典。
+    """读 `<templates_dir>/{requirements,bugfix,design}.md` 并解析为 outline 字典。
 
     用于 codegen 入口与 drift 测试；不在 hook 运行时调用。
     """
     out: dict[str, dict[str, list[str]]] = {}
-    for name in ("requirements.md", "bugfix.md", "design.md", "tasks.md"):
+    for name in ("requirements.md", "bugfix.md", "design.md"):
         p = templates_dir / name
         text = p.read_text(encoding="utf-8")
         out[name] = parse_template_outline(text)
@@ -92,14 +78,11 @@ def parse_templates_dir(templates_dir: Path) -> dict[str, dict[str, list[str]]]:
 
 
 def matches_template_section(title: str, outline: dict[str, list[str]]) -> bool:
-    """章节标题是否合规（在 mandatory / optional 名单内，或匹配 dynamic 前缀）。"""
+    """章节标题是否合规（在 mandatory / optional 名单内）。"""
     if title in outline.get("mandatory", []):
         return True
     if title in outline.get("optional", []):
         return True
-    for label in outline.get("dynamic_prefixes", []):
-        if label == _DYNAMIC_PREFIX_LABEL and _is_dynamic_phase_heading(title):
-            return True
     return False
 
 
@@ -211,17 +194,6 @@ TEMPLATE_OUTLINES: dict[str, dict[str, list[str]]] = {
         ],
         "optional": [],
         "dynamic_prefixes": [],
-    },
-    "tasks.md": {
-        "mandatory": [
-            "概述",
-            "测试要点",
-            "验收",
-        ],
-        "optional": [],
-        "dynamic_prefixes": [
-            "阶段 N: …",
-        ],
     },
 }
 

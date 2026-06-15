@@ -82,4 +82,4 @@ sequenceDiagram
 ## 待确认问题
 
 - 需要补充哪些具体组件、接口、测试和验收命令？
-- 是否确认当前技术设计？确认后再继续生成 `tasks.md`。
+- 是否确认当前技术设计？确认后进入 delegated 阶段（委托 task-swarm 或 specode 自执行）。

@@ -624,7 +624,7 @@ def hook_on_pre_tool_use(args: argparse.Namespace) -> None:
         return
     spec_dir = Path(spec_dir_str)
 
-    # --- 模板章节大纲注入：Write 4 份核心文档时前置提醒（0.10.26+） ---
+    # --- 模板章节大纲注入：Write 3 份核心文档时前置提醒（0.10.26+） ---
     # 仅 Write（不含 Edit/MultiEdit）—— Edit 类工具的章节漂移由 B 层 spec_lint 后置兜底。
     if tool_name != "Write":
         return

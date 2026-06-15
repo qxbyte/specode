@@ -11,9 +11,25 @@ DOC_FILENAMES = (
     "requirements.md",
     "bugfix.md",
     "design.md",
-    "tasks.md",
     "implementation-log.md",
 )
+
+
+def test_spec_init_does_not_scaffold_tasks_md(
+    run_script, doc_root, fake_home, make_session_id
+):
+    """M4 起 specode 不再产 tasks.md：scaffold 出来的目录不含 tasks.md。"""
+    sid = make_session_id()
+    cp = run_script(
+        "spec_init.py",
+        "--name", "no-tasks",
+        "--requirement-name", "NoTasks",
+        "--source-text", "x",
+        "--session", sid,
+    )
+    assert cp.returncode == 0, cp.stderr
+    spec_dir = Path(json.loads(cp.stdout)["spec_dir"])
+    assert not (spec_dir / "tasks.md").exists()
 
 
 def test_spec_init_creates_full_skeleton(run_script, doc_root, fake_home, make_session_id):

@@ -75,6 +75,49 @@ class StageEntry:
     end_line_no: int = 0
 
 
+@dataclass
+class GroupState:
+    """一个语义任务组的独立子状态机（M3）。把原 StateMachine 顶层 per-phase
+    字段整体下沉到这里。每组独立推进 coding→review→p0-fix→validation→v-fix→done。"""
+    id: str
+    name: str = ""
+    needs: list[str] = field(default_factory=list)
+    writes: list[str] = field(default_factory=list)
+    items: list[dict] = field(default_factory=list)
+    status: str = "pending"
+    phase: str = "init"
+    round: int = 0
+    coder_in_flight: list[str] = field(default_factory=list)
+    coder_done: list[str] = field(default_factory=list)
+    reviewer_done: bool = False
+    p0_in_flight: list[str] = field(default_factory=list)
+    p0_done: list[str] = field(default_factory=list)
+    p0_pending: list[dict] = field(default_factory=list)
+    validator_in_flight: bool = False
+    vfix_in_flight: list[str] = field(default_factory=list)
+    vfix_done: list[str] = field(default_factory=list)
+    findings: list[dict] = field(default_factory=list)
+    fix_targets: list[dict] = field(default_factory=list)
+    validator_history: list[dict] = field(default_factory=list)
+    fail_signature: str = ""
+
+    @classmethod
+    def from_pipeline_group(cls, g: dict) -> "GroupState":
+        return cls(id=g["id"], name=g.get("name", ""), needs=list(g.get("needs") or []),
+                   writes=list(g.get("writes") or []), items=list(g.get("items") or []))
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "GroupState":
+        return cls(**d)
+
+    def sched_view(self) -> dict:
+        """给 _schedule.compute_schedule 的精简视图。"""
+        return {"id": self.id, "needs": self.needs, "writes": self.writes, "status": self.status}
+
+
 # Phase 枚举（同 references/task-swarm.md §3）
 PHASES = {
     "init", "coding", "review", "p0-fix",
@@ -117,6 +160,10 @@ class StateMachine:
     groups: list[list[StageEntry]] = field(default_factory=list)
     current_group_index: int = 0
     group_status: list[str] = field(default_factory=list)  # 与 groups 平行
+
+    # M3：新子状态机模型（与旧线性 groups/group_status 并存，逐步迁移）
+    task_groups: list["GroupState"] = field(default_factory=list)
+    serial_validation: bool = False
 
     # 当前 phase 信息
     phase: str = "init"
@@ -168,6 +215,12 @@ class StateMachine:
             for s in g:
                 gg.append(StageEntry(**s))
             groups.append(gg)
+        # 反序列化 task_groups（M3 新模型）；旧 schema 无此字段则从 groups 迁移
+        raw_tg = data.get("task_groups")
+        if raw_tg is not None:
+            task_groups = [GroupState.from_dict(g) for g in raw_tg]
+        else:
+            task_groups = _migrate_linear_to_groups(data)
         sm = cls(
             run_id=data["run_id"],
             tasks_md=data["tasks_md"],
@@ -183,6 +236,8 @@ class StateMachine:
             groups=groups,
             current_group_index=data.get("current_group_index", 0),
             group_status=data.get("group_status", ["pending"] * len(groups)),
+            task_groups=task_groups,
+            serial_validation=data.get("serial_validation", False),
             phase=data.get("phase", "init"),
             round=data.get("round", 0),
             coder_in_flight=data.get("coder_in_flight", []),
@@ -223,6 +278,8 @@ class StateMachine:
             "groups": [[asdict(s) for s in g] for g in self.groups],
             "current_group_index": self.current_group_index,
             "group_status": list(self.group_status),
+            "task_groups": [g.to_dict() for g in self.task_groups],
+            "serial_validation": self.serial_validation,
             "phase": self.phase,
             "round": self.round,
             "coder_in_flight": list(self.coder_in_flight),
@@ -443,6 +500,51 @@ class StateMachine:
         self.failed_status = "failed-deadloop"
         self.phase = "error"
         self.events_append({"type": "group-failed", "group": gi + 1, "reason": "deadloop"})
+
+
+# -------------------------------------------------------------------------
+# 旧线性 schema → task_groups 迁移
+# -------------------------------------------------------------------------
+
+def _migrate_linear_to_groups(data: dict) -> list["GroupState"]:
+    """旧线性 schema（groups[批次] + 顶层 per-phase 字段）→ task_groups。
+    每个旧批次映射成一个 GroupState，id 用 g{i+1}，status 取 group_status[i]，
+    顶层 per-phase 字段只灌到 current_group_index 指向的那组。"""
+    out = []
+    groups = data.get("groups", [])
+    gstatus = data.get("group_status", ["pending"] * len(groups))
+    ci = data.get("current_group_index", 0)
+    for i, batch in enumerate(groups):
+        items = []
+        for s in batch:
+            items.append({"number": s.get("number"), "title": s.get("title", ""),
+                          "writes": s.get("writes", []), "reads": s.get("reads", []),
+                          "requirements": s.get("requirements", [])})
+        writes_union = []
+        for it in items:
+            for f in it["writes"]:
+                if f not in writes_union:
+                    writes_union.append(f)
+        gs = GroupState(id=f"g{i+1}", name="", needs=[], writes=writes_union, items=items,
+                        status=gstatus[i] if i < len(gstatus) else "pending")
+        if i == ci:
+            gs.phase = data.get("phase", "init")
+            gs.round = data.get("round", 0)
+            gs.coder_in_flight = data.get("coder_in_flight", [])
+            gs.coder_done = data.get("coder_done", [])
+            gs.reviewer_done = data.get("reviewer_done", False)
+            gs.p0_in_flight = data.get("p0_in_flight", [])
+            gs.p0_done = data.get("p0_done", [])
+            gs.p0_pending = data.get("p0_pending", [])
+            gs.validator_in_flight = data.get("validator_in_flight", False)
+            gs.vfix_in_flight = data.get("vfix_in_flight", [])
+            gs.vfix_done = data.get("vfix_done", [])
+            gs.findings = data.get("findings", [])
+            gs.fix_targets = data.get("fix_targets", [])
+            gs.validator_history = data.get("validator_history", [])
+            gs.fail_signature = data.get("fail_signature", "")
+        out.append(gs)
+    return out
 
 
 # -------------------------------------------------------------------------

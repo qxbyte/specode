@@ -194,3 +194,34 @@ def test_state_save_atomic_then_load(tmp_path):
     sm.save()
     sm2 = StateMachine.load(Path(sm.run_dir))
     assert sm2.round == 7
+
+
+def test_groupstate_roundtrip():
+    from task_swarm._state import GroupState
+    gs = GroupState(id="g1", name="A", needs=["g0"], writes=["a.py"],
+                    items=[{"number": "1.1", "title": "t"}], status="coding")
+    d = gs.to_dict()
+    gs2 = GroupState.from_dict(d)
+    assert gs2.id == "g1" and gs2.needs == ["g0"] and gs2.status == "coding"
+    assert gs2.sched_view() == {"id": "g1", "needs": ["g0"], "writes": ["a.py"], "status": "coding"}
+
+
+def test_load_migrates_legacy_linear_schema(tmp_path):
+    import json
+    from task_swarm._state import StateMachine
+    run_dir = tmp_path / "run"; run_dir.mkdir()
+    legacy = {
+        "run_id": "r1", "tasks_md": "", "run_dir": str(run_dir),
+        "groups": [[{"number": "1.1", "title": "t", "writes": ["a.py"], "reads": [],
+                     "depends_on": [], "requirements": [], "items": [],
+                     "header_line_no": 0, "end_line_no": 0}]],
+        "group_status": ["coding"], "current_group_index": 0,
+        "phase": "coding", "round": 1, "coder_in_flight": ["coder-g1-s1.1-r1"],
+    }
+    (run_dir / "state.json").write_text(json.dumps(legacy), encoding="utf-8")
+    sm = StateMachine.load(run_dir)
+    assert len(sm.task_groups) == 1
+    g = sm.task_groups[0]
+    assert g.id == "g1" and g.status == "coding" and g.phase == "coding"
+    assert g.coder_in_flight == ["coder-g1-s1.1-r1"]
+    assert sm.current_group_index == 0

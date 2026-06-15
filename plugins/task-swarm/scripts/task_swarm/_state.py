@@ -273,46 +273,18 @@ class StateMachine:
     project_root: Optional[str] = None
     pipeline_path: Optional[str] = None
 
-    # 0.10.20+：人工验收模式。True 时 review/p0-fix 完成后跳过 validation/v-fix，
-    # 直接 begin_writeback；tasks.md 注释块写"⏭️ validator 已跳过（人工验收模式）"。
-    # 由 cmd_init 的 --skip-validator flag 设置。
+    # 人工验收模式：review/p0-fix 完成后跳过 validation/v-fix 直接 writeback。
     skip_validator: bool = False
 
-    # group 数据
-    groups: list[list[StageEntry]] = field(default_factory=list)
-    current_group_index: int = 0
-    group_status: list[str] = field(default_factory=list)  # 与 groups 平行
-
-    # M3：新子状态机模型（与旧线性 groups/group_status 并存，逐步迁移）
+    # M3：每语义任务组一个独立子状态机（GroupState）。task_groups 是唯一事实源。
     task_groups: list["GroupState"] = field(default_factory=list)
     serial_validation: bool = False
 
-    # 当前 phase 信息
-    phase: str = "init"
-    round: int = 0  # 当前 phase 已完成的轮号（v-fix 用得最多）
-
-    # 在飞 / 已返回 subagent
-    coder_in_flight: list[str] = field(default_factory=list)
-    coder_done: list[str] = field(default_factory=list)
-    reviewer_done: bool = False
-    p0_in_flight: list[str] = field(default_factory=list)
-    p0_done: list[str] = field(default_factory=list)
-    validator_in_flight: bool = False
-    vfix_in_flight: list[str] = field(default_factory=list)
-    vfix_done: list[str] = field(default_factory=list)
-
-    # findings & validator 历史（per group）
-    findings: list[dict] = field(default_factory=list)  # reviewer 输出（含降级）
-    p0_pending: list[dict] = field(default_factory=list)  # 带证据 P0 项
-    fix_targets: list[dict] = field(default_factory=list)  # validator fail 时的修复目标
-    validator_history: list[dict] = field(default_factory=list)  # 历轮 verdict + signature
-    fail_signature: str = ""  # 上一轮 fail 签名
-
-    # 状态
+    # run 级状态
     started_at: str = ""
     last_activity_at: str = ""
     completed_at: Optional[str] = None
-    failed_status: Optional[str] = None  # failed-deadloop / failed / done
+    failed_status: Optional[str] = None  # done / failed / failed-deadloop / aborted
     events: list[dict] = field(default_factory=list)
 
     # -----------------------------------------------------------------
@@ -330,22 +302,15 @@ class StateMachine:
             raise FileNotFoundError(f"state.json 不存在：{sp}")
         with sp.open("r", encoding="utf-8") as fh:
             data = json.load(fh)
-        # 反序列化 groups
-        groups: list[list[StageEntry]] = []
-        for g in data.get("groups", []):
-            gg: list[StageEntry] = []
-            for s in g:
-                gg.append(StageEntry(**s))
-            groups.append(gg)
-        # 反序列化 task_groups（M3 新模型）；旧 schema 无此字段则从 groups 迁移
+        # task_groups（M3 模型）；旧线性 schema（无 task_groups）→ 自动迁移
         raw_tg = data.get("task_groups")
         if raw_tg is not None:
             task_groups = [GroupState.from_dict(g) for g in raw_tg]
         else:
             task_groups = _migrate_linear_to_groups(data)
-        sm = cls(
+        return cls(
             run_id=data["run_id"],
-            tasks_md=data["tasks_md"],
+            tasks_md=data.get("tasks_md", ""),
             run_dir=str(run_dir),
             max_parallel=data.get("max_parallel", 4),
             max_rounds=data.get("max_rounds", 6),
@@ -355,26 +320,8 @@ class StateMachine:
             workdir=data.get("workdir"),
             project_root=data.get("project_root"),
             pipeline_path=data.get("pipeline_path"),
-            groups=groups,
-            current_group_index=data.get("current_group_index", 0),
-            group_status=data.get("group_status", ["pending"] * len(groups)),
             task_groups=task_groups,
             serial_validation=data.get("serial_validation", False),
-            phase=data.get("phase", "init"),
-            round=data.get("round", 0),
-            coder_in_flight=data.get("coder_in_flight", []),
-            coder_done=data.get("coder_done", []),
-            reviewer_done=data.get("reviewer_done", False),
-            p0_in_flight=data.get("p0_in_flight", []),
-            p0_done=data.get("p0_done", []),
-            validator_in_flight=data.get("validator_in_flight", False),
-            vfix_in_flight=data.get("vfix_in_flight", []),
-            vfix_done=data.get("vfix_done", []),
-            findings=data.get("findings", []),
-            p0_pending=data.get("p0_pending", []),
-            fix_targets=data.get("fix_targets", []),
-            validator_history=data.get("validator_history", []),
-            fail_signature=data.get("fail_signature", ""),
             started_at=data.get("started_at", ""),
             last_activity_at=data.get("last_activity_at", ""),
             completed_at=data.get("completed_at"),
@@ -382,7 +329,6 @@ class StateMachine:
             events=data.get("events", []),
             skip_validator=data.get("skip_validator", False),
         )
-        return sm
 
     def to_dict(self) -> dict:
         return {
@@ -397,26 +343,8 @@ class StateMachine:
             "workdir": self.workdir,
             "project_root": self.project_root,
             "pipeline_path": self.pipeline_path,
-            "groups": [[asdict(s) for s in g] for g in self.groups],
-            "current_group_index": self.current_group_index,
-            "group_status": list(self.group_status),
             "task_groups": [g.to_dict() for g in self.task_groups],
             "serial_validation": self.serial_validation,
-            "phase": self.phase,
-            "round": self.round,
-            "coder_in_flight": list(self.coder_in_flight),
-            "coder_done": list(self.coder_done),
-            "reviewer_done": self.reviewer_done,
-            "p0_in_flight": list(self.p0_in_flight),
-            "p0_done": list(self.p0_done),
-            "validator_in_flight": self.validator_in_flight,
-            "vfix_in_flight": list(self.vfix_in_flight),
-            "vfix_done": list(self.vfix_done),
-            "findings": list(self.findings),
-            "p0_pending": list(self.p0_pending),
-            "fix_targets": list(self.fix_targets),
-            "validator_history": list(self.validator_history),
-            "fail_signature": self.fail_signature,
             "started_at": self.started_at,
             "last_activity_at": self.last_activity_at,
             "completed_at": self.completed_at,
@@ -429,204 +357,11 @@ class StateMachine:
         self.last_activity_at = _now_iso()
         _atomic_write_json(self.state_path(Path(self.run_dir)), self.to_dict())
 
-    # -----------------------------------------------------------------
-    # 事件
-    # -----------------------------------------------------------------
-
     def events_append(self, event: dict) -> None:
         e = dict(event)
         e.setdefault("at", _now_iso())
         self.events.append(e)
 
-    # -----------------------------------------------------------------
-    # 当前 group 视图
-    # -----------------------------------------------------------------
-
-    def current_group(self) -> list[StageEntry]:
-        if self.current_group_index >= len(self.groups):
-            return []
-        return self.groups[self.current_group_index]
-
-    def is_group_complete(self) -> bool:
-        return self.current_group_index >= len(self.groups)
-
-    def current_group_done(self) -> bool:
-        if self.current_group_index >= len(self.group_status):
-            return False
-        return self.group_status[self.current_group_index] in ("done", "failed", "failed-deadloop")
-
-    # -----------------------------------------------------------------
-    # phase 推进
-    # -----------------------------------------------------------------
-
-    def begin_coding(self) -> None:
-        """进入新 group 的 coding phase。"""
-        if self.current_group_index >= len(self.groups):
-            self.phase = "done"
-            self.completed_at = _now_iso()
-            return
-        self.phase = "coding"
-        self.round = 1
-        # 设置 in_flight keys（命名规则见 references/task-swarm.md §4）
-        gi = self.current_group_index
-        self.coder_in_flight = [
-            f"coder-g{gi + 1}-s{s.number}-r1" for s in self.current_group()
-        ]
-        self.coder_done = []
-        self.reviewer_done = False
-        self.p0_in_flight = []
-        self.p0_done = []
-        self.validator_in_flight = False
-        self.vfix_in_flight = []
-        self.vfix_done = []
-        self.findings = []
-        self.p0_pending = []
-        self.fix_targets = []
-        self.validator_history = []
-        self.fail_signature = ""
-        self.group_status[gi] = "coding"
-        self.events_append({"type": "phase", "phase": "coding", "group": gi + 1})
-
-    def mark_coder_done(self, agent_key: str) -> None:
-        if agent_key in self.coder_in_flight:
-            self.coder_in_flight.remove(agent_key)
-        if agent_key not in self.coder_done:
-            self.coder_done.append(agent_key)
-
-    def all_coders_returned(self) -> bool:
-        return not self.coder_in_flight
-
-    def begin_review(self) -> None:
-        self.phase = "review"
-        self.reviewer_done = False
-        gi = self.current_group_index
-        self.group_status[gi] = "review"
-        self.events_append({"type": "phase", "phase": "review", "group": gi + 1})
-
-    def mark_reviewer_done(self) -> None:
-        self.reviewer_done = True
-
-    def begin_p0_fix(self, p0_pending: list[dict]) -> None:
-        self.phase = "p0-fix"
-        self.round = 1
-        gi = self.current_group_index
-        self.p0_pending = list(p0_pending)
-        # 按文件分组：每个不同 file → 一个 fix agent
-        files: list[str] = []
-        for p in p0_pending:
-            f = (p.get("file_hint") or "unknown").strip()
-            if f not in files:
-                files.append(f)
-        self.p0_in_flight = [f"coder-p0fix-g{gi + 1}-r1-f{i}" for i in range(len(files))]
-        self.p0_done = []
-        self.group_status[gi] = "p0-fix"
-        self.events_append({"type": "phase", "phase": "p0-fix", "group": gi + 1,
-                            "files": files})
-
-    def mark_p0_done(self, agent_key: str) -> None:
-        if agent_key in self.p0_in_flight:
-            self.p0_in_flight.remove(agent_key)
-        if agent_key not in self.p0_done:
-            self.p0_done.append(agent_key)
-
-    def all_p0_returned(self) -> bool:
-        return not self.p0_in_flight
-
-    def begin_validation(self) -> None:
-        self.phase = "validation"
-        self.validator_in_flight = True
-        gi = self.current_group_index
-        self.group_status[gi] = "validation"
-        self.events_append({"type": "phase", "phase": "validation",
-                            "group": gi + 1, "round": self.round})
-
-    def mark_validator_done(self) -> None:
-        self.validator_in_flight = False
-
-    def record_round_signature(self, fail_sig: str) -> None:
-        """记录本轮 fail 签名到 history。"""
-        gi = self.current_group_index
-        self.validator_history.append({
-            "group": gi + 1,
-            "round": self.round,
-            "verdict": "fail" if fail_sig else "pass",
-            "signature": fail_sig,
-            "at": _now_iso(),
-        })
-        self.fail_signature = fail_sig
-
-    def detect_deadloop(self) -> bool:
-        """连续 3 轮同 fail 签名 → 死循环。"""
-        gi = self.current_group_index
-        sigs = [h["signature"] for h in self.validator_history
-                if h.get("group") == gi + 1 and h.get("verdict") == "fail" and h.get("signature")]
-        if len(sigs) < DEADLOOP_THRESHOLD:
-            return False
-        return all(s == sigs[-1] for s in sigs[-DEADLOOP_THRESHOLD:])
-
-    def begin_v_fix(self, fix_targets: list[dict]) -> None:
-        self.phase = "v-fix"
-        self.round += 1
-        gi = self.current_group_index
-        # 按文件分组
-        files: list[str] = []
-        for t in fix_targets:
-            f = (t.get("file_path") or "unknown").strip()
-            if f and f not in files:
-                files.append(f)
-        if not files:
-            files = ["unknown"]
-        self.fix_targets = list(fix_targets)
-        self.vfix_in_flight = [
-            f"coder-vfix-g{gi + 1}-r{self.round}-f{i}" for i in range(len(files))
-        ]
-        self.vfix_done = []
-        self.group_status[gi] = "v-fix"
-        self.events_append({"type": "phase", "phase": "v-fix",
-                            "group": gi + 1, "round": self.round, "files": files})
-
-    def mark_vfix_done(self, agent_key: str) -> None:
-        if agent_key in self.vfix_in_flight:
-            self.vfix_in_flight.remove(agent_key)
-        if agent_key not in self.vfix_done:
-            self.vfix_done.append(agent_key)
-
-    def all_vfix_returned(self) -> bool:
-        return not self.vfix_in_flight
-
-    def begin_writeback(self) -> None:
-        self.phase = "writeback"
-        gi = self.current_group_index
-        self.group_status[gi] = "writeback"
-
-    def finalize_group(self, status: str = "done") -> None:
-        gi = self.current_group_index
-        if gi < len(self.group_status):
-            self.group_status[gi] = status
-        self.events_append({"type": "group-done", "group": gi + 1, "status": status})
-        # 进入下一 group
-        self.current_group_index += 1
-        if self.current_group_index >= len(self.groups):
-            self.phase = "done"
-            self.completed_at = _now_iso()
-            self.failed_status = self.failed_status or "done"
-            self.events_append({"type": "run-done", "status": self.failed_status})
-        else:
-            # 不自动 begin_coding；由 advance 调用
-            self.phase = "init"
-
-    def fail_group_deadloop(self) -> None:
-        gi = self.current_group_index
-        if gi < len(self.group_status):
-            self.group_status[gi] = "failed-deadloop"
-        self.failed_status = "failed-deadloop"
-        self.phase = "error"
-        self.events_append({"type": "group-failed", "group": gi + 1, "reason": "deadloop"})
-
-
-# -------------------------------------------------------------------------
-# 旧线性 schema → task_groups 迁移
-# -------------------------------------------------------------------------
 
 def _migrate_linear_to_groups(data: dict) -> list["GroupState"]:
     """旧线性 schema（groups[批次] + 顶层 per-phase 字段）→ task_groups。

@@ -24,10 +24,10 @@ task-swarm **独立运行,不依赖 specode**。若同时装了 specode,由 spec
 
 1. **接需求**:design.md / requirements / superpowers plan / 裸需求 / 已写好的 pipeline.yml
 2. **兼 planner 生成 pipeline.yml**(§2);若入参已是 `.yml` 且 schema 通过 → 跳过此步
-3. `init --pipeline <yml> --workdir <项目根>` 拿 `run_id`
-4. `plan --run <id>` 拿 fork 列表 → **同一 message** fork N 个 Task(逐字拷 plan 给的 agent_key)
-5. **等齐所有 in-flight Task ✓ completed**(机械纪律,§4)→ `advance --run <id> --phase <p> --round <n>`
-6. `writeback --run <id> --group <N>`(finalize 本组)→ 回第 4 步直到本组 done
+3. `init --pipeline <yml> --workdir <项目根>` 拿 `run_id`(测试有共享资源/端口时加 `--serial-validation`)
+4. `plan --run <id>` 返回**runnable 组集** → **同一 message** fork 这些组的全部 coder(总并发 ≤ `max_parallel`,逐字拷 plan 给的 agent_key)
+5. **各组等齐所有 in-flight Task ✓ completed**(机械纪律,§4)→ `advance --run <id> --group <gid> --phase <p>`
+6. `writeback --run <id> --group <gid>`(finalize 本组)→ 回第 4 步;`needs` 满足后下游组解锁进 runnable,直到全组 done
 7. 全组 done → `resolve --run <id>` 收尾 → `report --run <id>` 出报告
 
 所有 `task_swarm.py` 调用走 `run.sh` 包装(见 commands/task-swarm.md 模板)。
@@ -50,9 +50,9 @@ task-swarm **独立运行,不依赖 specode**。若同时装了 specode,由 spec
 
 ## §4 机械纪律(对应 CLI 4 守点,违反必出乱)
 
-- **advance 前必须等齐所有 fork 的 Task ✓ completed**;任何 streaming/running Bash 都不能 advance。
+- **advance 前必须等齐本组所有 fork 的 Task ✓ completed**;任何 streaming/running Bash 都不能 `advance --group <gid>`。
   不确定时调 `plan --run <id>`,若返回 `*-waiting` 动作就回到等待。
-- **禁止自创 agent_key**:必须用 plan 给的规范名(`coder-vfix-g{N}-r{R}-f{I}` 等),不要自编 `coder-fix-xxx`。
+- **禁止自创 agent_key**:必须用 plan 给的规范名(`coder-{gid}-s{n}-r1`、`reviewer-{gid}-r1`、`validator-{gid}-r1`、`coder-vfix-{gid}-r{R}-f{I}` 等,gid 为组 id 如 g1),不要自编 `coder-fix-xxx`。
 - **result.md 缺 STATUS** → 重 fork **同名** agent(先清其 outbox),**绝不手补 STATUS**(缺 STATUS 多半是 subagent 提前退出、代码没刷盘)。
 - **禁止手改受控文件**(state.json / outbox 产物)——CLI 会 exit 2 拦截。
 

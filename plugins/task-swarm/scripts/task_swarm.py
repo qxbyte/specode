@@ -3,7 +3,7 @@
 
 文件名 `task_swarm.py` 保留作为外部 API surface：commands/task-swarm.md +
 spec_session/_hooks.py:_run_task_swarm_plan 都按此路径调用。实现拆到同目录的
-`task_swarm/` 包内（_state / _parse_md / _outbox / _prompt / _writeback / cli），
+`task_swarm/` 包内（_state / _pipeline / _schedule / _outbox / _prompt / _writeback / cli），
 launcher 只做两件事：
 
   1. sys.path 注入 scripts/，让包内 spec_log import 可用

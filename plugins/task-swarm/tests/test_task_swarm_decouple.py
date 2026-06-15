@@ -23,9 +23,14 @@ def _run(*args, cwd=None, home=None):
 
 
 def _tasks_md(d: Path) -> Path:
-    p = d / "tasks.md"
-    p.write_text("## 阶段 1: A\n- [ ] 1.1 任务 @writes:src/f1.py _需求：1.1_\n",
-                 encoding="utf-8")
+    """M3：单组 pipeline.yml（沿用旧 helper 名以减少改动面）。"""
+    p = d / "pipeline.yml"
+    p.write_text(
+        "version: 1\ntask_groups:\n  - id: g1\n    name: A\n    tasks:\n"
+        "      - id: g1.1\n        title: 任务\n        writes: [src/f1.py]\n"
+        '        requirements: ["1.1"]\n',
+        encoding="utf-8",
+    )
     return p
 
 
@@ -33,7 +38,7 @@ def test_init_uses_explicit_workdir_for_state_root(tmp_path):
     work = tmp_path / "proj"
     work.mkdir()
     tasks = _tasks_md(tmp_path)            # tasks.md elsewhere; workdir separate
-    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work),
+    cp = _run("init", "--pipeline", str(tasks), "--workdir", str(work),
               home=tmp_path / "_home")
     assert cp.returncode == 0, cp.stderr
     out = json.loads(cp.stdout)
@@ -48,7 +53,7 @@ def test_init_stores_project_root_from_flag(tmp_path):
     tasks = _tasks_md(tmp_path)
     pr = tmp_path / "app"
     pr.mkdir()
-    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work),
+    cp = _run("init", "--pipeline", str(tasks), "--workdir", str(work),
               "--project-root", str(pr), home=tmp_path / "_home")
     assert cp.returncode == 0, cp.stderr
     out = json.loads(cp.stdout)
@@ -68,7 +73,7 @@ def test_coder_prompt_omits_spec_dir_when_absent(tmp_path):
     work.mkdir()
     tasks = _tasks_md(tmp_path)
     home = tmp_path / "_home"
-    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work), home=home)
+    cp = _run("init", "--pipeline", str(tasks), "--workdir", str(work), home=home)
     assert cp.returncode == 0, cp.stderr
     out = json.loads(cp.stdout)
     run_dir = Path(out["run_dir"])
@@ -88,7 +93,7 @@ def test_coder_prompt_includes_spec_dir_when_provided(tmp_path):
     spec_dir.mkdir()
     tasks = _tasks_md(tmp_path)
     home = tmp_path / "_home"
-    cp = _run("init", "--tasks", str(tasks), "--workdir", str(work),
+    cp = _run("init", "--pipeline", str(tasks), "--workdir", str(work),
               "--spec-dir", str(spec_dir), home=home)
     assert cp.returncode == 0, cp.stderr
     out = json.loads(cp.stdout)
@@ -103,13 +108,13 @@ def test_plan_finds_run_in_workdir_without_sessions(tmp_path):
     work = tmp_path / "proj"
     work.mkdir()
     tasks = _tasks_md(tmp_path)
-    init = json.loads(_run("init", "--tasks", str(tasks), "--workdir", str(work),
+    init = json.loads(_run("init", "--pipeline", str(tasks), "--workdir", str(work),
                            home=tmp_path / "_home").stdout)
     run_id = init["run_id"]
     cp = _run("plan", "--run", run_id, cwd=work, home=tmp_path / "_home")
     assert cp.returncode == 0, cp.stderr
     plan = json.loads(cp.stdout)
-    assert plan["phase"] in ("coding", "init")
+    assert plan["actions"][0]["phase"] in ("coding", "init")
 
 
 def test_full_cycle_creates_no_specode_dir(tmp_path):
@@ -118,7 +123,7 @@ def test_full_cycle_creates_no_specode_dir(tmp_path):
     work = tmp_path / "proj"
     work.mkdir()
     tasks = _tasks_md(tmp_path)
-    init = json.loads(_run("init", "--tasks", str(tasks), "--workdir", str(work),
+    init = json.loads(_run("init", "--pipeline", str(tasks), "--workdir", str(work),
                            "--session", "sid-xyz", home=home).stdout)
     run_id = init["run_id"]
     _run("plan", "--run", run_id, cwd=work, home=home)

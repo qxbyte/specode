@@ -30,13 +30,14 @@ argument-hint: "[<需求文档.md | pipeline.yml>] [--max-parallel N] [--max-rou
 sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
    "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
    init --pipeline "<pipeline.yml 绝对路径>" --workdir "<项目根>" \
-   [--project-root "<代码根>"] [--spec-id <id>] [--skip-validator]
+   [--project-root "<代码根>"] [--spec-id <id>] [--skip-validator] [--serial-validation]
 ```
 
-- `--pipeline`:pipeline.yml 绝对路径(主编排格式)。legacy `--tasks <tasks.md>` 仍受支持(软废弃),与 `--pipeline` 二选一。
+- `--pipeline`:pipeline.yml 绝对路径,**唯一输入**(语义任务组 + 组间 `needs` 依赖 + 组内 task `writes`)。
 - `--workdir`:state 落盘根(state 根 = `<workdir>/.task-swarm/runs/`)。缺省 = 当前 cwd;独立模式用项目根。
 - `--project-root`(可选):被改代码的根目录(缺省 = `--workdir`)。
 - `--skip-validator`:人工验收模式——review/p0-fix 完成后跳过 validation/v-fix 直接 writeback。
+- `--serial-validation`:跨组并发时让 **validator 全局串行**(同一时刻只跑一个组的 validation/v-fix)。测试有共享资源/端口冲突时加。
 - init 报"未解析出任何任务组" → pipeline.yml 格式不对,按 `references/pipeline-yaml.md` 修正后重试。
 - 拿到 `{run_id, run_dir, groups, skip_validator}` 后转第三步。
 
@@ -45,15 +46,17 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 所有 `task_swarm.py` 子命令套同一 run.sh 包装模板:
 
 1. `init`(第二步已做)
-2. `plan --run <run_id>` 拿下次 fork 列表
-3. `fork`:同一 message 发 N 个 Task(按 `plan.fork` **逐字**拷 agent_key,**禁止**自创 `coder-fix-xxx`)
+2. `plan --run <run_id>` 拿**多组并发调度**:返回 `{schedule:{done,running,runnable,blocked,failed}, actions:[...], serial_validation, max_parallel}`。`actions` 列出每个 runnable/待推进组的 `fork` 列表;`schedule.runnable` 是当前可起的组,`blocked` 给出原因(`needs` 未满足 / `writes` 与在跑组冲突)。
+3. `fork`:同一 message 把 `actions` 里**所有 runnable 组**的 coder 一起 fork(按各 `fork[].agent_key` **逐字**拷,**禁止**自创 `coder-fix-xxx`)。总并发受 `max_parallel` 约束——超出的组会留在下一轮。
 4. **等齐所有 in-flight Task ✓ completed 才能 advance**(强约束,违反必出乱):
    - 必须在 teammates UI 看到所有 fork 的 Task ✓ completed;任何 ⠙ streaming / ⠴ running Bash 都不能 advance
    - **不要**凭口头报告判定完成——只有 subagent 自己 Task tool 返回 ✓ 才算
    - 不确定时调 `plan --run <run_id>`,返回 `coding-waiting`/`p0-fix-waiting`/`v-fix-waiting` 就回到等待
-5. `advance --run <run_id> --phase <p> --round <n>` 推进 state
-6. `writeback --run <run_id> --group <N>`(本组 finalize)
+5. `advance --run <run_id> --group <gid> --phase <p>`(gid 为字符串如 `g1`)推进**该组**子状态机
+6. `writeback --run <run_id> --group <gid>`(finalize 本组,不写 tasks.md)
 7. 全组完成 → `resolve --run <run_id>` 收尾 → `report --run <run_id>` 出报告
+
+> plan 的 `schedule` 是并发驱动核心:主代理按 `runnable` 同 message fork 多组,`running` 是在跑组,`blocked`(needs 未满足 / writes 与在跑组冲突)等解锁后下一轮 plan 才进 runnable。
 
 完整规格见 `references/task-swarm.md`。
 

@@ -3,24 +3,27 @@
 由 `scripts/task_swarm.py` launcher 调用（launcher 负责 sys.path 注入）。
 实现拆到同包内：
 
-    _state.py     phase 状态机 + state.json 单一事实源 + 死循环检测
-    _parse_md.py  tasks.md 解析 + 按文件冲突切 group
-    _outbox.py    coder/reviewer/validator 三类产物 schema 校验
-    _prompt.py    各 subagent 角色的 prompt 渲染
-    _writeback.py tasks.md line-safe diff 写回
+    _state.py      per-group 子状态机 + state.json 单一事实源 + 死循环检测
+    _pipeline.py   pipeline.yml schema 校验 + 组级调度状态映射
+    _schedule.py   needs 拓扑 + writes 不相交并发调度
+    _outbox.py     coder/reviewer/validator 三类产物 schema 校验
+    _prompt.py     各 subagent 角色的 prompt 渲染
+    _writeback.py  本组 finalize
 
 子命令：
-    init      --tasks <abs> [--workdir <dir>] [--project-root <dir>] [--spec-id <id>]
+    init      --pipeline <abs> [--workdir <dir>] [--project-root <dir>] [--spec-id <id>]
               [--max-parallel N] [--max-rounds N] [--session <id>] [--skip-validator]
+              [--serial-validation]
     status    --run <run_id>
     plan      --run <run_id>
-    advance   --run <run_id> --phase <coding|review|p0-fix|validation|v-fix> --round <n>
-    writeback --run <run_id> --group <N>
+    advance   --run <run_id> --group <gid> --phase <coding|review|p0-fix|validation|v-fix> [--round <n>]
+    writeback --run <run_id> --group <gid>
     heartbeat --run <run_id>
     resolve   --run <run_id> [--abort]
 
-主代理通过 plan→fork→advance 循环驱动；本脚本只负责"确定性查询 / 状态推进 /
-outbox 解析 / tasks.md line-safe diff 写回"。
+主代理通过 plan→fork→advance 循环驱动：plan 给出多组并发调度，主代理同 message
+fork 多组 coder（总并发受 max_parallel），各组等齐后 `advance --group <gid>`。
+本脚本只负责"确定性查询 / 状态推进 / outbox 解析"。
 
 stdlib-only。
 """
@@ -45,8 +48,8 @@ except Exception:
                    session_id: Optional[str] = None) -> None:
         return None
 
-from task_swarm._parse_md import parse_tasks_md, group_by_file_conflict  # noqa: E402
-from task_swarm._state import StateMachine, StageEntry  # noqa: E402
+from task_swarm._state import StateMachine, StageEntry, GroupState  # noqa: E402
+from task_swarm._schedule import compute_schedule  # noqa: E402
 from task_swarm._outbox import (  # noqa: E402
     ParseError, parse_coder_result, parse_reviewer_review, parse_validator_validation,
 )
@@ -57,7 +60,7 @@ from task_swarm._writeback import (  # noqa: E402
     GroupFindings, StageFinding, WriteBackError, writeback_tasks_md,
 )
 from task_swarm._pipeline_yaml import parse as _yaml_parse, PipelineYamlError  # noqa: E402
-from task_swarm._pipeline import validate as _pipeline_validate, to_stages as _pipeline_to_stages  # noqa: E402
+from task_swarm._pipeline import validate as _pipeline_validate, to_group_states as _pipeline_to_group_states  # noqa: E402
 from task_swarm._report import render_report  # noqa: E402
 
 
@@ -109,43 +112,27 @@ def _find_run_dir(run_id: str) -> Path:
 # -------------------------------------------------------------------------
 
 def cmd_init(args: argparse.Namespace) -> int:
-    use_pipeline = bool(getattr(args, "pipeline", None))
-    has_tasks = bool(getattr(args, "tasks", None))
-    if use_pipeline and has_tasks:
-        sys.stderr.write("--tasks 与 --pipeline 二选一,不能同时给\n")
+    if not getattr(args, "pipeline", None):
+        sys.stderr.write("必须给 --pipeline <yml>（markdown --tasks 路径已在 M3 移除）\n")
         return 1
-    if not use_pipeline and not has_tasks:
-        sys.stderr.write("必须给 --tasks <md> 或 --pipeline <yml> 之一\n")
+    pipeline_src = Path(args.pipeline).resolve()
+    if not pipeline_src.exists():
+        sys.stderr.write(f"pipeline.yml 不存在：{pipeline_src}\n")
         return 1
-
-    if use_pipeline:
-        pipeline_src = Path(args.pipeline).resolve()
-        if not pipeline_src.exists():
-            sys.stderr.write(f"pipeline.yml 不存在：{pipeline_src}\n")
-            return 1
-        try:
-            data = _yaml_parse(pipeline_src.read_text(encoding="utf-8"))
-        except PipelineYamlError as e:
-            sys.stderr.write(f"pipeline.yml 解析失败：{e}\n")
-            return 1
-        errs = _pipeline_validate(data)
-        if errs:
-            sys.stderr.write("pipeline.yml schema 校验失败：\n" + "\n".join(f"  - {e}" for e in errs) + "\n")
-            return 1
-        stages = _pipeline_to_stages(data)
-        tasks_md_str = ""
-        run_meta = data.get("run") or {}
-    else:
-        tasks_md = Path(args.tasks).resolve()
-        if not tasks_md.exists():
-            sys.stderr.write(f"tasks.md 不存在：{tasks_md}\n")
-            return 1
-        stages = parse_tasks_md(tasks_md)
-        if not stages:
-            sys.stderr.write("tasks.md 中未解析出任何 `## 阶段 N:` 段；请确认格式\n")
-            return 1
-        tasks_md_str = str(tasks_md)
-        run_meta = {}
+    try:
+        data = _yaml_parse(pipeline_src.read_text(encoding="utf-8"))
+    except PipelineYamlError as e:
+        sys.stderr.write(f"pipeline.yml 解析失败：{e}\n")
+        return 1
+    errs = _pipeline_validate(data)
+    if errs:
+        sys.stderr.write("pipeline.yml schema 校验失败：\n" + "\n".join(f"  - {e}" for e in errs) + "\n")
+        return 1
+    group_dicts = _pipeline_to_group_states(data)
+    if not group_dicts:
+        sys.stderr.write("pipeline.yml 未解析出任何 task_group\n")
+        return 1
+    run_meta = data.get("run") or {}
 
     workdir = Path(args.workdir).resolve() if args.workdir else Path.cwd()
     spec_id = args.spec_id or run_meta.get("spec_id") or None
@@ -153,11 +140,7 @@ def cmd_init(args: argparse.Namespace) -> int:
     project_root = str(Path(args.project_root).resolve()) if args.project_root else str(workdir)
     max_parallel = args.max_parallel if args.max_parallel else int(run_meta.get("max_parallel") or 4)
     max_rounds = args.max_rounds if args.max_rounds else int(run_meta.get("max_rounds") or 6)
-
-    groups_raw = group_by_file_conflict(stages, max_parallel=max_parallel)
-    if not groups_raw:
-        sys.stderr.write("group 切分结果为空\n")
-        return 1
+    serial_validation = bool(getattr(args, "serial_validation", False)) or bool(run_meta.get("serial_validation"))
 
     run_id = _gen_run_id()
     runs_root = _runs_root_for(workdir)
@@ -165,46 +148,14 @@ def cmd_init(args: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "agents").mkdir(parents=True, exist_ok=True)
 
-    pipeline_path = None
-    if use_pipeline:
-        pipeline_path = str(run_dir / "pipeline.yml")
-        (run_dir / "pipeline.yml").write_text(pipeline_src.read_text(encoding="utf-8"), encoding="utf-8")
+    pipeline_path = str(run_dir / "pipeline.yml")
+    (run_dir / "pipeline.yml").write_text(pipeline_src.read_text(encoding="utf-8"), encoding="utf-8")
 
-    # 转换为 StageEntry
-    groups: list[list[StageEntry]] = []
-    for g in groups_raw:
-        gg: list[StageEntry] = []
-        for s in g:
-            items_dict = [
-                {
-                    "number": it.number,
-                    "title": it.title,
-                    "writes": list(it.writes),
-                    "reads": list(it.reads),
-                    "depends_on": list(it.depends_on),
-                    "requirements": list(it.requirements),
-                    "raw_line": it.raw_line,
-                    "checkbox": it.checkbox,
-                    "line_no": it.line_no,
-                }
-                for it in s.items
-            ]
-            gg.append(StageEntry(
-                number=s.number,
-                title=s.title,
-                writes=list(s.writes),
-                reads=list(s.reads),
-                depends_on=list(s.depends_on),
-                requirements=[r for it in s.items for r in it.requirements],
-                items=items_dict,
-                header_line_no=s.header_line_no,
-                end_line_no=s.end_line_no,
-            ))
-        groups.append(gg)
+    task_groups = [GroupState.from_pipeline_group(g) for g in group_dicts]
 
     sm = StateMachine(
         run_id=run_id,
-        tasks_md=tasks_md_str,
+        tasks_md="",
         run_dir=str(run_dir),
         max_parallel=max_parallel,
         max_rounds=max_rounds,
@@ -214,45 +165,34 @@ def cmd_init(args: argparse.Namespace) -> int:
         spec_dir=spec_dir,
         project_root=project_root,
         pipeline_path=pipeline_path,
-        groups=groups,
-        current_group_index=0,
-        group_status=["pending"] * len(groups),
-        phase="init",
-        round=0,
+        task_groups=task_groups,
+        serial_validation=serial_validation,
         started_at=_now_iso(),
         last_activity_at=_now_iso(),
         skip_validator=bool(getattr(args, "skip_validator", False)),
     )
     sm.events_append({
         "type": "init",
-        "tasks_md": tasks_md_str,
-        "pipeline": bool(use_pipeline),
-        "groups": len(groups),
+        "pipeline": True,
+        "groups": len(task_groups),
+        "serial_validation": serial_validation,
         "skip_validator": sm.skip_validator,
     })
     sm.save()
 
-    out = {
+    _emit({
         "run_id": run_id,
         "run_dir": str(run_dir),
-        "tasks_md": tasks_md_str,
         "pipeline_path": pipeline_path,
         "workdir": str(workdir),
         "project_root": project_root,
         "spec_id": spec_id,
-        "groups": [
-            [{"stage": s.number, "title": s.title, "writes": s.writes,
-              "depends_on": s.depends_on} for s in g]
-            for g in groups
-        ],
-    }
-    _emit(out)
+        "serial_validation": serial_validation,
+        "groups": [{"id": g.id, "name": g.name, "needs": g.needs, "writes": g.writes}
+                   for g in task_groups],
+    })
     return 0
 
-
-# -------------------------------------------------------------------------
-# status
-# -------------------------------------------------------------------------
 
 def cmd_status(args: argparse.Namespace) -> int:
     try:
@@ -261,27 +201,22 @@ def cmd_status(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
     sm = StateMachine.load(run_dir)
-    gi = sm.current_group_index
-    pending = []
-    if gi < len(sm.groups):
-        for s in sm.groups[gi]:
-            pending.append({"stage": s.number, "title": s.title, "writes": s.writes})
+    sched = compute_schedule([g.sched_view() for g in sm.task_groups])
     payload = {
         "run_id": sm.run_id,
-        "tasks_md": sm.tasks_md,
-        "phase": sm.phase,
-        "group": gi + 1 if gi < len(sm.groups) else None,
-        "round": sm.round,
-        "total_groups": len(sm.groups),
-        "group_status": sm.group_status,
-        "coder_in_flight": sm.coder_in_flight,
-        "reviewer_done": sm.reviewer_done,
-        "p0_in_flight": sm.p0_in_flight,
-        "validator_in_flight": sm.validator_in_flight,
-        "vfix_in_flight": sm.vfix_in_flight,
-        "pending_stages": pending,
-        "failed_status": sm.failed_status,
+        "schedule": sched,
+        "serial_validation": sm.serial_validation,
+        "groups": [{"id": g.id, "name": g.name, "status": g.status, "phase": g.phase,
+                    "round": g.round, "needs": g.needs,
+                    "coder_in_flight": list(g.coder_in_flight),
+                    "p0_in_flight": list(g.p0_in_flight),
+                    "validator_in_flight": g.validator_in_flight,
+                    "vfix_in_flight": list(g.vfix_in_flight)}
+                   for g in sm.task_groups],
+        "started_at": sm.started_at,
+        "last_activity_at": sm.last_activity_at,
         "completed_at": sm.completed_at,
+        "failed_status": sm.failed_status,
     }
     _emit(payload)
     return 0
@@ -291,6 +226,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 # plan
 # -------------------------------------------------------------------------
 
+
 PLAN_TEMPLATES = {
     "coding-waiting": "coding phase 仍有 {n} 个 coder 未返回，等齐后再判断。",
     "coding-fork": "本 group 开始 coding。请按下面 {n} 个 coder agent_key fork（同 message 内并发）。",
@@ -298,341 +234,197 @@ PLAN_TEMPLATES = {
     "p0-fix-fork": "reviewer 提了 {n} 个带证据 P0。请按 P0 涉及文件 fork **{n}** 个 `task-swarm-coder`（p0-fix）。注意：reviewer 修复**只触发一次**，不 re-review。",
     "validation-fork": "请 fork **1 个** `task-swarm-validator`。",
     "validation-fork-after-p0": "p0-fix coder 已返回。请 fork **1 个** `task-swarm-validator`。",
-    "writeback": "validator pass。请调 `task_swarm.py writeback --run {run} --group {g}` 回写 tasks.md，然后进入下一 group。",
-    "v-fix-fork": "validator fail。请按 validation.md 的 fix_targets 各文件 fork **{n}** 个 `task-swarm-coder`（v-fix）。注意：validator fail 循环修复直到 pass。本轮是 g{g}-r{r}。",
+    "writeback": "validator pass。请调 `task_swarm.py writeback --run {run} --group {g}` finalize 本组，下游组 needs 满足后解锁。",
+    "v-fix-fork": "validator fail。请按 validation.md 的 fix_targets 各文件 fork **{n}** 个 `task-swarm-coder`（v-fix）。注意：validator fail 循环修复直到 pass。本轮是 {g}-r{r}。",
     "validation-after-vfix": "v-fix coder 已返回。请 fork **1 个** `task-swarm-validator` 验证。",
-    "deadloop": "⚠️ 死循环检测：g{g} 已连续 3 轮同一 fail 签名。建议停止本 group，向用户报告 `failed-deadloop`，让用户介入。",
+    "deadloop": "⚠️ 死循环检测：{g} 已连续 3 轮同一 fail 签名。建议停止本 group，向用户报告 `failed-deadloop`，让用户介入。",
     "all-done": "全部 group 已完成。请调 `task_swarm.py resolve` 收尾，再 `report` 出报告。",
 }
 
 
-def _plan_for(sm: StateMachine) -> dict:
-    """根据 state 推导下一步建议（确定性查询，不改 state）。"""
-    if sm.failed_status == "failed-deadloop":
-        gi = sm.current_group_index
-        return {
-            "phase": sm.phase,
-            "action": "deadloop",
-            "message": PLAN_TEMPLATES["deadloop"].format(g=gi + 1),
-            "fork": [],
-        }
-    if sm.is_group_complete() or sm.phase == "done":
-        return {
-            "phase": "done",
-            "action": "all-done",
-            "message": PLAN_TEMPLATES["all-done"],
-            "fork": [],
-        }
+def _plan_for_group(sm: StateMachine, gs: "GroupState") -> dict:
+    """根据单个 group 的子状态机推导其下一步建议（确定性查询，不改 state）。"""
+    run_dir = Path(sm.run_dir)
+    g = _items_as_stages(gs)
 
-    gi = sm.current_group_index
-    g = sm.current_group()
+    if gs.status == "failed-deadloop":
+        return {"group": gs.id, "phase": gs.phase, "action": "deadloop",
+                "message": PLAN_TEMPLATES["deadloop"].format(g=gs.id), "fork": []}
 
-    # 1. phase=init：尚未开始本 group coding，建议 fork coder
-    if sm.phase == "init":
+    # phase=init：尚未开始本 group coding
+    if gs.phase == "init":
         forks = []
-        run_dir = Path(sm.run_dir)
         for s in g:
-            key = f"coder-g{gi + 1}-s{s.number}-r1"
-            task_md = run_dir / "agents" / key / "task.md"
-            forks.append({
-                "agent": "task-swarm-coder",
-                "agent_key": key,
-                "task_md": str(task_md),
-                "stage": s.number,
-                "writes": s.writes,
-            })
-        return {
-            "phase": "coding",
-            "action": "coding-fork",
-            "message": PLAN_TEMPLATES["coding-fork"].format(n=len(forks)),
-            "fork": forks,
-            "group": gi + 1,
-        }
+            key = f"coder-{gs.id}-s{s.number}-r1"
+            forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                          "task_md": str(run_dir / "agents" / key / "task.md"),
+                          "stage": s.number, "writes": s.writes})
+        return {"group": gs.id, "phase": "coding", "action": "coding-fork",
+                "message": PLAN_TEMPLATES["coding-fork"].format(n=len(forks)), "fork": forks}
 
-    # 2. coding 进行中
-    if sm.phase == "coding":
-        if sm.coder_in_flight and not sm.coder_done:
+    # coding 进行中
+    if gs.phase == "coding":
+        if gs.coder_in_flight and not gs.coder_done:
             forks = []
-            run_dir = Path(sm.run_dir)
             for s in g:
-                key = f"coder-g{gi + 1}-s{s.number}-r1"
-                forks.append({
-                    "agent": "task-swarm-coder",
-                    "agent_key": key,
-                    "task_md": str(run_dir / "agents" / key / "task.md"),
-                    "stage": s.number,
-                    "writes": s.writes,
-                })
-            return {
-                "phase": "coding",
-                "action": "coding-fork",
-                "message": PLAN_TEMPLATES["coding-fork"].format(n=len(forks)),
-                "fork": forks,
-                "in_flight": list(sm.coder_in_flight),
-                "group": gi + 1,
-            }
-        if sm.coder_in_flight:
-            return {
-                "phase": "coding",
-                "action": "coding-waiting",
-                "message": PLAN_TEMPLATES["coding-waiting"].format(n=len(sm.coder_in_flight)),
-                "fork": [],
-                "in_flight": list(sm.coder_in_flight),
-                "group": gi + 1,
-            }
-        # 全部返回 → 建议 fork reviewer
-        key = f"reviewer-g{gi + 1}-r1"
-        return {
-            "phase": "review",
-            "action": "review-fork",
-            "message": PLAN_TEMPLATES["review-fork"],
-            "fork": [{
-                "agent": "task-swarm-reviewer",
-                "agent_key": key,
-                "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-            }],
-            "group": gi + 1,
-        }
-
-    # 3. review 完成 → 看是否有 P0
-    if sm.phase == "review":
-        if not sm.reviewer_done:
-            # 仍未 fork → 给 fork 建议
-            key = f"reviewer-g{gi + 1}-r1"
-            return {
-                "phase": "review",
-                "action": "review-fork",
+                key = f"coder-{gs.id}-s{s.number}-r1"
+                forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md"),
+                              "stage": s.number, "writes": s.writes})
+            return {"group": gs.id, "phase": "coding", "action": "coding-fork",
+                    "message": PLAN_TEMPLATES["coding-fork"].format(n=len(forks)),
+                    "fork": forks, "in_flight": list(gs.coder_in_flight)}
+        if gs.coder_in_flight:
+            return {"group": gs.id, "phase": "coding", "action": "coding-waiting",
+                    "message": PLAN_TEMPLATES["coding-waiting"].format(n=len(gs.coder_in_flight)),
+                    "fork": [], "in_flight": list(gs.coder_in_flight)}
+        key = f"reviewer-{gs.id}-r1"
+        return {"group": gs.id, "phase": "review", "action": "review-fork",
                 "message": PLAN_TEMPLATES["review-fork"],
-                "fork": [{
-                    "agent": "task-swarm-reviewer",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                }],
-                "group": gi + 1,
-            }
-        if sm.p0_pending:
-            # 按文件分组
-            files: list[str] = []
-            for p in sm.p0_pending:
+                "fork": [{"agent": "task-swarm-reviewer", "agent_key": key,
+                          "task_md": str(run_dir / "agents" / key / "task.md")}]}
+
+    # review
+    if gs.phase == "review":
+        if not gs.reviewer_done:
+            key = f"reviewer-{gs.id}-r1"
+            return {"group": gs.id, "phase": "review", "action": "review-fork",
+                    "message": PLAN_TEMPLATES["review-fork"],
+                    "fork": [{"agent": "task-swarm-reviewer", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md")}]}
+        if gs.p0_pending:
+            files = []
+            for p in gs.p0_pending:
                 f = (p.get("file_hint") or "unknown").strip()
                 if f not in files:
                     files.append(f)
             forks = []
             for i, f in enumerate(files):
-                key = f"coder-p0fix-g{gi + 1}-r1-f{i}"
-                forks.append({
-                    "agent": "task-swarm-coder",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                    "file": f,
-                })
-            return {
-                "phase": "p0-fix",
-                "action": "p0-fix-fork",
-                "message": PLAN_TEMPLATES["p0-fix-fork"].format(n=len(forks)),
-                "fork": forks,
-                "group": gi + 1,
-            }
-        # 无 P0 → 直接 validator
-        key = f"validator-g{gi + 1}-r1"
-        return {
-            "phase": "validation",
-            "action": "validation-fork",
-            "message": PLAN_TEMPLATES["validation-fork"],
-            "fork": [{
-                "agent": "task-swarm-validator",
-                "agent_key": key,
-                "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-            }],
-            "group": gi + 1,
-        }
+                key = f"coder-p0fix-{gs.id}-r1-f{i}"
+                forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md"), "file": f})
+            return {"group": gs.id, "phase": "p0-fix", "action": "p0-fix-fork",
+                    "message": PLAN_TEMPLATES["p0-fix-fork"].format(n=len(forks)), "fork": forks}
+        key = f"validator-{gs.id}-r1"
+        return {"group": gs.id, "phase": "validation", "action": "validation-fork",
+                "message": PLAN_TEMPLATES["validation-fork"],
+                "fork": [{"agent": "task-swarm-validator", "agent_key": key,
+                          "task_md": str(run_dir / "agents" / key / "task.md")}]}
 
-    # 4. p0-fix 阶段
-    if sm.phase == "p0-fix":
-        if sm.p0_in_flight and not sm.p0_done:
-            files: list[str] = []
-            for p in sm.p0_pending:
+    # p0-fix
+    if gs.phase == "p0-fix":
+        if gs.p0_in_flight and not gs.p0_done:
+            files = []
+            for p in gs.p0_pending:
                 f = (p.get("file_hint") or "unknown").strip()
                 if f not in files:
                     files.append(f)
             forks = []
             for i, f in enumerate(files):
-                key = f"coder-p0fix-g{gi + 1}-r1-f{i}"
-                forks.append({
-                    "agent": "task-swarm-coder",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                    "file": f,
-                })
-            return {
-                "phase": "p0-fix",
-                "action": "p0-fix-fork",
-                "message": PLAN_TEMPLATES["p0-fix-fork"].format(n=len(forks)),
-                "fork": forks,
-                "group": gi + 1,
-            }
-        if sm.p0_in_flight:
-            return {
-                "phase": "p0-fix",
-                "action": "p0-fix-waiting",
-                "message": f"p0-fix 仍有 {len(sm.p0_in_flight)} 个 coder 未返回。",
-                "fork": [],
-                "group": gi + 1,
-            }
-        key = f"validator-g{gi + 1}-r1"
-        return {
-            "phase": "validation",
-            "action": "validation-fork-after-p0",
-            "message": PLAN_TEMPLATES["validation-fork-after-p0"],
-            "fork": [{
-                "agent": "task-swarm-validator",
-                "agent_key": key,
-                "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-            }],
-            "group": gi + 1,
-        }
+                key = f"coder-p0fix-{gs.id}-r1-f{i}"
+                forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md"), "file": f})
+            return {"group": gs.id, "phase": "p0-fix", "action": "p0-fix-fork",
+                    "message": PLAN_TEMPLATES["p0-fix-fork"].format(n=len(forks)), "fork": forks}
+        if gs.p0_in_flight:
+            return {"group": gs.id, "phase": "p0-fix", "action": "p0-fix-waiting",
+                    "message": f"p0-fix 仍有 {len(gs.p0_in_flight)} 个 coder 未返回。", "fork": []}
+        key = f"validator-{gs.id}-r1"
+        return {"group": gs.id, "phase": "validation", "action": "validation-fork-after-p0",
+                "message": PLAN_TEMPLATES["validation-fork-after-p0"],
+                "fork": [{"agent": "task-swarm-validator", "agent_key": key,
+                          "task_md": str(run_dir / "agents" / key / "task.md")}]}
 
-    # 5. validation 阶段
-    if sm.phase == "validation":
-        if sm.validator_in_flight:
-            # 计算目标 round：第一次进 validation→1；v-fix 后再 validation→sm.round
-            target_round = sm.round if sm.round > 0 else 1
-            key = f"validator-g{gi + 1}-r{target_round}"
-            if sm.validator_history:
-                msg = PLAN_TEMPLATES["validation-after-vfix"]
-                action = "validation-after-vfix"
-            elif sm.p0_done:
-                msg = PLAN_TEMPLATES["validation-fork-after-p0"]
-                action = "validation-fork-after-p0"
+    # validation
+    if gs.phase == "validation":
+        if gs.validator_in_flight:
+            target_round = gs.round if gs.round > 0 else 1
+            key = f"validator-{gs.id}-r{target_round}"
+            if gs.validator_history:
+                msg = PLAN_TEMPLATES["validation-after-vfix"]; action = "validation-after-vfix"
+            elif gs.p0_done:
+                msg = PLAN_TEMPLATES["validation-fork-after-p0"]; action = "validation-fork-after-p0"
             else:
-                msg = PLAN_TEMPLATES["validation-fork"]
-                action = "validation-fork"
-            return {
-                "phase": "validation",
-                "action": action,
-                "message": msg,
-                "fork": [{
-                    "agent": "task-swarm-validator",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                }],
-                "group": gi + 1,
-                "round": target_round,
-            }
-        # 看 fix_targets 决定 pass / fail
-        if sm.fix_targets:
-            # 死循环检测
-            if sm.detect_deadloop():
-                return {
-                    "phase": sm.phase,
-                    "action": "deadloop",
-                    "message": PLAN_TEMPLATES["deadloop"].format(g=gi + 1),
-                    "fork": [],
-                    "group": gi + 1,
-                }
-            files: list[str] = []
-            for t in sm.fix_targets:
+                msg = PLAN_TEMPLATES["validation-fork"]; action = "validation-fork"
+            return {"group": gs.id, "phase": "validation", "action": action, "message": msg,
+                    "fork": [{"agent": "task-swarm-validator", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md")}],
+                    "round": target_round}
+        if gs.fix_targets:
+            if gs.detect_deadloop():
+                return {"group": gs.id, "phase": gs.phase, "action": "deadloop",
+                        "message": PLAN_TEMPLATES["deadloop"].format(g=gs.id), "fork": []}
+            files = []
+            for t in gs.fix_targets:
                 f = (t.get("file_path") or "").strip()
                 if f and f not in files:
                     files.append(f)
             forks = []
             for i, f in enumerate(files):
-                key = f"coder-vfix-g{gi + 1}-r{sm.round + 1}-f{i}"
-                forks.append({
-                    "agent": "task-swarm-coder",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                    "file": f,
-                })
-            return {
-                "phase": "v-fix",
-                "action": "v-fix-fork",
-                "message": PLAN_TEMPLATES["v-fix-fork"].format(
-                    n=len(forks), g=gi + 1, r=sm.round + 1,
-                ),
-                "fork": forks,
-                "group": gi + 1,
-            }
-        # pass
-        return {
-            "phase": "writeback",
-            "action": "writeback",
-            "message": PLAN_TEMPLATES["writeback"].format(run=sm.run_id, g=gi + 1),
-            "fork": [],
-            "group": gi + 1,
-        }
+                key = f"coder-vfix-{gs.id}-r{gs.round + 1}-f{i}"
+                forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md"), "file": f})
+            return {"group": gs.id, "phase": "v-fix", "action": "v-fix-fork",
+                    "message": PLAN_TEMPLATES["v-fix-fork"].format(n=len(forks), g=gs.id, r=gs.round + 1),
+                    "fork": forks}
+        return {"group": gs.id, "phase": "writeback", "action": "writeback",
+                "message": PLAN_TEMPLATES["writeback"].format(run=sm.run_id, g=gs.id), "fork": []}
 
-    # 6. v-fix 阶段
-    if sm.phase == "v-fix":
-        if sm.vfix_in_flight and not sm.vfix_done:
-            files: list[str] = []
-            for t in sm.fix_targets:
+    # v-fix
+    if gs.phase == "v-fix":
+        if gs.vfix_in_flight and not gs.vfix_done:
+            files = []
+            for t in gs.fix_targets:
                 f = (t.get("file_path") or "").strip()
                 if f and f not in files:
                     files.append(f)
             forks = []
             for i, f in enumerate(files):
-                key = f"coder-vfix-g{gi + 1}-r{sm.round}-f{i}"
-                forks.append({
-                    "agent": "task-swarm-coder",
-                    "agent_key": key,
-                    "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                    "file": f,
-                })
-            return {
-                "phase": "v-fix",
-                "action": "v-fix-fork",
-                "message": PLAN_TEMPLATES["v-fix-fork"].format(
-                    n=len(forks), g=gi + 1, r=sm.round,
-                ),
-                "fork": forks,
-                "group": gi + 1,
-            }
-        if sm.vfix_in_flight:
-            return {
-                "phase": "v-fix",
-                "action": "v-fix-waiting",
-                "message": f"v-fix 仍有 {len(sm.vfix_in_flight)} 个 coder 未返回。",
-                "fork": [],
-                "group": gi + 1,
-            }
-        key = f"validator-g{gi + 1}-r{sm.round + 1}"
-        return {
-            "phase": "validation",
-            "action": "validation-after-vfix",
-            "message": PLAN_TEMPLATES["validation-after-vfix"],
-            "fork": [{
-                "agent": "task-swarm-validator",
-                "agent_key": key,
-                "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-            }],
-            "group": gi + 1,
-        }
+                key = f"coder-vfix-{gs.id}-r{gs.round}-f{i}"
+                forks.append({"agent": "task-swarm-coder", "agent_key": key,
+                              "task_md": str(run_dir / "agents" / key / "task.md"), "file": f})
+            return {"group": gs.id, "phase": "v-fix", "action": "v-fix-fork",
+                    "message": PLAN_TEMPLATES["v-fix-fork"].format(n=len(forks), g=gs.id, r=gs.round),
+                    "fork": forks}
+        if gs.vfix_in_flight:
+            return {"group": gs.id, "phase": "v-fix", "action": "v-fix-waiting",
+                    "message": f"v-fix 仍有 {len(gs.vfix_in_flight)} 个 coder 未返回。", "fork": []}
+        key = f"validator-{gs.id}-r{gs.round + 1}"
+        return {"group": gs.id, "phase": "validation", "action": "validation-after-vfix",
+                "message": PLAN_TEMPLATES["validation-after-vfix"],
+                "fork": [{"agent": "task-swarm-validator", "agent_key": key,
+                          "task_md": str(run_dir / "agents" / key / "task.md")}]}
 
-    if sm.phase == "writeback":
-        return {
-            "phase": "writeback",
-            "action": "writeback",
-            "message": PLAN_TEMPLATES["writeback"].format(run=sm.run_id, g=gi + 1),
-            "fork": [],
-            "group": gi + 1,
-        }
+    if gs.phase == "writeback":
+        return {"group": gs.id, "phase": "writeback", "action": "writeback",
+                "message": PLAN_TEMPLATES["writeback"].format(run=sm.run_id, g=gs.id), "fork": []}
 
-    if sm.phase == "error":
-        return {
-            "phase": "error",
-            "action": "deadloop",
-            "message": PLAN_TEMPLATES["deadloop"].format(g=gi + 1),
-            "fork": [],
-            "group": gi + 1,
-        }
+    if gs.phase == "error":
+        return {"group": gs.id, "phase": "error", "action": "deadloop",
+                "message": PLAN_TEMPLATES["deadloop"].format(g=gs.id), "fork": []}
 
-    return {
-        "phase": sm.phase,
-        "action": "unknown",
-        "message": f"未知 phase={sm.phase}，请检查 state.json",
-        "fork": [],
-    }
+    return {"group": gs.id, "phase": gs.phase, "action": "unknown",
+            "message": f"未知 phase={gs.phase}", "fork": []}
+
+
+def _materialize_next_prompt(sm: StateMachine, gs: "GroupState") -> None:
+    """防御性渲染：plan 被独立调用时，确保下一阶段的 prompt 文件已就位。"""
+    if gs.phase == "coding" and not gs.coder_in_flight and gs.coder_done:
+        _materialize_prompt_reviewer(sm, gs)
+    elif gs.phase == "review" and gs.reviewer_done and gs.p0_pending:
+        _materialize_prompts_p0_fix(sm, gs)
+    elif gs.phase == "review" and gs.reviewer_done and not gs.p0_pending:
+        _materialize_prompt_validator(sm, gs)
+    elif gs.phase == "p0-fix" and not gs.p0_in_flight and gs.p0_done:
+        _materialize_prompt_validator(sm, gs)
+    elif gs.phase == "validation" and not gs.validator_in_flight and gs.fix_targets:
+        if not gs.detect_deadloop():
+            _materialize_prompts_v_fix(sm, gs)
+    elif gs.phase == "v-fix" and not gs.vfix_in_flight and gs.vfix_done:
+        _materialize_prompt_validator(sm, gs)
+
+
+_ACTIVE_STATUSES = ("coding", "review", "p0-fix", "validation", "v-fix", "writeback", "running")
 
 
 def cmd_plan(args: argparse.Namespace) -> int:
@@ -642,49 +434,60 @@ def cmd_plan(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
     sm = StateMachine.load(run_dir)
-    # 若 phase=init，主动渲染 prompt 文件并把 phase 推进到 coding；
-    # 渲染好的 prompts 让主代理可以直接 fork。
-    if sm.phase == "init":
-        _materialize_prompts_for_coding(sm)
-        sm.begin_coding()
+    by_id = {g.id: g for g in sm.task_groups}
+    sched = compute_schedule([g.sched_view() for g in sm.task_groups])
+
+    # 启动 runnable 组：begin_coding + 渲染 coder prompt。
+    # compute_schedule 只判 runnable-vs-running，故本轮再按"已启动 writes"过滤组间互斥。
+    started_writes: set = set()
+    for g in sm.task_groups:
+        if g.status in _ACTIVE_STATUSES:
+            started_writes |= set(g.writes)
+    started = []
+    for gid in sched["runnable"]:
+        gs = by_id[gid]
+        if set(gs.writes) & started_writes:
+            continue  # 与本轮已启动/在跑组 writes 冲突 → 留到下轮
+        if gs.phase == "init":
+            _materialize_prompts_for_coding(sm, gs)
+            gs.begin_coding()
+            sm.events_append({"type": "phase", "phase": "coding", "group": gs.id})
+            started.append(gs.id)
+            started_writes |= set(gs.writes)
+    if started:
         sm.save()
-        # 第一次 plan：把刚切到 coding 的 in-flight 列表当作"待 fork"列表返回
-        gi = sm.current_group_index
-        forks = []
-        for s in sm.current_group():
-            key = f"coder-g{gi + 1}-s{s.number}-r1"
-            forks.append({
-                "agent": "task-swarm-coder",
-                "agent_key": key,
-                "task_md": str(Path(sm.run_dir) / "agents" / key / "task.md"),
-                "stage": s.number,
-                "writes": s.writes,
-            })
-        plan = {
-            "phase": "coding",
-            "action": "coding-fork",
-            "message": PLAN_TEMPLATES["coding-fork"].format(n=len(forks)),
-            "fork": forks,
-            "group": gi + 1,
-        }
-        _emit(plan)
+        sched = compute_schedule([g.sched_view() for g in sm.task_groups])
+
+    # 防御性渲染各活跃组的下一阶段 prompt
+    for gs in sm.task_groups:
+        if gs.status not in ("done", "failed", "failed-deadloop"):
+            _materialize_next_prompt(sm, gs)
+
+    # 全部组终态 → all-done
+    active = [g for g in sm.task_groups if g.status not in ("done", "failed", "failed-deadloop")]
+    if not active:
+        _emit({"action": "all-done", "message": PLAN_TEMPLATES["all-done"],
+               "schedule": sched, "serial_validation": sm.serial_validation,
+               "max_parallel": sm.max_parallel, "actions": []})
         return 0
-    if sm.phase == "coding" and not sm.coder_in_flight and sm.coder_done:
-        # 全部返回 → 渲染 reviewer prompt
-        _materialize_prompt_reviewer(sm)
-    elif sm.phase == "review" and sm.reviewer_done and sm.p0_pending:
-        _materialize_prompts_p0_fix(sm)
-    elif sm.phase == "review" and sm.reviewer_done and not sm.p0_pending:
-        _materialize_prompt_validator(sm)
-    elif sm.phase == "p0-fix" and not sm.p0_in_flight and sm.p0_done:
-        _materialize_prompt_validator(sm)
-    elif sm.phase == "validation" and not sm.validator_in_flight and sm.fix_targets:
-        if not sm.detect_deadloop():
-            _materialize_prompts_v_fix(sm)
-    elif sm.phase == "v-fix" and not sm.vfix_in_flight and sm.vfix_done:
-        _materialize_prompt_validator(sm)
-    plan = _plan_for(sm)
-    _emit(plan)
+
+    # 为 runnable + running 组各生成下一步 action
+    actions = []
+    validator_emitted = False
+    for gs in sm.task_groups:
+        if gs.id in sched["runnable"] or gs.id in sched["running"]:
+            act = _plan_for_group(sm, gs)
+            if sm.serial_validation and act.get("action") in (
+                    "validation-fork", "validation-fork-after-p0", "validation-after-vfix"):
+                if validator_emitted:
+                    act = {"group": gs.id, "phase": gs.phase, "action": "validation-waiting",
+                           "message": "serial_validation：已有 validator 在跑，本组排队。", "fork": []}
+                else:
+                    validator_emitted = True
+            actions.append(act)
+
+    _emit({"schedule": sched, "serial_validation": sm.serial_validation,
+           "max_parallel": sm.max_parallel, "actions": actions})
     return 0
 
 
@@ -693,60 +496,67 @@ def _resolve_project_root(sm: StateMachine) -> Optional[str]:
     return sm.project_root or sm.workdir
 
 
-def _materialize_prompts_for_coding(sm: StateMachine) -> None:
-    gi = sm.current_group_index
+def _items_as_stages(gs: "GroupState") -> list[StageEntry]:
+    """GroupState.items(dict) → StageEntry 列表，供 render_* 的属性访问。"""
+    return [StageEntry(
+        number=it["number"], title=it.get("title", ""),
+        writes=list(it.get("writes") or []), reads=list(it.get("reads") or []),
+        requirements=list(it.get("requirements") or []),
+    ) for it in gs.items]
+
+
+def _materialize_prompts_for_coding(sm: StateMachine, gs: "GroupState") -> None:
     project_root = _resolve_project_root(sm)
-    for s in sm.current_group():
+    for s in _items_as_stages(gs):
         render_coder_prompt(
             stage=s,
             run_dir=Path(sm.run_dir),
             run_id=sm.run_id,
             spec_id=sm.spec_id or "",
             spec_dir=sm.spec_dir or "",
-            group=gi + 1,
+            group=gs.id,
             round_=1,
             mode="initial",
             project_root=project_root,
         )
 
 
-def _materialize_prompt_reviewer(sm: StateMachine) -> None:
-    gi = sm.current_group_index
-    coder_outboxes: list[Path] = []
+def _materialize_prompt_reviewer(sm: StateMachine, gs: "GroupState") -> None:
     run_dir = Path(sm.run_dir)
-    for s in sm.current_group():
-        outbox = run_dir / "agents" / f"coder-g{gi + 1}-s{s.number}-r1" / "outbox" / "result.md"
-        coder_outboxes.append(outbox)
+    stages = _items_as_stages(gs)
+    coder_outboxes = [
+        run_dir / "agents" / f"coder-{gs.id}-s{s.number}-r1" / "outbox" / "result.md"
+        for s in stages
+    ]
     render_reviewer_prompt(
-        group_stages=sm.current_group(),
+        group_stages=stages,
         coder_outboxes=coder_outboxes,
         run_dir=run_dir,
         run_id=sm.run_id,
         spec_id=sm.spec_id or "",
         spec_dir=sm.spec_dir or "",
-        group=gi + 1,
+        group=gs.id,
         round_=1,
         project_root=_resolve_project_root(sm),
     )
 
 
-def _materialize_prompts_p0_fix(sm: StateMachine) -> None:
-    gi = sm.current_group_index
+def _materialize_prompts_p0_fix(sm: StateMachine, gs: "GroupState") -> None:
     project_root = _resolve_project_root(sm)
+    stages = _items_as_stages(gs)
     files: list[str] = []
-    for p in sm.p0_pending:
+    for p in gs.p0_pending:
         f = (p.get("file_hint") or "unknown").strip()
         if f not in files:
             files.append(f)
     for i, f in enumerate(files):
-        # 找到对应 stage（best effort：按文件路径匹配 stage.writes）
         match_stage = None
-        for s in sm.current_group():
+        for s in stages:
             if f in s.writes:
                 match_stage = s
                 break
-        if match_stage is None and sm.current_group():
-            match_stage = sm.current_group()[0]
+        if match_stage is None and stages:
+            match_stage = stages[0]
         if match_stage is None:
             continue
         render_coder_prompt(
@@ -755,21 +565,21 @@ def _materialize_prompts_p0_fix(sm: StateMachine) -> None:
             run_id=sm.run_id,
             spec_id=sm.spec_id or "",
             spec_dir=sm.spec_dir or "",
-            group=gi + 1,
+            group=gs.id,
             round_=1,
             mode="p0-fix",
-            fix_targets=[p for p in sm.p0_pending
+            fix_targets=[p for p in gs.p0_pending
                          if (p.get("file_hint") or "").strip() == f],
             file_idx=i,
             project_root=project_root,
         )
 
 
-def _materialize_prompts_v_fix(sm: StateMachine) -> None:
-    gi = sm.current_group_index
+def _materialize_prompts_v_fix(sm: StateMachine, gs: "GroupState") -> None:
     project_root = _resolve_project_root(sm)
+    stages = _items_as_stages(gs)
     files: list[str] = []
-    for t in sm.fix_targets:
+    for t in gs.fix_targets:
         f = (t.get("file_path") or "").strip()
         if f and f not in files:
             files.append(f)
@@ -777,29 +587,25 @@ def _materialize_prompts_v_fix(sm: StateMachine) -> None:
         files = ["unknown"]
     for i, f in enumerate(files):
         match_stage = None
-        for s in sm.current_group():
+        for s in stages:
             if f in s.writes:
                 match_stage = s
                 break
-        if match_stage is None and sm.current_group():
-            match_stage = sm.current_group()[0]
+        if match_stage is None and stages:
+            match_stage = stages[0]
         if match_stage is None:
             continue
-        ftargets = [t for t in sm.fix_targets
+        ftargets = [t for t in gs.fix_targets
                     if (t.get("file_path") or "").strip() == f]
-        # round_ 必须用 sm.round（不能 +1）：advance 里 begin_v_fix 已经
-        # 把 sm.round 自增过了，且 vfix_in_flight 用的就是当前 sm.round 命名
-        # （task_swarm_state.py:374,385）。多 +1 会导致 task.md 写到
-        # agents/coder-vfix-g{N}-r{round+1}-f{i}/task.md，但 in_flight 是
-        # r{round}-f{i}，advance 后续找不到产物 → 永远报"产物文件不存在"。
+        # round_ 用 gs.round（begin_v_fix 已自增，vfix_in_flight 用的就是当前 gs.round）。
         render_coder_prompt(
             stage=match_stage,
             run_dir=Path(sm.run_dir),
             run_id=sm.run_id,
             spec_id=sm.spec_id or "",
             spec_dir=sm.spec_dir or "",
-            group=gi + 1,
-            round_=sm.round,
+            group=gs.id,
+            round_=gs.round,
             mode="v-fix",
             fix_targets=ftargets,
             file_idx=i,
@@ -807,29 +613,28 @@ def _materialize_prompts_v_fix(sm: StateMachine) -> None:
         )
 
 
-def _materialize_prompt_validator(sm: StateMachine) -> None:
-    gi = sm.current_group_index
-    if sm.phase == "v-fix":
-        next_round = sm.round + 1
-    elif sm.phase in ("review", "p0-fix"):
+def _materialize_prompt_validator(sm: StateMachine, gs: "GroupState") -> None:
+    if gs.phase == "v-fix":
+        next_round = gs.round + 1
+    elif gs.phase in ("review", "p0-fix"):
         next_round = 1
     else:
-        next_round = sm.round if sm.round > 0 else 1
+        next_round = gs.round if gs.round > 0 else 1
     prev_validation: Optional[Path] = None
-    if sm.validator_history:
-        last = sm.validator_history[-1]
+    if gs.validator_history:
+        last = gs.validator_history[-1]
         prev_validation = (Path(sm.run_dir) / "agents"
-                           / f"validator-g{gi + 1}-r{last.get('round')}"
+                           / f"validator-{gs.id}-r{last.get('round')}"
                            / "outbox" / "validation.md")
         if not prev_validation.exists():
             prev_validation = None
     render_validator_prompt(
-        group_stages=sm.current_group(),
+        group_stages=_items_as_stages(gs),
         run_dir=Path(sm.run_dir),
         run_id=sm.run_id,
         spec_id=sm.spec_id or "",
         spec_dir=sm.spec_dir or "",
-        group=gi + 1,
+        group=gs.id,
         round_=next_round,
         prev_validation=prev_validation,
         project_root=_resolve_project_root(sm),
@@ -854,282 +659,221 @@ def cmd_advance(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
     sm = StateMachine.load(run_dir)
+    gid = getattr(args, "group", None)
+    if not gid:
+        sys.stderr.write("advance 需要 --group <gid>\n")
+        return 1
+    gs = next((g for g in sm.task_groups if g.id == gid), None)
+    if gs is None:
+        sys.stderr.write(f"--group {gid} 不存在；可选：{[g.id for g in sm.task_groups]}\n")
+        return 1
     phase = args.phase
     errors: list[str] = []
     next_msg = ""
 
     if phase == "coding":
-        # 解析 coder_in_flight + coder_done 全部 outbox
-        all_keys = list(sm.coder_in_flight) + list(sm.coder_done)
+        all_keys = list(gs.coder_in_flight) + list(gs.coder_done)
         if not all_keys:
-            all_keys = [f"coder-g{sm.current_group_index + 1}-s{s.number}-r1"
-                        for s in sm.current_group()]
+            all_keys = [f"coder-{gs.id}-s{s['number']}-r1" for s in gs.items]
         any_failed = False
         for k in all_keys:
             p = Path(sm.run_dir) / "agents" / k / "outbox" / "result.md"
             try:
                 res = parse_coder_result(p)
-                sm.mark_coder_done(k)
+                gs.mark_coder_done(k)
                 if res.status != "ok":
                     any_failed = True
                     errors.append(f"{k}: STATUS={res.status} {res.status_reason}")
             except ParseError as e:
                 errors.append(f"{k}: parse error: {e}")
                 any_failed = True
-        sm.events_append({"type": "advance", "phase": "coding", "errors": errors})
+        sm.events_append({"type": "advance", "phase": "coding", "group": gs.id, "errors": errors})
         if any_failed:
             sm.failed_status = sm.failed_status or "failed"
-            sm.group_status[sm.current_group_index] = "failed"
+            gs.status = "failed"
             sm.save()
-            _emit({
-                "ok": False,
-                "phase": sm.phase,
-                "errors": errors,
-                "next": "report-failed-group",
-            })
+            _emit({"ok": False, "group": gs.id, "phase": gs.phase, "errors": errors,
+                   "next": "report-failed-group"})
             return 0
-        sm.begin_review()
-        # 渲染 reviewer prompt
-        _materialize_prompt_reviewer(sm)
-        next_msg = "下一步：fork reviewer（agent_key=reviewer-g{}-r1）".format(
-            sm.current_group_index + 1)
+        gs.begin_review()
+        sm.events_append({"type": "phase", "phase": "review", "group": gs.id})
+        _materialize_prompt_reviewer(sm, gs)
+        next_msg = f"下一步：fork reviewer（agent_key=reviewer-{gs.id}-r1）"
 
     elif phase == "review":
-        gi = sm.current_group_index
-        path = Path(sm.run_dir) / "agents" / f"reviewer-g{gi + 1}-r1" / "outbox" / "review.md"
+        path = Path(sm.run_dir) / "agents" / f"reviewer-{gs.id}-r1" / "outbox" / "review.md"
         try:
             rev = parse_reviewer_review(path)
-            sm.mark_reviewer_done()
-            # 落 findings
-            sm.findings = []
+            gs.mark_reviewer_done()
+            gs.findings = []
             for f in rev.p0_items:
-                sm.findings.append({
-                    "severity": "p0",
-                    "text": f.text,
-                    "evidence_tags": f.evidence_tags,
-                    "file_hint": f.file_hint,
-                    "fix_status": "未修复",
-                })
+                gs.findings.append({"severity": "p0", "text": f.text,
+                                    "evidence_tags": f.evidence_tags, "file_hint": f.file_hint,
+                                    "fix_status": "未修复"})
             for f in rev.advisory_items:
-                sm.findings.append({
-                    "severity": "advisory",
-                    "text": f.text,
-                    "evidence_tags": [],
-                    "file_hint": f.file_hint,
-                    "fix_status": "未修复",
-                })
+                gs.findings.append({"severity": "advisory", "text": f.text,
+                                    "evidence_tags": [], "file_hint": f.file_hint,
+                                    "fix_status": "未修复"})
             for f in rev.p1_items:
-                sm.findings.append({
-                    "severity": "p1",
-                    "text": f.text,
-                    "evidence_tags": [],
-                    "file_hint": f.file_hint,
-                    "fix_status": "未修复",
-                })
+                gs.findings.append({"severity": "p1", "text": f.text,
+                                    "evidence_tags": [], "file_hint": f.file_hint,
+                                    "fix_status": "未修复"})
             for f in rev.p2_items:
-                sm.findings.append({
-                    "severity": "p2",
-                    "text": f.text,
-                    "evidence_tags": [],
-                    "file_hint": f.file_hint,
-                    "fix_status": "未修复",
-                })
-            sm.p0_pending = [
-                {"text": f.text, "evidence_tags": f.evidence_tags,
-                 "file_hint": f.file_hint}
-                for f in rev.p0_items
-            ]
-            sm.events_append({"type": "advance", "phase": "review",
+                gs.findings.append({"severity": "p2", "text": f.text,
+                                    "evidence_tags": [], "file_hint": f.file_hint,
+                                    "fix_status": "未修复"})
+            gs.p0_pending = [{"text": f.text, "evidence_tags": f.evidence_tags,
+                              "file_hint": f.file_hint} for f in rev.p0_items]
+            sm.events_append({"type": "advance", "phase": "review", "group": gs.id,
                               "verdict": rev.verdict, "p0": len(rev.p0_items),
                               "advisory": len(rev.advisory_items),
                               "p1": len(rev.p1_items), "p2": len(rev.p2_items)})
-            if sm.p0_pending:
-                sm.begin_p0_fix(sm.p0_pending)
-                _materialize_prompts_p0_fix(sm)
+            if gs.p0_pending:
+                gs.begin_p0_fix(gs.p0_pending)
+                sm.events_append({"type": "phase", "phase": "p0-fix", "group": gs.id})
+                _materialize_prompts_p0_fix(sm, gs)
                 next_msg = "下一步：fork p0-fix coder（按文件分组）"
             elif sm.skip_validator:
-                # 0.10.20+：人工验收模式，无 P0 → 跳过 validation 直接 writeback
-                sm.begin_writeback()
-                next_msg = (f"无 P0 + skip_validator=true（人工验收模式）；"
-                            f"请调 `task_swarm.py writeback --run {sm.run_id} "
-                            f"--group {gi + 1}` 回写 tasks.md，然后人工验收代码。")
+                gs.begin_writeback()
+                next_msg = (f"无 P0 + skip_validator（人工验收）；请调 "
+                            f"`task_swarm.py writeback --run {sm.run_id} --group {gs.id}`。")
             else:
-                sm.begin_validation()
-                _materialize_prompt_validator(sm)
+                gs.begin_validation()
+                sm.events_append({"type": "phase", "phase": "validation",
+                                  "group": gs.id, "round": gs.round})
+                _materialize_prompt_validator(sm, gs)
                 next_msg = "下一步：fork validator"
         except ParseError as e:
             errors.append(str(e))
 
     elif phase == "p0-fix":
-        gi = sm.current_group_index
-        all_keys = list(sm.p0_in_flight) + list(sm.p0_done)
+        all_keys = list(gs.p0_in_flight) + list(gs.p0_done)
         if not all_keys:
-            # 推断：根据 p0_pending file 数
             files: list[str] = []
-            for p in sm.p0_pending:
+            for p in gs.p0_pending:
                 f = (p.get("file_hint") or "unknown").strip()
                 if f not in files:
                     files.append(f)
-            all_keys = [f"coder-p0fix-g{gi + 1}-r1-f{i}" for i in range(len(files))]
+            all_keys = [f"coder-p0fix-{gs.id}-r1-f{i}" for i in range(len(files))]
         any_failed = False
         for k in all_keys:
             p = Path(sm.run_dir) / "agents" / k / "outbox" / "result.md"
             try:
                 res = parse_coder_result(p)
-                sm.mark_p0_done(k)
+                gs.mark_p0_done(k)
                 if res.status != "ok":
                     any_failed = True
                     errors.append(f"{k}: STATUS={res.status} {res.status_reason}")
             except ParseError as e:
                 errors.append(f"{k}: parse error: {e}")
                 any_failed = True
-        # 标记 p0 finding 的 fix_status
-        for finding in sm.findings:
+        for finding in gs.findings:
             if finding["severity"] == "p0":
                 finding["fix_status"] = "未修复" if any_failed else "已修复"
-        sm.events_append({"type": "advance", "phase": "p0-fix",
+        sm.events_append({"type": "advance", "phase": "p0-fix", "group": gs.id,
                           "any_failed": any_failed, "errors": errors})
-        # 0.10.20+：skip_validator 人工验收模式 → 跳过 validation/v-fix
         if sm.skip_validator:
-            gi = sm.current_group_index
-            sm.begin_writeback()
-            if any_failed:
-                next_msg = (f"p0-fix 部分失败 + skip_validator=true（人工验收模式）；"
-                            f"未修部分将以 [P0 未修复] 写入 tasks.md。请调 "
-                            f"`task_swarm.py writeback --run {sm.run_id} "
-                            f"--group {gi + 1}` 然后人工验收。")
-            else:
-                next_msg = (f"p0-fix 全部 ok + skip_validator=true（人工验收模式）；"
-                            f"请调 `task_swarm.py writeback --run {sm.run_id} "
-                            f"--group {gi + 1}` 回写 tasks.md，然后人工验收代码。")
+            gs.begin_writeback()
+            next_msg = (f"p0-fix 完成 + skip_validator（人工验收）；请调 "
+                        f"`task_swarm.py writeback --run {sm.run_id} --group {gs.id}`。"
+                        + (" 未修部分标 [P0 未修复]。" if any_failed else ""))
         else:
-            # 不阻断：进入 validation（full 模式）
-            sm.begin_validation()
-            _materialize_prompt_validator(sm)
-            if any_failed:
-                next_msg = "p0-fix 部分失败；继续进入 validation。失败的 P0 将标 '[P0 未修复]'。"
-            else:
-                next_msg = "p0-fix 全部 ok；进入 validation。"
+            gs.begin_validation()
+            sm.events_append({"type": "phase", "phase": "validation",
+                              "group": gs.id, "round": gs.round})
+            _materialize_prompt_validator(sm, gs)
+            next_msg = "p0-fix 完成；进入 validation。" + (
+                " 失败的 P0 标 [P0 未修复]。" if any_failed else "")
 
     elif phase == "validation":
-        gi = sm.current_group_index
-        # 决定 round：本次 advance 对应的是 sm.round（v-fix 后 sm.round 已经在 begin_v_fix 时 +1，
-        # validator 跑完的 round = sm.round）
-        round_used = sm.round if sm.round > 0 else 1
+        round_used = gs.round if gs.round > 0 else 1
         path = (Path(sm.run_dir) / "agents"
-                / f"validator-g{gi + 1}-r{round_used}" / "outbox" / "validation.md")
+                / f"validator-{gs.id}-r{round_used}" / "outbox" / "validation.md")
         try:
             val = parse_validator_validation(path)
-            sm.mark_validator_done()
-            sm.round = round_used
+            gs.mark_validator_done()
+            gs.round = round_used
             sig = val.fail_signature()
-            sm.record_round_signature(sig)
-            sm.events_append({"type": "advance", "phase": "validation",
-                              "verdict": val.verdict, "round": round_used,
-                              "signature": sig})
+            gs.record_round_signature(sig)
+            sm.events_append({"type": "advance", "phase": "validation", "group": gs.id,
+                              "verdict": val.verdict, "round": round_used, "signature": sig})
             if val.verdict == "pass":
-                sm.fix_targets = []
-                sm.begin_writeback()
+                gs.fix_targets = []
+                gs.begin_writeback()
                 next_msg = (f"validator pass。请调 `task_swarm.py writeback "
-                            f"--run {sm.run_id} --group {gi + 1}` 回写 tasks.md。")
+                            f"--run {sm.run_id} --group {gs.id}`。")
             else:
-                # fail
-                sm.fix_targets = [
-                    {
-                        "file_path": t.file_path,
-                        "title": t.title,
-                        "location": t.location,
-                        "problem": t.problem,
-                        "suggestion": t.suggestion,
-                        "requirements": list(t.requirements),
-                    }
+                gs.fix_targets = [
+                    {"file_path": t.file_path, "title": t.title, "location": t.location,
+                     "problem": t.problem, "suggestion": t.suggestion,
+                     "requirements": list(t.requirements)}
                     for t in val.fix_targets
                 ]
-                # 检测死循环
-                if sm.detect_deadloop():
-                    sm.fail_group_deadloop()
+                if gs.detect_deadloop():
+                    gs.fail_deadloop()
+                    sm.failed_status = sm.failed_status or "failed-deadloop"
+                    sm.events_append({"type": "group-failed", "group": gs.id, "reason": "deadloop"})
                     sm.save()
-                    _emit({
-                        "ok": False,
-                        "phase": sm.phase,
-                        "deadloop": True,
-                        "next": "report-deadloop",
-                        "round": sm.round,
-                    })
+                    _emit({"ok": False, "group": gs.id, "phase": gs.phase, "deadloop": True,
+                           "next": "report-deadloop", "round": gs.round})
                     return 0
-                # 进入 v-fix
-                sm.begin_v_fix(sm.fix_targets)
-                _materialize_prompts_v_fix(sm)
+                gs.begin_v_fix(gs.fix_targets)
+                sm.events_append({"type": "phase", "phase": "v-fix",
+                                  "group": gs.id, "round": gs.round})
+                _materialize_prompts_v_fix(sm, gs)
                 next_msg = (f"validator fail。请按 fix_targets 各文件 fork v-fix coder。"
-                            f"本轮是 g{gi + 1}-r{sm.round}。")
+                            f"本轮 {gs.id}-r{gs.round}。")
         except ParseError as e:
             errors.append(str(e))
 
     elif phase == "v-fix":
-        gi = sm.current_group_index
-        all_keys = list(sm.vfix_in_flight) + list(sm.vfix_done)
+        all_keys = list(gs.vfix_in_flight) + list(gs.vfix_done)
         if not all_keys:
-            files: list[str] = []
-            for t in sm.fix_targets:
+            files = []
+            for t in gs.fix_targets:
                 f = (t.get("file_path") or "").strip()
                 if f and f not in files:
                     files.append(f)
             if not files:
                 files = ["unknown"]
-            all_keys = [f"coder-vfix-g{gi + 1}-r{sm.round}-f{i}"
-                        for i in range(len(files))]
+            all_keys = [f"coder-vfix-{gs.id}-r{gs.round}-f{i}" for i in range(len(files))]
         any_failed = False
         for k in all_keys:
             p = Path(sm.run_dir) / "agents" / k / "outbox" / "result.md"
             try:
                 res = parse_coder_result(p)
-                sm.mark_vfix_done(k)
+                gs.mark_vfix_done(k)
                 if res.status != "ok":
                     any_failed = True
                     errors.append(f"{k}: STATUS={res.status} {res.status_reason}")
             except ParseError as e:
                 errors.append(f"{k}: parse error: {e}")
                 any_failed = True
-        sm.events_append({"type": "advance", "phase": "v-fix",
-                          "round": sm.round, "any_failed": any_failed,
-                          "errors": errors})
+        sm.events_append({"type": "advance", "phase": "v-fix", "group": gs.id,
+                          "round": gs.round, "any_failed": any_failed, "errors": errors})
         if any_failed:
             sm.failed_status = sm.failed_status or "failed"
-            sm.group_status[sm.current_group_index] = "failed"
+            gs.status = "failed"
             sm.save()
-            _emit({
-                "ok": False,
-                "phase": sm.phase,
-                "errors": errors,
-                "next": "report-failed-group",
-            })
+            _emit({"ok": False, "group": gs.id, "phase": gs.phase, "errors": errors,
+                   "next": "report-failed-group"})
             return 0
-        # 进入 validation 下一轮
-        sm.begin_validation()
-        _materialize_prompt_validator(sm)
-        next_msg = (f"v-fix 全部 ok。请 fork validator-g{gi + 1}-r{sm.round + 1}。")
+        gs.begin_validation()
+        sm.events_append({"type": "phase", "phase": "validation",
+                          "group": gs.id, "round": gs.round})
+        _materialize_prompt_validator(sm, gs)
+        next_msg = f"v-fix ok。请 fork validator-{gs.id}-r{gs.round}。"
 
     else:
         sys.stderr.write(f"未知 phase: {phase}\n")
         return 1
 
     sm.save()
-    plan = _plan_for(sm)
-    _emit({
-        "ok": not errors,
-        "phase": sm.phase,
-        "group": sm.current_group_index + 1 if sm.current_group_index < len(sm.groups) else None,
-        "round": sm.round,
-        "errors": errors,
-        "next": next_msg,
-        "plan": plan,
-    })
+    plan = _plan_for_group(sm, gs)
+    _emit({"ok": not errors, "group": gs.id, "phase": gs.phase, "round": gs.round,
+           "errors": errors, "next": next_msg, "plan": plan})
     return 0
 
-
-# -------------------------------------------------------------------------
-# writeback
-# -------------------------------------------------------------------------
 
 def cmd_writeback(args: argparse.Namespace) -> int:
     try:
@@ -1138,92 +882,32 @@ def cmd_writeback(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
     sm = StateMachine.load(run_dir)
-    gi = args.group - 1
-    if gi < 0 or gi >= len(sm.groups):
-        sys.stderr.write(f"--group {args.group} 越界（共 {len(sm.groups)} 个 group）\n")
+    gid = args.group
+    gs = next((g for g in sm.task_groups if g.id == gid), None)
+    if gs is None:
+        sys.stderr.write(f"--group {gid} 不存在；可选：{[g.id for g in sm.task_groups]}\n")
         return 1
-    # 仅允许当前 group 或先前已 done 的 group 重写
-    if gi != sm.current_group_index and sm.group_status[gi] not in ("done",):
-        sys.stderr.write(f"--group {args.group} 不是当前 group（current={sm.current_group_index + 1}）\n")
+    if gs.phase != "writeback" and gs.status != "failed-deadloop":
+        sys.stderr.write(f"--group {gid} 未到 writeback 阶段（phase={gs.phase}）\n")
         return 1
-    # yml 路径：writeback 退化为 finalize_group（不碰 markdown）
-    if sm.pipeline_path:
-        final_verdict = "failed-deadloop" if sm.group_status[gi] == "failed-deadloop" else "pass"
-        sm.events_append({"type": "writeback", "group": gi + 1, "pipeline": True})
-        if gi == sm.current_group_index:
-            sm.finalize_group("done" if final_verdict == "pass" else "failed")
-        sm.save()
-        _emit({"ok": True, "group": gi + 1, "finalized": True, "pipeline": True, "verdict": final_verdict})
-        return 0
-    # ---- markdown 路径（legacy）：原 line-safe writeback，保持不动 ----
-    # 组装 findings
-    stages = sm.groups[gi]
-    stage_numbers = [s.number for s in stages]
-    findings: list[StageFinding] = []
-    for f in sm.findings:
-        sev = f["severity"]
-        fix_status = f.get("fix_status", "未修复")
-        findings.append(StageFinding(severity=sev, text=f["text"], fix_status=fix_status))
-    # validator history 与 reproduce_cmd（取最后 pass 的）
-    reproduce_cmd = ""
-    final_verdict = "pass"
-    if sm.group_status[gi] == "failed-deadloop":
-        final_verdict = "failed-deadloop"
-    else:
-        last_pass = None
-        for h in sm.validator_history:
-            if h.get("group") == gi + 1 and h.get("verdict") == "pass":
-                last_pass = h
-                break
-        if last_pass is None:
-            final_verdict = "pass"
-        # reproduce_cmd 从 last pass 对应 validator outbox 取（best effort）
-        if last_pass is not None:
-            vpath = (Path(sm.run_dir) / "agents"
-                     / f"validator-g{gi + 1}-r{last_pass.get('round')}"
-                     / "outbox" / "validation.md")
-            if vpath.exists():
-                try:
-                    val = parse_validator_validation(vpath)
-                    reproduce_cmd = val.reproduce_cmd
-                except ParseError:
-                    pass
-    gf = GroupFindings(
-        group_index=gi,
-        stages=stage_numbers,
-        findings=findings,
-        validator_history=[h for h in sm.validator_history if h.get("group") == gi + 1],
-        final_verdict=final_verdict,
-        reproduce_cmd=reproduce_cmd,
-        skip_validator=sm.skip_validator,
-    )
-    try:
-        result = writeback_tasks_md(Path(sm.tasks_md), gf)
-    except WriteBackError as e:
-        sys.stderr.write(f"writeback 越界：{e}\n")
-        return 1
-    except FileNotFoundError as e:
-        sys.stderr.write(f"writeback 失败：{e}\n")
-        return 1
-    sm.events_append({"type": "writeback", "group": gi + 1,
-                      "stages": stage_numbers, "findings": len(findings)})
-    if gi == sm.current_group_index:
-        sm.finalize_group("done" if final_verdict == "pass" else "failed")
+    # writeback = finalize 本组（yml 单轨；M3 已移除 markdown line-safe 写回）
+    final_verdict = "failed-deadloop" if gs.status == "failed-deadloop" else "pass"
+    gs.finalize("done" if final_verdict == "pass" else "failed")
+    sm.events_append({"type": "writeback", "group": gs.id, "pipeline": True,
+                      "verdict": final_verdict})
+    # 所有组终态 → run 收尾
+    if all(g.status in ("done", "failed", "failed-deadloop") for g in sm.task_groups):
+        sm.completed_at = sm.completed_at or _now_iso()
+        if not sm.failed_status:
+            sm.failed_status = ("done" if all(g.status == "done" for g in sm.task_groups)
+                                else "failed")
+        sm.events_append({"type": "run-done", "status": sm.failed_status})
     sm.save()
-    _emit({
-        "ok": True,
-        "tasks_md": str(result.tasks_md_path),
-        "stages_checked": result.stages_checked,
-        "findings_count": result.findings_count,
-        "next_group": sm.current_group_index + 1 if sm.current_group_index < len(sm.groups) else None,
-        "phase": sm.phase,
-    })
+    sched = compute_schedule([g.sched_view() for g in sm.task_groups])
+    _emit({"ok": True, "group": gs.id, "finalized": True, "verdict": final_verdict,
+           "schedule": sched})
     return 0
 
-
-# -------------------------------------------------------------------------
-# heartbeat
-# -------------------------------------------------------------------------
 
 def cmd_heartbeat(args: argparse.Namespace) -> int:
     """刷新 state.json.last_activity_at（长流程保活，状态层）。
@@ -1262,7 +946,6 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     sm = StateMachine.load(run_dir)
     if args.abort:
         sm.failed_status = "aborted"
-        sm.phase = "done"
         sm.completed_at = _now_iso()
         sm.events_append({"type": "resolve", "status": "aborted"})
     else:
@@ -1308,10 +991,10 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pi = sub.add_parser("init")
-    pi.add_argument("--tasks", required=False, default=None,
-                    help="legacy markdown tasks.md 路径(已软废弃;推荐 --pipeline)")
     pi.add_argument("--pipeline", default=None,
-                    help="pipeline.yml 路径(主编排格式;与 --tasks 二选一)")
+                    help="pipeline.yml 路径(唯一编排输入;markdown --tasks 已在 M3 移除)")
+    pi.add_argument("--serial-validation", dest="serial_validation", action="store_true",
+                    help="跨组并发时 validator 全局串行(测试有共享资源时用)")
     pi.add_argument("--max-parallel", type=int, default=4)
     pi.add_argument("--max-rounds", type=int, default=6)
     pi.add_argument("--session", default=None)
@@ -1334,13 +1017,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pa = sub.add_parser("advance")
     pa.add_argument("--run", required=True)
+    pa.add_argument("--group", required=True, help="语义任务组 id（如 g1）")
     pa.add_argument("--phase", required=True,
                     choices=["coding", "review", "p0-fix", "validation", "v-fix"])
     pa.add_argument("--round", type=int, default=1)
 
     pw = sub.add_parser("writeback")
     pw.add_argument("--run", required=True)
-    pw.add_argument("--group", type=int, required=True)
+    pw.add_argument("--group", required=True, help="语义任务组 id（如 g1）")
 
     ph = sub.add_parser("heartbeat")
     ph.add_argument("--run", required=True)
@@ -1351,7 +1035,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     prep = sub.add_parser("report")
     prep.add_argument("--run", required=True)
-    prep.add_argument("--group", type=int, default=None)
+    prep.add_argument("--group", default=None, help="语义任务组 id（如 g1）；省略=全部")
     prep.add_argument("--out", default=None)
 
     return p

@@ -72,12 +72,12 @@ def _drive_to_writeback(tmp_path, home, work):
     run_id = init["run_id"]
     run_dir = Path(init["run_dir"])
     _run("plan", "--run", run_id, cwd=work, home=home)
-    _write_coder_result(run_dir, "coder-g1-s1-r1")
-    _run("advance", "--run", run_id, "--phase", "coding", "--round", "1", cwd=work, home=home)
+    _write_coder_result(run_dir, "coder-g1-s1.1-r1")
+    _run("advance", "--run", run_id, "--group", "g1", "--phase", "coding", "--round", "1", cwd=work, home=home)
     _write_reviewer(run_dir, 1, with_p0=False)
-    _run("advance", "--run", run_id, "--phase", "review", "--round", "1", cwd=work, home=home)
+    _run("advance", "--run", run_id, "--group", "g1", "--phase", "review", "--round", "1", cwd=work, home=home)
     _write_validator(run_dir, 1, 1, verdict="pass")
-    _run("advance", "--run", run_id, "--phase", "validation", "--round", "1", cwd=work, home=home)
+    _run("advance", "--run", run_id, "--group", "g1", "--phase", "validation", "--round", "1", cwd=work, home=home)
     return run_id, run_dir
 
 
@@ -87,10 +87,10 @@ def test_writeback_pipeline_finalizes_without_tasks_md(tmp_path):
     work = tmp_path / "proj"
     work.mkdir()
     run_id, run_dir = _drive_to_writeback(tmp_path, home, work)
-    cp = _run("writeback", "--run", run_id, "--group", "1", cwd=work, home=home)
+    cp = _run("writeback", "--run", run_id, "--group", "g1", cwd=work, home=home)
     assert cp.returncode == 0, cp.stderr
     state = json.loads((run_dir / "state.json").read_text(encoding="utf-8"))
-    assert state["group_status"][0] == "done"
+    assert state["task_groups"][0]["status"] == "done"
     assert not (work / "tasks.md").exists()
     assert not (run_dir / "tasks.md").exists()
 

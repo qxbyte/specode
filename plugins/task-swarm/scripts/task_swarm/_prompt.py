@@ -128,11 +128,11 @@ def render_coder_prompt(
 ) -> str:
     """渲染 coder 的 task.md。返回 prompt 文本。同步写到 agent 目录的 task.md。"""
     if mode == "initial":
-        agent_key = f"coder-g{group}-s{stage.number}-r{round_}"
+        agent_key = f"coder-{group}-s{stage.number}-r{round_}"
     elif mode == "p0-fix":
-        agent_key = f"coder-p0fix-g{group}-r{round_}-f{file_idx or 0}"
+        agent_key = f"coder-p0fix-{group}-r{round_}-f{file_idx or 0}"
     elif mode == "v-fix":
-        agent_key = f"coder-vfix-g{group}-r{round_}-f{file_idx or 0}"
+        agent_key = f"coder-vfix-{group}-r{round_}-f{file_idx or 0}"
     else:
         raise ValueError(f"未知 mode: {mode}")
 
@@ -260,7 +260,7 @@ def render_reviewer_prompt(
     round_: int = 1,
     project_root: Optional[str] = None,
 ) -> str:
-    agent_key = f"reviewer-g{group}-r{round_}"
+    agent_key = f"reviewer-{group}-r{round_}"
     root, inbox, outbox = _ensure_agent_dirs(run_dir, agent_key)
     lines: list[str] = []
     lines.append(f"# {agent_key}：本 group {len(group_stages)} 个 stage 联合评审")
@@ -328,7 +328,7 @@ def render_validator_prompt(
     prev_validation: Optional[Path] = None,
     project_root: Optional[str] = None,
 ) -> str:
-    agent_key = f"validator-g{group}-r{round_}"
+    agent_key = f"validator-{group}-r{round_}"
     root, inbox, outbox = _ensure_agent_dirs(run_dir, agent_key)
     lines: list[str] = []
     lines.append(f"# {agent_key}：本 group {len(group_stages)} 个 stage 联合验证")

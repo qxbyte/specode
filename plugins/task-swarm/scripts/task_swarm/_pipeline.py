@@ -1,7 +1,5 @@
-"""task_swarm._pipeline — pipeline.yml schema 校验 + 映射到现有 Stage/StageItem。"""
+"""task_swarm._pipeline — pipeline.yml schema 校验 + 映射到组级调度状态。"""
 from __future__ import annotations
-
-from task_swarm._parse_md import Stage, StageItem
 
 
 def validate(data) -> list:
@@ -55,35 +53,28 @@ def validate(data) -> list:
     return errors
 
 
-def to_stages(data: dict) -> list:
-    """Map a parsed pipeline.yml dict to the existing Stage/StageItem model.
-
-    Each task_group becomes a Stage (1-based number); each task becomes a
-    StageItem (number "<group>.<task>"). A group's `needs` references other
-    groups by id; we resolve each to the referenced group's 1-based index and
-    push that down into every StageItem.depends_on (as a str), because
-    Stage.depends_on is a read-only aggregate property that derives the
-    int-stage list from its items — mirroring markdown's item-level
-    @depends-on behavior.
-    """
-    groups = data.get("task_groups") or []
-    id_to_index = {g.get("id"): i + 1 for i, g in enumerate(groups)}
-    stages = []
-    for i, g in enumerate(groups):
-        dep_idx = [str(id_to_index[n]) for n in (g.get("needs") or []) if n in id_to_index]
-        items = []
-        for j, t in enumerate(g.get("tasks") or []):
-            items.append(StageItem(
-                number=f"{i+1}.{j+1}",
-                title=t.get("title", ""),
-                writes=list(t.get("writes") or []),
-                reads=list(t.get("reads") or []),
-                requirements=[str(r) for r in (t.get("requirements") or [])],
-                depends_on=list(dep_idx),
-                raw_line="", checkbox=" ", line_no=0,
-            ))
-        stages.append(Stage(
-            number=i + 1, title=g.get("name", ""), items=items,
-            header_line_no=0, end_line_no=0,
-        ))
-    return stages
+def to_group_states(pipeline: dict) -> list[dict]:
+    """pipeline.yml dict → list[group dict]，组级保留 needs + writes 并集（M3 调度用）。
+    每个 group dict: {id, name, needs:[gid], writes:[path 并集], items:[item dict]}。
+    item dict: {number(去 g 前缀，如 '1.1'), title, writes, reads, requirements}。"""
+    out = []
+    for tg in pipeline.get("task_groups", []):
+        items, writes_union = [], []
+        for t in tg.get("tasks", []):
+            tid = str(t["id"])
+            num = tid[1:] if tid.startswith("g") else tid
+            w = list(t.get("writes") or [])
+            for f in w:
+                if f not in writes_union:
+                    writes_union.append(f)
+            items.append({
+                "number": num, "title": t.get("title", ""),
+                "writes": w, "reads": list(t.get("reads") or []),
+                "requirements": list(t.get("requirements") or []),
+            })
+        out.append({
+            "id": str(tg["id"]), "name": tg.get("name", ""),
+            "needs": list(tg.get("needs") or []),
+            "writes": writes_union, "items": items,
+        })
+    return out

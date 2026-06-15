@@ -58,6 +58,7 @@ from task_swarm._writeback import (  # noqa: E402
 )
 from task_swarm._pipeline_yaml import parse as _yaml_parse, PipelineYamlError  # noqa: E402
 from task_swarm._pipeline import validate as _pipeline_validate, to_stages as _pipeline_to_stages  # noqa: E402
+from task_swarm._report import render_report  # noqa: E402
 
 
 # -------------------------------------------------------------------------
@@ -1280,6 +1281,25 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
 
 # -------------------------------------------------------------------------
+# report
+# -------------------------------------------------------------------------
+
+def cmd_report(args: argparse.Namespace) -> int:
+    try:
+        run_dir = _find_run_dir(args.run)
+    except FileNotFoundError as e:
+        sys.stderr.write(f"{e}\n")
+        return 1
+    sm = StateMachine.load(run_dir)
+    text = render_report(sm, group=args.group)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+# -------------------------------------------------------------------------
 # argparse
 # -------------------------------------------------------------------------
 
@@ -1330,6 +1350,11 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--run", required=True)
     pr.add_argument("--abort", action="store_true")
 
+    prep = sub.add_parser("report")
+    prep.add_argument("--run", required=True)
+    prep.add_argument("--group", type=int, default=None)
+    prep.add_argument("--out", default=None)
+
     return p
 
 
@@ -1341,6 +1366,7 @@ COMMANDS = {
     "writeback": cmd_writeback,
     "heartbeat": cmd_heartbeat,
     "resolve": cmd_resolve,
+    "report": cmd_report,
 }
 
 

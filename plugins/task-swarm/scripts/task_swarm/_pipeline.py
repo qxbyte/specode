@@ -87,3 +87,30 @@ def to_stages(data: dict) -> list:
             header_line_no=0, end_line_no=0,
         ))
     return stages
+
+
+def to_group_states(pipeline: dict) -> list[dict]:
+    """pipeline.yml dict → list[group dict]，组级保留 needs + writes 并集（M3 调度用）。
+    每个 group dict: {id, name, needs:[gid], writes:[path 并集], items:[item dict]}。
+    item dict: {number(去 g 前缀，如 '1.1'), title, writes, reads, requirements}。"""
+    out = []
+    for tg in pipeline.get("task_groups", []):
+        items, writes_union = [], []
+        for t in tg.get("tasks", []):
+            tid = str(t["id"])
+            num = tid[1:] if tid.startswith("g") else tid
+            w = list(t.get("writes") or [])
+            for f in w:
+                if f not in writes_union:
+                    writes_union.append(f)
+            items.append({
+                "number": num, "title": t.get("title", ""),
+                "writes": w, "reads": list(t.get("reads") or []),
+                "requirements": list(t.get("requirements") or []),
+            })
+        out.append({
+            "id": str(tg["id"]), "name": tg.get("name", ""),
+            "needs": list(tg.get("needs") or []),
+            "writes": writes_union, "items": items,
+        })
+    return out

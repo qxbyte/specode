@@ -79,3 +79,25 @@ def test_yml_equiv_to_markdown(tmp_path):
         assert [i.number for i in ms.items] == [i.number for i in ys.items]
         assert [i.writes for i in ms.items] == [i.writes for i in ys.items]
         assert ms.depends_on == ys.depends_on
+
+
+def test_to_group_states_preserves_group_level_needs_and_writes():
+    from task_swarm._pipeline import to_group_states
+    pipe = {
+        "version": 1,
+        "task_groups": [
+            {"id": "g1", "name": "A", "tasks": [
+                {"id": "g1.1", "title": "t1", "writes": ["src/a.py"]},
+                {"id": "g1.2", "title": "t2", "writes": ["src/b.py"]}]},
+            {"id": "g2", "name": "B", "needs": ["g1"], "tasks": [
+                {"id": "g2.1", "title": "t3", "writes": ["src/c.py"]}]},
+        ],
+    }
+    gs = to_group_states(pipe)
+    assert [g["id"] for g in gs] == ["g1", "g2"]
+    assert gs[0]["name"] == "A"
+    assert gs[1]["needs"] == ["g1"]
+    assert set(gs[0]["writes"]) == {"src/a.py", "src/b.py"}
+    assert [it["number"] for it in gs[0]["items"]] == ["1.1", "1.2"]
+    assert gs[0]["items"][0]["title"] == "t1"
+    assert gs[0]["items"][0]["writes"] == ["src/a.py"]

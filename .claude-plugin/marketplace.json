@@ -9,8 +9,8 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "0.10.29",
-      "description": "Specification-driven workflow with advisory hooks, selector prompts, session-bound state, and task-swarm multi-agent orchestration.",
+      "version": "0.11.0",
+      "description": "Specification-driven workflow with advisory hooks, selector prompts, session-bound state, and delegation to the task-swarm plugin.",
       "homepage": "https://github.com/qxbyte/specode",
       "repository": "https://github.com/qxbyte/specode",
       "license": "MIT",
@@ -19,7 +19,7 @@
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.1.0",
+      "version": "0.3.0",
       "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops.",
       "homepage": "https://github.com/qxbyte/specode",
       "repository": "https://github.com/qxbyte/specode",

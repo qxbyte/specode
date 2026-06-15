@@ -1,7 +1,7 @@
 {
   "name": "task-swarm",
-  "version": "0.1.0",
-  "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops.",
+  "version": "0.3.0",
+  "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

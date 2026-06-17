@@ -19,7 +19,7 @@
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops.",
       "homepage": "https://github.com/qxbyte/specode",
       "repository": "https://github.com/qxbyte/specode",

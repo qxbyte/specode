@@ -8,7 +8,6 @@
     _schedule.py   needs 拓扑 + writes 不相交并发调度
     _outbox.py     coder/reviewer/validator 三类产物 schema 校验
     _prompt.py     各 subagent 角色的 prompt 渲染
-    _writeback.py  本组 finalize
 
 子命令：
     init      --pipeline <abs> [--workdir <dir>] [--project-root <dir>] [--spec-id <id>]
@@ -30,7 +29,6 @@ stdlib-only。
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 import random
@@ -40,24 +38,13 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-# 0.10.0+ 日志（defensive import；launcher 已注入 scripts/ 到 sys.path）
-try:
-    from spec_log import write_event as _log_event  # type: ignore
-except Exception:
-    def _log_event(event: str, payload: Optional[dict] = None,
-                   session_id: Optional[str] = None) -> None:
-        return None
-
-from task_swarm._state import StateMachine, StageEntry, GroupState  # noqa: E402
+from task_swarm._state import StateMachine, StageEntry, GroupState, _now_iso  # noqa: E402
 from task_swarm._schedule import compute_schedule  # noqa: E402
 from task_swarm._outbox import (  # noqa: E402
     ParseError, parse_coder_result, parse_reviewer_review, parse_validator_validation,
 )
 from task_swarm._prompt import (  # noqa: E402
     render_coder_prompt, render_reviewer_prompt, render_validator_prompt,
-)
-from task_swarm._writeback import (  # noqa: E402
-    GroupFindings, StageFinding, WriteBackError, writeback_tasks_md,
 )
 from task_swarm._pipeline_yaml import parse as _yaml_parse, PipelineYamlError  # noqa: E402
 from task_swarm._pipeline import validate as _pipeline_validate, to_group_states as _pipeline_to_group_states  # noqa: E402
@@ -67,10 +54,6 @@ from task_swarm._report import render_report  # noqa: E402
 # -------------------------------------------------------------------------
 # 工具
 # -------------------------------------------------------------------------
-
-def _now_iso() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
 
 def _gen_run_id() -> str:
     """YYYYMMDD-HHMMSS-<6 位随机>，与 spec-mode 0.3.0 一致。"""
@@ -1063,24 +1046,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     return fn(args) or 0
 
 
-def _log_wrap_main(argv: Optional[list[str]] = None) -> int:
-    argv_list = list(sys.argv[1:]) if argv is None else list(argv)
-    sid = None
-    for i, a in enumerate(argv_list):
-        if a == "--session" and i + 1 < len(argv_list):
-            sid = argv_list[i + 1]
-            break
-    sub_cmd = argv_list[0] if argv_list else "?"
-    with contextlib.suppress(Exception):
-        _log_event("cli_call", {"script": "task_swarm.py", "cmd": sub_cmd, "argv_len": len(argv_list)}, session_id=sid)
-    rc = main(argv)
-    with contextlib.suppress(Exception):
-        _log_event("cli_exit", {"script": "task_swarm.py", "cmd": sub_cmd, "exit_code": rc}, session_id=sid)
-    return rc
-
-
 if __name__ == "__main__":
     try:
-        sys.exit(_log_wrap_main())
+        sys.exit(main())
     except KeyboardInterrupt:
         sys.exit(130)

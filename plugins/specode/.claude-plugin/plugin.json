@@ -1,6 +1,6 @@
 {
   "name": "specode",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
   "author": {
     "name": "xueqiang",

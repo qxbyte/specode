@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.0.1 (2026-06-18)
+
+> 文档/指令语言优化，**无行为变更**：SKILL/commands/references 的指令性内容由中文改写为英文（语义重组，非直译），降低常驻上下文 token。
+
+- `skills/specode/SKILL.md`、`commands/spec.md`、`skills/specode/references/{selectors,obsidian,superpowers-wiring}.md` 指令性内容改写为英文。
+- 保留中文：用户可见的 verbatim 串（「执行方式」selector 的 4 个 label/description、首次设置目录提问）、"Output Language = 中文" 规则本身；以及 `assets/templates/*.md` 产物模板与 `README.zh-CN.md`。
+- 命令集 / hook / 持久 schema（`config.json.specsRoot`）/ verb 名 / run.sh 契约 **均无变化**——纯文案语言调整。
+
 ## 1.0.0 (2026-06-17)
 
 > specode 轻量化重构成「编排壳 + superpowers 引擎」：删掉整套 Python 状态机，specode 退化为一层薄壳，在各 phase 自主调用 superpowers 的成熟 skill（缺席则 specode-native 降级），固定产出 3 份文档落到用户的 specs 目录。**这是破坏性大版本**——重型实现全删、命令收敛、hook 收敛、持久 schema 弃用。

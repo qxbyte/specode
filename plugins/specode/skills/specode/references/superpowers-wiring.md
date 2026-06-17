@@ -1,19 +1,19 @@
 ---
-description: Use when specode 在某 phase 要调 superpowers skill 或判断是否降级 —— phase↔skill 映射、落盘归位双保险、缺席降级矩阵。
+description: Use when specode needs to invoke a superpowers skill at a given phase, or determine whether to fall back to native — phase↔skill mapping, artifact placement double-check, and fallback matrix.
 ---
 
-# superpowers 编排映射
+# superpowers orchestration mapping
 
-| phase | 装了 superpowers | 缺席 → specode-native |
+| Phase | superpowers installed | Absent → specode-native |
 |---|---|---|
-| 澄清+需求 | superpowers:brainstorming | AskUserQuestion 澄清 + 按 requirements 模板写 |
-| 可执行计划 | superpowers:writing-plans | 按 design 模板自己拆 Task + TDD 步骤 |
-| 执行 | task-swarm / superpowers:subagent-driven-development / superpowers:executing-plans | 按 design Task 顺序 TDD |
-| 验收 | superpowers:verification-before-completion (+ requesting-code-review) | 对照 design 测试要点 / AC 逐条核验 |
+| Clarification + requirements | superpowers:brainstorming | AskUserQuestion clarification + write per requirements template |
+| Executable plan | superpowers:writing-plans | Self-decompose Tasks + TDD steps per design template |
+| Execution | task-swarm / superpowers:subagent-driven-development / superpowers:executing-plans | Sequential TDD following design Tasks |
+| Acceptance | superpowers:verification-before-completion (+ requesting-code-review) | Verify each design test point / AC item in order |
 
-## 落盘归位（双保险，保证固定产物不变式）
-1. 前置：调 skill 时显式给目标绝对路径 + 固定文件名（brainstorming→requirements.md，writing-plans→design.md）。
-2. 后置：skill 返回后校验 `<specsRoot>/<slug>/<固定名>` 是否就位；未就位则把 skill 实际产物 move/rename 过去。
+## Artifact placement (double-check, invariant enforcement)
+1. Pre-call: when invoking a skill, explicitly pass the target absolute path and fixed filename (brainstorming → requirements.md; writing-plans → design.md).
+2. Post-call: after the skill returns, verify that `<specsRoot>/<slug>/<fixed-name>` is in place; if not, move/rename the skill's actual output to that path.
 
-## 可用性判断
-先尝试 Skill 调 superpowers，不可用 / 未安装 → 走 native 分支。task-swarm 同理（调其 /task-swarm 失败则降级）。
+## Availability check
+Attempt to invoke superpowers via the Skill tool first; if unavailable or not installed, take the native branch. Same logic applies to task-swarm (if `/task-swarm` invocation fails, fall back to native).

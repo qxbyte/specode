@@ -3,66 +3,57 @@
 # specode
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.md#license)
-[![Version](https://img.shields.io/badge/version-0.10.21-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/specode#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/specode#installation)
-[![Tests](https://img.shields.io/badge/pytest-152%20cases-success)](./plugins/specode/tests)
 
-> A specification-driven workflow plugin for CLI coding agents
+> A lightweight spec-driven workflow plugin for CLI coding agents
 > (Claude Code / CodeBuddy).
 
-specode turns a one-line requirement into a disciplined,
-document-first delivery loop. The agent is walked through a fixed
-phase pipeline — **requirements → design → tasks → implementation →
-acceptance** — with five Markdown documents
-(`requirements.md` / `bugfix.md` / `design.md` / `tasks.md` /
-`implementation-log.md`) as the single source of truth. At every
-phase gate the user picks the next move through an in-chat
-selector; in between, advisory hooks keep the agent on script
-without ever blocking a tool call.
+specode 1.0.0 turns a one-line requirement into a disciplined,
+document-first delivery loop — but it carries almost no machinery of
+its own. It is an **orchestration shell**: at each phase
+(requirements → design → 执行 → 验收) it **delegates the heavy
+lifting to [superpowers](https://github.com/obra/superpowers) skills**,
+and when superpowers isn't installed it falls back to a first-class
+**specode-native** path so the plugin works standalone. Every spec
+lands the same **3 fixed documents** in your specs directory.
 
-If you've watched an LLM agent drift mid-task, lose context across
-windows, or merge unreviewed code, specode is the rails.
+If you've watched an LLM agent drift mid-task or merge unreviewed
+code, specode is the rails — now thin enough to stay out of your way.
 
 ## Highlights
 
-- **Document-first discipline.** Every requirement begins with a spec
-  doc, not code. Hooks remind the agent to consult and update docs
-  before — and after — touching code.
-- **Advisory hooks, never blocking.** All seven hooks `exit 0`. They
-  inject guidance into the model's context (status footer, phase
-  selector, doc-sync reminder, silent lock heartbeat) but never abort
-  a tool call. No mid-flow "hook denied" surprises.
-- **Session-bound state.** Every host session has its own state file
-  at `~/.specode/sessions/<session_id>.json` (atomic writes). Open
-  three CLI windows in parallel and they stay disambiguated.
-- **Phase-gate selectors.** At each decision point the agent renders
-  one of three selector skeletons (single-select / wizard /
-  multi-select) drawn from 11 fixed scenarios — you steer, the
-  agent executes.
-- **Parallel task execution is a separate plugin.** specode emits
-  `tasks.md` in a task-swarm-compatible format (`## 阶段 N:` stages +
-  `@writes` / `@depends-on` tags); multi-agent orchestration now lives
-  in the standalone **task-swarm** plugin, which you can hand the
-  approved `tasks.md` to from the `tasks-execution` selector.
-- **Obsidian-aware doc root.** Three-tier resolution
-  (env > config > auto-detected Obsidian vault) keeps your specs in
-  your knowledge base, not scattered across project folders.
-- **Status footer on every active turn.** You always know where you
-  are:
-  ```
-  ─── spec-mode ─── spec: <slug> | session: <8-prefix> | phase: <p> | /specode:end to exit
-  ```
-- **Per-session JSONL logs** for "why did the agent go off-script"
-  forensics, with automatic secret redaction and 500-char string
-  truncation.
-- **Main agent writes spec docs directly.** No subagent fork — the
-  main agent reads template skeletons from `assets/templates/<phase>.md`
-  and fills them against your original requirement text, keeping
-  context and conversational state intact (a previous `spec-writer`
-  subagent was removed in 0.10.11 precisely because it couldn't
-  see the main agent's context and tended to hallucinate generic
-  template content).
+- **Orchestration shell, not a state machine.** specode delegates each
+  phase to a mature superpowers skill (`brainstorming` → `writing-plans`
+  → `subagent-driven-development` / `executing-plans` →
+  `verification-before-completion`). It owns only what's uniquely its
+  own: the spec lifecycle, fixed-doc landing, and the task-swarm bridge.
+- **Works standalone (native fallback).** No superpowers? specode runs
+  the clarify / plan / execute / verify loop itself with `AskUserQuestion`
+  wizards and sequential TDD. The native path is a first-class peer, not
+  an afterthought.
+- **3 fixed documents, fixed names, fixed location.** Every spec
+  produces `requirements.md` / `design.md` / `implementation-log.md`
+  under `<specsRoot>/<slug>/` — whatever engine generated the content.
+  Bug fixes use prose in `requirements.md` (no `bugfix.md`).
+- **Documents are the state.** No persistent session files, no locks,
+  no status footer, no logging. "Which phase am I in?" is inferred from
+  which fixed docs exist plus the `- [ ]` checkbox progress in
+  `design.md`.
+- **One adaptive selector.** After `design.md` is confirmed, an
+  `AskUserQuestion` selector offers up to 4 execution paths — only the
+  ones whose engine is installed: 委托 task-swarm / superpowers
+  subagent-driven / superpowers executing-plans / specode 自执行.
+- **First-run specsRoot setup.** On first use specode asks once for your
+  document directory and uses it **verbatim** as the specs root, then
+  persists it to `~/.config/specode/config.json.specsRoot` and never
+  asks again.
+- **One lightweight hook.** A single advisory `SessionStart` hook reminds
+  the agent specode is available. No blocking, no per-turn machinery.
+- **Parallel execution is a separate plugin.** Pick "委托 task-swarm" and
+  specode reads `design.md`, derives a `pipeline.yml`, and hands off to
+  the standalone **task-swarm** plugin (zero import).
 
 ## Installation
 
@@ -80,6 +71,11 @@ codebuddy plugin install specode@specode
 claude plugin marketplace add https://github.com/qxbyte/specode
 claude plugin install specode@specode
 ```
+
+For the full superpowers-backed experience, also install the
+**superpowers** plugin; for multi-agent parallel execution, also install
+**task-swarm** (in this same marketplace). specode runs fine without
+either via its native fallbacks.
 
 ### One-shot (Claude Code only)
 
@@ -100,8 +96,8 @@ codebuddy --plugin-dir ./specode/plugins/specode
 ```sh
 claude plugin uninstall specode@specode
 claude plugin marketplace remove specode
-# optional: wipe user-level state
-rm -rf ~/.specode ~/.config/specode
+# optional: wipe user-level config
+rm -rf ~/.config/specode
 ```
 
 ### Update
@@ -118,111 +114,84 @@ codebuddy plugin marketplace update specode
 
 ## Usage
 
-### 1. Configure your document root (first run)
+specode has exactly three commands.
 
-specode stores spec docs under `<doc_root>/specs/<slug>/`. Bind a
-root once and it's remembered:
-
-```sh
-/specode:spec --set-vault <path>     # use an Obsidian vault
-/specode:spec --set-root <path>      # any folder works (equivalent)
-/specode:spec --detect-vault         # list detected Obsidian vaults
-/specode:spec --vault-status         # show current root + resolution source
-```
-
-If unset, specode auto-detects an Obsidian vault, otherwise asks at
-spec creation.
-
-### 2. Start a spec
+### 1. Start a spec
 
 ```sh
-/specode:spec -n <slug> <requirement>     # recommended: explicit slug
-/specode:spec <requirement>               # or let the agent derive one
-/specode:spec <name>: <requirement>       # or set display name + requirement
+/spec <requirement>
 ```
 
-`-n` keeps the slug verbatim (Unicode allowed — Chinese, Japanese,
-emoji), only forbidding filesystem-dangerous characters. The
-slug-less form lets the agent infer one, which is convenient but
-less predictable.
+`cd` to your project directory first — specode uses the current
+terminal cwd as the project root (no prompt). On the **first ever**
+run it asks once for your document management directory and remembers
+it. The agent then walks the pipeline:
 
-After creation, the agent walks you through two consecutive
-selectors:
+1. **requirements** — clarify + write `requirements.md` (via
+   `superpowers:brainstorming`, or a native `AskUserQuestion` wizard).
+2. **design** — produce an executable plan `design.md` (via
+   `superpowers:writing-plans`, or native Task breakdown).
+3. **执行方式 selector** — pick how to execute (adaptive 4 options; see
+   Highlights).
+4. **execute** — run the plan with TDD, appending to
+   `implementation-log.md`.
+5. **verify** — check against the design's test points and the
+   `requirements.md` `AC-N` items, then ask you to accept.
 
-1. **project-root-choice** — where generated code should live (decoupled
-   from the doc directory).
-2. **workflow-choice** — start from `requirements.md`, jump to
-   `bugfix.md` for a fix flow, etc.
+All output lands under `<specsRoot>/<slug>/` as the 3 fixed documents.
 
-From here, every model turn ends with the status footer and (at
-phase gates) a selector for the next step.
-
-### 3. Manage sessions
+### 2. Resume a spec
 
 ```sh
-/specode:continue [slug]    # resume — current session or a named spec
-/specode:status             # show mode / phase / lock / pending selector
-/specode:end                # end the session (docs preserved)
+/spec continue <slug>
 ```
 
-State is keyed by host `session_id`, so each terminal window keeps
-its own thread.
+`<slug>` is required. specode locates `<specsRoot>/<slug>/` and infers
+the phase from the documents present (and the `- [ ]` progress in
+`design.md`), then continues from there. Use `/spec list` to find a
+slug.
 
-### 4. Run tasks (sequential, or hand off to task-swarm)
-
-Once `tasks.md` is approved, the `tasks-execution` selector offers
-three paths: sequential single-agent execution, a pause/adjust loop,
-or handing the `tasks.md` to the standalone **task-swarm** plugin for
-multi-agent parallel execution. task-swarm used to ship inside
-specode; it has since been extracted into its own plugin. specode
-still emits `tasks.md` in the task-swarm-compatible format, so the
-handoff is just pointing the other plugin at the approved file.
-
-### 5. Inspect session logs
-
-specode writes per-session event streams to
-`~/.specode/logs/<session_id>.jsonl` (hooks, agent tool calls,
-phase / lock transitions). Use them when debugging
-"why did the agent skip a phase":
+### 3. List specs
 
 ```sh
-sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
-   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" replay --session <id>
+/spec list
 ```
 
-Secrets are redacted by default (`password / api_key / token / …`)
-and strings truncate at 500 chars. Extend
-`~/.config/specode/config.json.redact_keys` to add more.
-
-### 6. Global bypass (debug only)
-
-```sh
-SPECODE_GUARD=off   # short-circuit all hooks to exit 0
-SPECODE_LOG=off     # disable session logging
-```
+Lists every spec under `<specsRoot>` with its inferred phase. Overview
+only — it does not resume.
 
 ## Architecture
 
 ```
-.claude-plugin/marketplace.json   single-plugin marketplace manifest
+.claude-plugin/marketplace.json   marketplace manifest (specode + task-swarm)
 plugins/specode/
-  .claude-plugin/plugin.json      plugin manifest
-  hooks/hooks.json                7 advisory hook handlers
-  commands/                       /specode:spec, :continue, :end,
-                                  :status
-  scripts/                        spec_vault / spec_init /
-                                  spec_session / spec_lint /
-                                  spec_status / spec_log
-  skills/specode/                 SKILL.md + references/
-  assets/templates/               seed templates
-  tests/                          pytest suite
+  .claude-plugin/plugin.json      plugin manifest (version 1.0.0)
+  hooks/hooks.json                1 advisory SessionStart hook
+  commands/spec.md                /spec, /spec continue, /spec list
+  scripts/
+    resolve_root.py               specsRoot resolution + persistence + list
+    spec_hooks.py                 SessionStart discipline injection
+    run.sh / run.cmd              python3 → python → py interpreter probe
+  skills/specode/
+    SKILL.md                      the orchestration shell (all behavior)
+    references/
+      selectors.md                执行方式 selector verbatim examples
+      obsidian.md                 specsRoot path resolution + conventions
+      superpowers-wiring.md       phase ↔ superpowers skill mapping
+  assets/templates/               requirements.md / design.md /
+                                  implementation-log.md seed templates
+  tests/                          hermetic pytest suite (resolve_root.py)
 ```
+
+The companion **task-swarm** plugin (`plugins/task-swarm/`) is a
+standalone multi-agent orchestrator that specode optionally hands off
+to; see its own README and `CLAUDE.md`.
 
 ## Contributing
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for the stdlib-only
-runtime rule, hook safety contract (advisory only, never `exit 2`),
-and test conventions.
+runtime rule, the `run.sh` CLI invocation contract, the advisory-hook
+rule, hermetic test conventions, and the release procedure.
 
 ## License
 

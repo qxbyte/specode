@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A two-plugin marketplace for Claude Code and CodeBuddy CLIs:
 
-- **specode** (`plugins/specode/`) — a specification-driven workflow plugin. It walks a host agent through a fixed phase pipeline (requirements → design → tasks → implementation → acceptance) using five Markdown documents as the single source of truth, with advisory hooks and `AskUserQuestion` selectors at phase gates. **This is the plugin this `CLAUDE.md` documents** unless stated otherwise.
-- **task-swarm** (`plugins/task-swarm/`) — a standalone implementation-phase orchestrator (multi-coder fork + reviewer/validator state machine) extracted out of specode in milestone M1. It has its own CLI, state machine, agents, and concerns; it should eventually get its own `CLAUDE.md`. specode currently hands off to it only manually (see the `tasks-execution` selector and the "task-swarm" pointer under Architecture below) — automatic delegation is a later milestone.
+- **specode** (`plugins/specode/`) — a **lightweight spec-driven workflow plugin**. As of 1.0.0 it is no longer a state machine: it is a thin **orchestration shell** (壳) that walks a host agent through a phase pipeline (requirements → design → 执行方式 → 执行 → 验收) and, at each phase, **delegates the heavy lifting to superpowers skills** (`brainstorming` / `writing-plans` / `subagent-driven-development` / `executing-plans` / `verification-before-completion`). When superpowers is absent, specode falls back to a **specode-native** path (first-class, not an afterthought). It produces **3 fixed documents** (`requirements.md` / `design.md` / `implementation-log.md`) under the user's specs directory. **This is the plugin this `CLAUDE.md` documents** unless stated otherwise.
+- **task-swarm** (`plugins/task-swarm/`) — a standalone implementation-phase orchestrator (multi-coder fork + reviewer/validator state machine), extracted out of specode in milestone M1. It has its own CLI, state machine, agents, and `CLAUDE.md`. specode hands off to it only via the user-chosen "委托 task-swarm" option in the 执行方式 selector, with **zero import** (calls task-swarm's own `/task-swarm` command).
 
-Most implementation referenced here lives under `plugins/specode/`. The repo root only contains the marketplace manifest (`.claude-plugin/marketplace.json`, which now lists **both** plugins), the README, the CHANGELOG, and CONTRIBUTING. Plugin internals are listed in README §Architecture — do not re-derive the file tree, read the README.
+Most implementation referenced here lives under `plugins/specode/`. The repo root only contains the marketplace manifest (`.claude-plugin/marketplace.json`, which lists **both** plugins), the README, the CHANGELOG, and CONTRIBUTING. Plugin internals are listed in README §Architecture — do not re-derive the file tree, read the README.
 
 ## Commands
 
@@ -17,18 +17,15 @@ Most implementation referenced here lives under `plugins/specode/`. The repo roo
 # Run the test suite (must be from repo root; tests are hermetic and redirect $HOME)
 python3 -m pytest plugins/specode/tests/ -v
 
-# Single test file
-python3 -m pytest plugins/specode/tests/test_spec_session_business.py -v
-
-# Single test
-python3 -m pytest plugins/specode/tests/test_spec_session_hooks.py::test_on_user_prompt_injects_status_footer -v
+# Single test file (the lite suite currently covers only resolve_root.py)
+python3 -m pytest plugins/specode/tests/test_resolve_root.py -v
 
 # Local plugin install (development)
 claude    --plugin-dir ./plugins/specode
 codebuddy --plugin-dir ./plugins/specode
 ```
 
-There is no lint or typecheck step configured at the repo level. Lint logic the plugin itself ships (`spec_lint.py`) is for the user's spec docs, not this codebase.
+There is no lint or typecheck step configured at the repo level.
 
 ## Non-negotiable conventions
 
@@ -46,106 +43,87 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
    <verb> <args...>
 ```
 
-`run.sh` probes `python3 → python → py` (with Windows Store alias-stub skipping) so the script works on any host with Python 3.8+. Bare `python3 <name>.py` calls fail in most cwds — when adding a new entry point, match the wrapper template used everywhere in `hooks/hooks.json` and `commands/*.md`.
-
-### Hook safety contract
-Hooks in `spec_session.py` are advisory. Every handler MUST:
-1. Be wrapped in `@_safe_hook` (catches all exceptions, returns 0).
-2. **Never `exit 2`** — push guidance via `additionalContext` JSON to stdout and still `exit 0`. The one exception is `hook_on_pre_tool_use`'s `AskUserQuestion` selector-hallucination guard (verbatim-validates `questions` / `options[*].label` against `SELECTOR_PROMPTS`; an invented selector triggers `sys.exit(2)` — see `_hooks.py`); do not add other exit-2 paths without explicit need.
-3. Honour `SPECODE_GUARD=off` for global bypass (early-return with no output and no state writes).
-4. Tolerate non-TTY stdin (`_read_stdin_payload()` handles this).
-
-Performance budgets (CONTRIBUTING §Performance budget): `UserPromptSubmit` <80ms (fires every user turn), `PreToolUse`/`PostToolUse` <100ms, `Stop` <300ms, `SessionStart`/`SessionEnd` <500ms.
-
-### On-disk schema evolution
-Two schemas the plugin owns:
-- `~/.specode/sessions/<session_id>.json` — per-host-session state
-- `<spec-dir>/.config.json` — per-spec config + lock holder
-
-Rules:
-- New writes use neutral names (`session_id`, not `claude_session_id`; `holder`, not host-specific names).
-- Read sites MUST fall back through historical names. Auto-migrate on read so the next write lands the new key transparently — see `read_session()` and `StateMachine.load()` for the existing pattern, and `test_read_session_migrates_legacy_claude_session_id` / `test_load_migrates_legacy_claude_session_id` as test templates.
-- Bump minor for renames with a read-side fallback; bump major if a rename breaks reads.
-- All state writes use `tempfile + os.replace + fsync` (see `_atomic_write_json` in `spec_session/_io.py`). If one side of the dual write (sessions file + spec config) fails, roll back and exit 1 — never leave in-memory half-success.
-
-### Test conventions
-- Scripts are CLIs, not importable modules. Tests invoke them via `subprocess.run` through the `run_script` fixture in `tests/conftest.py`.
-- Use the `fake_home` fixture to redirect `$HOME`, `XDG_CONFIG_HOME`, `APPDATA`, `LOCALAPPDATA`, and clear `SPECODE_ROOT` / `SPECODE_GUARD`. Tests MUST be hermetic — never touch the real `~/.specode/`.
-- Use `init_spec` fixture to scaffold a spec directory the way `spec_init.py` would.
-- Every persisted-schema change needs a "legacy file migration" regression test.
+`run.sh` probes `python3 → python → py` (with Windows Store alias-stub skipping) so the script works on any host with Python 3.8+. Bare `python3 <name>.py` calls fail in most cwds — when adding a new entry point, match the wrapper template used in `hooks/hooks.json` and `commands/spec.md`.
 
 ### Templates describe structure, not behavior
 `assets/templates/*.md` are the *output* of the workflow — the host agent reads them only *after* deciding what to write. So **never put behavioral constraints (rules, "必须", gating checks) into templates**: they get stamped into every spec on disk, dilute the signal, and have zero authority over the agent's pre-write decisions.
 
 Behavioral constraints belong in places the agent reads *before* it generates content:
-- `skills/specode/SKILL.md` (always-loaded persona/rules)
-- `commands/*.md` (loaded when the user invokes the command)
-- `spec_session/_selectors.py SELECTOR_PROMPTS` (injected at phase gates)
-- Hook `additionalContext` injections (`spec_session/_hooks.py`, `_catalog.py`)
+- `skills/specode/SKILL.md` (always-loaded persona/orchestration rules)
+- `commands/spec.md` (loaded when the user invokes `/spec`)
+- `skills/specode/references/*.md` (selector verbatim examples, path resolution, superpowers wiring)
+- The `SessionStart` hook's `additionalContext` injection (`scripts/spec_hooks.py`)
 
-`spec_init.py:FALLBACK_TEMPLATES` is the in-code emergency skeleton if `assets/templates/*.md` fails to load — keep it minimal (titles, metadata block, lint-required anchors like `### 需求 1`), not a full v3 mirror. See 0.10.23 / 0.10.24 CHANGELOG for the principle in context.
+### Test conventions
+- Scripts are CLIs, not importable modules. Tests invoke them via `subprocess.run` through the `run_script` fixture in `tests/conftest.py`.
+- Use the `fake_home` fixture to redirect `$HOME`, `XDG_CONFIG_HOME`, and clear `SPECODE_ROOT`. Tests MUST be hermetic — never touch the real `~/.specode/` or `~/.config/specode/`.
 
 ## Architecture — the parts that span multiple files
 
-### scripts/ layout
-The one heavyweight CLI in specode (`spec_session.py`) is a subdirectory package with a thin same-name launcher at the `scripts/` root. Python's FileFinder gives package precedence over module within a path entry, and the launcher is exec'd (not imported), so `spec_session.py` (launcher) and `spec_session/` (package) coexist safely. The launcher injects `scripts/` into `sys.path` and calls `<pkg>.cli.main()`. (task-swarm used to ship a parallel `task_swarm.py` launcher + `task_swarm/` package here; both moved to the standalone `plugins/task-swarm/` plugin in M1 — see the "task-swarm" pointer below.)
+### The orchestration shell (壳)
+specode 1.0.0 has almost no runtime logic. The behavior lives in **`skills/specode/SKILL.md`** (always-loaded), which drives the host agent through the phase pipeline. At each phase the agent **first tries to invoke the matching superpowers skill via the `Skill` tool**; if it's unavailable, it runs the **specode-native** fallback inline. The phase ↔ skill map:
 
+| phase | superpowers skill (if installed) | specode-native fallback |
+|---|---|---|
+| requirements (澄清 + 需求) | `superpowers:brainstorming` | AskUserQuestion 澄清 wizard + 按模板写 |
+| design (可执行计划) | `superpowers:writing-plans` | 按 design 模板拆 `## Task N` + `验证: AC-N` + `- [ ]` TDD 步骤 |
+| 执行 | `superpowers:subagent-driven-development` / `executing-plans` (or 委托 task-swarm) | 主代理按 design Task 顺序 TDD（红→绿） |
+| 验收 | `superpowers:verification-before-completion` (+ optional `requesting-code-review`) | 对照 design 测试要点 / `AC-N` 逐条核验 |
+
+Both superpowers and task-swarm are **soft dependencies** (run-time only, called via SKILL prose, zero import). specode installed alone must run the whole 启动→coding 完成 loop via the native fallbacks — the fallback path is a first-class peer of the superpowers path, not a footnote.
+
+### The 3 fixed documents (硬约束)
+Whatever the execution engine, a spec **always** produces exactly these 3, with **fixed filenames**, **fixed location** `<specsRoot>/<slug>/`:
+
+| doc | filename | content |
+|---|---|---|
+| 需求 | `requirements.md` | 散文 spec：背景 / 范围(in/out) / 验收 `- [ ] AC-N` / 开放问题。Plain prose, no formalized requirement clauses. Bug fixes use Current/Expected prose here — there is no separate `bugfix.md`. |
+| 设计 | `design.md` | superpowers writing-plans 可执行计划格式：`Goal` / `Architecture` / `Tech Stack` + `## Task N`（each with `**Files:**`, `验证: AC-N` back-reference, `- [ ]` TDD steps）. |
+| 执行日志 | `implementation-log.md` | 执行期追加：设计偏离 / 关键决策 / 最终验收小结。 |
+
+The engine only decides *who generates the content*, never the form/name/location. When delegating to superpowers (whose `brainstorming`/`writing-plans` have their own default output paths), the agent does **后置落盘归位**: after the skill returns, verify `<specsRoot>/<slug>/<fixed-name>` exists; if not, `mv`/rename the skill's actual output into place. This double-保险 keeps the invariant true regardless of whether the skill obeyed the up-front path instruction.
+
+### scripts/ layout (only two scripts)
 | `scripts/` member | Role |
 |---|---|
-| `spec_session.py` | Thin launcher (~40 lines: utf-8 stdout reconfigure + sys.path + `from spec_session.cli import main`). Filename preserved because `hooks.json`, every `commands/*.md`, and `tests/conftest.py:run_script` reference it by name. |
-| `spec_session/` package | `__init__.py` (re-exports `read_session` / `read_spec_config` / `_session_short` / `_is_lock_stale` for `spec_status.py:25`), `cli.py` (argparse + `COMMANDS` dispatch + main), `_io.py`, `_selectors.py`, `_reminders.py`, `_business.py`, `_hooks.py`, `_catalog.py` |
-| `spec_init.py` / `spec_lint.py` / `spec_log.py` / `spec_status.py` / `spec_vault.py` | Single-file CLIs at the top level. `spec_log.py` is also shared (defensively imported by several `spec_session/` modules for session logging). |
+| `resolve_root.py` | The only business CLI. specsRoot resolution + persistence + spec listing. stdlib-only. Invoked from `commands/spec.md` via `run.sh`. |
+| `spec_hooks.py` | The only hook handler: `SessionStart` injects an advisory discipline reminder via `additionalContext` and exits 0. Tolerates non-TTY/empty stdin, swallows all exceptions (advisory, never blocks). |
 | `run.sh` / `run.cmd` | Python interpreter probes (`python3 → python → py`) — Windows alias-stub handling lives here. |
 
-**Do not rename** `spec_session.py` (that filename is the API surface). **Do not delete** `spec_session/__init__.py` re-exports (spec_status.py depends on them). Inside the package, intra-package imports are absolute (`from spec_session._io import …`) for clear error messages.
+There is no heavy state-machine package, no launcher indirection, no shared logging module — those were all removed in 1.0.0.
 
-### `_THIS_DIR` convention inside the package
-Modules under `spec_session/` that need to find sibling top-level scripts or the plugin manifest (e.g. `_catalog.py` locating `skills/specode/references/`, `_reminders.py` reading `.claude-plugin/plugin.json`) define `_THIS_DIR = Path(__file__).resolve().parents[1]` — that resolves to `scripts/`, keeping `_THIS_DIR.parent / ".claude-plugin"` semantically identical to the pre-split layout. Don't use `parents[0]` (it points inside the package).
+### specsRoot resolution + first-time setup (`resolve_root.py`)
+Resolution order (no cwd / `~/specs` fallback):
+1. `--root` flag or `SPECODE_ROOT` env (highest, temporary override)
+2. `~/.config/specode/config.json.specsRoot` (the normal source — read on every activation)
+3. None → **first-time setup**: `get-root` exits 3; `commands/spec.md` then calls `AskUserQuestion` for the user's document directory and calls `set-root --root <abs>` to persist it. The user-provided directory is used **verbatim as the specs root** — specode makes no structural assumptions and does no path concatenation.
 
-### Hook → CLI → state-file flow
-1. Host CLI fires a hook event (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `SessionEnd`) per `hooks/hooks.json`.
-2. The hook command shells into `run.sh` → `spec_session.py <hook-subcommand>` (the launcher), which imports `spec_session.cli.main` and dispatches the hook subcommand handler.
-3. Handlers (wrapped in `@_safe_hook` from `spec_session/_hooks.py`) read `~/.specode/sessions/<session_id>.json` and the active spec's `.config.json`, then emit `additionalContext` JSON to stdout to inject guidance (status footer, selector reminder, doc-sync nag, B2 catalog hits) into the next agent turn.
-4. The host agent, following `skills/specode/SKILL.md`, responds to the injection by calling `AskUserQuestion` for selectors or by invoking a `spec_session.py` business subcommand (`acquire` / `phase-transition` / etc.) which atomically updates both state files.
+verbs: `get-root [--root P]` (exit 0/3), `set-root --root <abs>` (exit 0/1), `list-specs [--root P]` (lists subdirs containing `requirements.md`, one slug per line). Config writes use `tempfile + os.replace + fsync` (`_atomic_write_json`).
 
-### Session as the integration boundary
-Everything is keyed by the host's `session_id` (injected by `SessionStart`, re-injected every `UserPromptSubmit`). Multiple terminal windows = multiple session files = multiple parallel specs. Lock holder is the `session_id`; stale-lock window is 30 minutes (`STALE_LOCK_SECONDS` in `spec_session/_io.py`). The agent MUST NOT invent a session_id, MUST NOT parse one from user input, MUST NOT echo full IDs in chat (8-char prefix only).
+There is **no** persistent state file. "Am I in an active spec, and which phase?" is inferred entirely from (a) the current conversation context (which slug this turn is driving) + (b) which fixed docs exist in `<specsRoot>/<slug>/` + (c) `- [ ]` checkbox progress in `design.md`. This is the **文档即状态** principle — see SKILL.md §续接 for the inference table.
 
-### Document root resolution
-Three-tier with no fallback (`spec_vault.py`):
-1. `--root` flag or `SPECODE_ROOT` env (highest)
-2. `~/.config/specode/config.json.obsidianRoot`
-3. Auto-detected Obsidian vault → `<vault>/spec-in/<os>-<user>/specs`
+### Hook → behavior flow
+The host CLI fires exactly one hook: `SessionStart` → `run.sh` → `spec_hooks.py session-start`, which emits an advisory `additionalContext` reminder that specode is available and how to activate it (`/spec`, `/spec continue <slug>`, `/spec list`). No selector guard, no per-turn footer, no logging, no doc-sync nag — all removed in 1.0.0. The hook is advisory only: it never `exit 2`s and any exception is swallowed.
 
-If all three miss, `spec_init.py` exits 3 with a setup hint. Do NOT add a cwd or `~/specs` fallback. The `--detect-vault` / `--vault-status` / `--set-vault` / `--set-root` / `--sync-status` flags are routed in `commands/spec.md`; some of them are "fast-path" hooks where the hook pre-renders the output and the agent only prints it verbatim (see `FAST_PATH_HELP` / `FAST_PATH_VAULT` constants in `spec_session/_hooks.py`).
+### The 执行方式 selector (the only per-spec selector)
+After `design.md` is confirmed, the agent calls `AskUserQuestion` with an **adaptive 4-option** selector (each option shown only if its engine is installed): 委托 task-swarm / superpowers subagent-driven / superpowers executing-plans / specode 自执行. It is driven by SKILL prose + verbatim examples in `references/selectors.md` — there is **no constant library, no snapshot/drift test, no PreToolUse hard-validation**. The "逐字按范例" rule (don't invent or shorten the options) is enforced only by SKILL.md, which is acceptable for the single-user scenario this rewrite targets.
 
-### Phase pipeline + selectors
-Valid phases (`VALID_PHASES` in `spec_session/_io.py`): `intake → requirements/bugfix → design → tasks → implementation → acceptance → iteration`. Transitions go through `spec_session.py phase-transition`, which also sets `pending_selector` so the next hook turn knows which `AskUserQuestion` skeleton to remind about. The 7 fixed selector scenarios are defined in `SELECTOR_PROMPTS` (in `spec_session/_selectors.py`) and documented in `skills/specode/references/selectors.md`; `tests/test_selector_prompts.py` snapshots them, and `tests/test_selectors_drift.py` parses the file by regex (keep the `SELECTOR_PROMPTS: dict[str, str] = {...}` literal grep-able).
-
-### Reference catalog (description-as-trigger)
-Every `skills/specode/references/*.md` file carries a YAML frontmatter `description: Use when …` that captures *when* a reader should pick it up (superpowers style — trigger-first, not summary-first). The `on-user-prompt-catalog` hook (`spec_session/_catalog.py`) maintains a `CATALOG` dict of keyword regex → reference key (e.g. `lock|takeover|接管` → `lock-protocol`, `iteration|迭代|变更` → `iteration`); each `UserPromptSubmit` it scans the prompt, lists hit references with their descriptions, and emits an advisory injection. Active-only (silent for `idle`/`readonly`/`ended`). `tests/test_catalog.py` enforces: every `CATALOG` key has a real reference file, every targeted reference has a non-empty `description` field. When adding a new reference or extending keyword coverage, update both the frontmatter and `CATALOG`.
-
-### task-swarm orchestration (now a separate plugin)
-The implementation-phase orchestrator (multi-coder fork + reviewer/validator state machine) is **no longer part of specode**. It was extracted in M1 into the standalone `plugins/task-swarm/` plugin, which owns its own CLI, state machine (`<spec-dir>/.task-swarm/runs/<run_id>/state.json`), subagent role definitions, and references — document those internals in task-swarm's own `CLAUDE.md`, not here.
-
-specode's coupling to it today is a user-initiated hand-off at the `delegated` phase. M4 merged the old `tasks` + `implementation` phases into a single `delegated` phase: **specode no longer produces `tasks.md`**. After `design.md` is confirmed, the `delegation` selector (in `spec_session/_selectors.py`) lets the user choose either (a) delegate to the standalone task-swarm plugin — the host agent reads `design.md` and generates a task-swarm `pipeline.yml` (shown to the user first), then drives task-swarm's plan→fork→advance→writeback→resolve loop; or (b) specode self-executes sequentially straight from `design.md`. Task breakdown and test/acceptance traceability now live entirely in `design.md` (its 「测试策略」/「正确性属性 → 验证：需求 x.y」 sections); there is no intermediate `tasks.md` document. Automatic delegation (specode driving task-swarm with zero user prompt) is a later milestone.
-
-### Session logging
-`spec_log.py` writes append-only JSONL events to `~/.specode/logs/<session_id>.jsonl` (hook fires, tool calls, CLI invocations, phase/lock changes). Default redaction of secret-like keys (`password`, `api_key`, `token`, `secret`, `authorization`, `cookie`) and 500-char string truncation. Disable with `SPECODE_LOG=off` or `~/.config/specode/config.json.logging=false`. Any logging exception is swallowed — logging never blocks business flow. When adding a new hook or CLI subcommand, call `_log_event("event_name", payload, session_id)` at the entry point to keep replay useful.
+### task-swarm hand-off (zero hard dependency)
+specode does not import task-swarm and does not know its install path. When the user picks "委托 task-swarm", the agent reads `design.md`'s Task list + each Task's `**Files:**`, mechanically derives a `pipeline.yml` (shown to the user first), then drives task-swarm via its own `/task-swarm` command (whose `$CLAUDE_PLUGIN_ROOT` self-resolves). If task-swarm is absent, it degrades to specode 自执行 or a superpowers execution path. `pipeline.yml` is a transient artifact only — not one of the 3 fixed products.
 
 ## Release procedure (summary)
 
 Detailed steps are in CONTRIBUTING.md §Release. The two manifests carrying `version` MUST match or the plugin tag tooling refuses:
 - `plugins/specode/.claude-plugin/plugin.json` → `"version"`
-- `.claude-plugin/marketplace.json` → `plugins[0].version`
+- `.claude-plugin/marketplace.json` → the **specode** entry's `version` (do not touch the task-swarm entry)
 
-Workflow: bump both manifests → rename `## Unreleased` in CHANGELOG to `## X.Y.Z (YYYY-MM-DD)` + add a fresh `## Unreleased` above → run tests → commit + push → `claude plugin tag --dry-run plugins/specode` → `claude plugin tag plugins/specode --push`. Tag format is `specode--v{version}` (annotated). **Pushing the tag IS the release** — there is no tarball or registry artifact; host CLIs fetch the marketplace manifest from GitHub by git tag.
+Workflow: bump both manifests → rename `## Unreleased` in CHANGELOG to `## X.Y.Z (YYYY-MM-DD)` + add a fresh `## Unreleased` above → run tests → commit + push → `claude plugin tag --dry-run plugins/specode` → `claude plugin tag plugins/specode --push`. Tag format is `specode--v{version}` (annotated). **Pushing the tag IS the release** — host CLIs fetch the marketplace manifest from GitHub by git tag.
 
-Semver "API surface" for this plugin = slash command set, agent names, hook event names, and persisted-state schema fields. Field renames with a read-side fallback are minor; without fallback are major.
+Semver "API surface" for this plugin (1.0.0+) = the `/spec` subcommand set (`/spec <需求>` / `/spec continue <slug>` / `/spec list`), the `SessionStart` hook event, the persisted `config.json.specsRoot` field, and the 3 fixed document filenames. Removing/renaming any of these is **major**; adding a backwards-compatible capability is **minor**.
 
 ## Where to look for what
 
-- **README.md** — what the plugin does, install/usage, architecture map.
-- **CONTRIBUTING.md** — the full version of the conventions summarised above (stdlib rule, CLI wrapper contract, hook safety, schema evolution, performance budgets, release).
-- **CHANGELOG.md** — narrative history; useful when a behavior seems weird because it documents past bugs and the reasoning behind subtle fixes (e.g. 0.10.23–0.10.24 template-vs-constraint separation, and the M1 entry recording task-swarm's extraction into its own plugin). Older task-swarm-specific fixes (0.10.21 writeback line-safe, 0.10.13 / 0.10.17 STATUS recovery) are now history of the standalone task-swarm plugin.
-- **plugins/specode/skills/specode/SKILL.md** + **references/** — the runtime behavior spec the *host agent* follows. When modifying selectors, phase order, or the lock protocol, the SKILL.md and the corresponding `references/<topic>.md` need to stay in sync with the CLI behavior; selector drift is enforced by `tests/test_selectors_drift.py`.
+- **README.md** — what the plugin does, install/usage, the lite architecture map.
+- **CONTRIBUTING.md** — the full version of the conventions above (stdlib rule, CLI wrapper contract, hook advisory rule, hermetic test conventions, release).
+- **CHANGELOG.md** — narrative history; the 1.0.0 entry records the lightweight refactor (what was deleted, the orchestration-shell model, no-read-side-fallback migration). Older entries document the pre-1.0.0 heavy state machine and task-swarm's M1 extraction.
+- **plugins/specode/skills/specode/SKILL.md** + **references/** — the runtime behavior spec the *host agent* follows (phase orchestration, native fallbacks, 执行方式 selector, specsRoot setup, task-swarm bridge). When changing phase order, the selector, or the fixed-product invariant, keep SKILL.md and the matching `references/<topic>.md` in sync.

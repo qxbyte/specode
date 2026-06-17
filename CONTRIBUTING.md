@@ -34,12 +34,11 @@ Why:
 - Both `CLAUDE_PLUGIN_ROOT` and `CODEBUDDY_PLUGIN_ROOT` are
   platform-injected env vars; the `:-` fallback covers both Claude
   Code and CodeBuddy without forcing the user to pick one.
-- Bare `python3 spec_session.py …` calls fail in most cwds because
+- Bare `python3 resolve_root.py …` calls fail in most cwds because
   the scripts are not on PATH and the agent doesn't know where it
-  is. This was observed as a real failure mode pre-0.8.0; see
-  `SKILL.md §CLI 调用规约（强制）` for the hard rule.
+  is. See `SKILL.md` (Iron Rules) for the hard rule.
 
-`hooks/hooks.json` and the `commands/*.md` "立即调用" sections all
+`hooks/hooks.json` and the `commands/spec.md` invocation sections all
 use this template — match them when adding new entry points.
 
 ## Test conventions
@@ -50,102 +49,45 @@ Run the suite from the repo root:
 python3 -m pytest plugins/specode/tests/ -v
 ```
 
-The test suite covers: 3-tier vault resolution, spec scaffolding with
-rollback, business lock state machine, all hooks across the mode
-matrix, `SELECTOR_PROMPTS` snapshot, lint rules (3 surviving rules
-after the 0.9.0 cleanup), legacy-field migration for `session_id`,
-and an end-to-end SessionStart → /specode:spec → /specode:end →
-SessionEnd event chain. (Multi-agent orchestration was migrated to the
-standalone task-swarm plugin.)
+The lite suite currently covers `resolve_root.py`: 3-tier specsRoot
+resolution priority, `set-root` persistence + absolute-path rejection,
+and `list-specs` behavior. There is **no** state machine, lock,
+selector-drift, or template-lint test anymore — those mechanisms were
+removed in 1.0.0.
 
 When adding behavior, prefer:
 
-- Unit tests that call the CLI script through `subprocess.run` (the
-  scripts are CLIs, not importable modules).
-- Use `tmp_path` + `monkeypatch.setenv('HOME', tmp_path)` to keep
-  tests isolated from real `~/.specode/`.
-- For hook tests, feed stdin payloads matching the host CLI hook
-  schema and assert against the JSON `additionalContext`.
-- For any persisted schema change (sessions / state.json / lock
-  fields), add a "legacy file migration" regression test pinning
-  read-side backwards compatibility — see
-  `test_read_session_migrates_legacy_claude_session_id` and
-  `test_load_migrates_legacy_claude_session_id` as templates.
+- Unit tests that call the CLI script through `subprocess.run` via the
+  `run_script` fixture (the scripts are CLIs, not importable modules).
+- Use the `fake_home` fixture to redirect `$HOME` / `XDG_CONFIG_HOME`
+  and clear `SPECODE_ROOT`, keeping tests isolated from the real
+  `~/.config/specode/`.
+- For hook tests, feed stdin payloads matching the host CLI hook schema
+  and assert against the JSON `additionalContext`.
 
 ## Hook safety contract
 
-Every hook handler in `spec_session.py` MUST:
+The single hook handler in `spec_hooks.py` (`SessionStart`) MUST:
 
-1. Catch all exceptions internally and return 0 (the `@_safe_hook`
-   decorator does this).
-2. **Never `exit 2`.** All hooks are advisory only. If you need to
-   influence the model, inject `additionalContext` JSON to stdout
-   and still `exit 0`.
-3. Honour `SPECODE_GUARD=off` for global bypass — return early with
-   no output and no state writes.
-4. Detect non-TTY stdin (hook payload arrives via pipe). On TTY, the
-   script must not block; `_read_stdin_payload()` already handles
-   this.
+1. Catch all exceptions internally and return 0.
+2. **Never `exit 2`.** It is advisory only. If you need to influence
+   the model, inject `additionalContext` JSON to stdout and still
+   `exit 0`.
+3. Tolerate non-TTY / empty stdin (hook payload arrives via pipe). The
+   script must not block when stdin is a TTY.
 
-## On-disk schema fields
+## Persisted config
 
-Two schemas the plugin owns:
+The plugin owns one persisted file:
 
-- `~/.specode/sessions/<session_id>.json` — per-host-session state
-- `<spec-dir>/.config.json` — per-spec config + lock field
+- `~/.config/specode/config.json` — currently holds only `specsRoot`
+  (the user's document directory, used verbatim as the specs root).
 
-Conventions:
-
-- New writes use neutral field names (`session_id`, not
-  `claude_session_id`; `holder`, not `claude_session_id` for lock
-  holders). Avoid host-specific naming in persisted schema.
-- Read sites MUST fall back through any historical names before
-  giving up — for `session_id` the order is `session_id` →
-  `claude_session_id`; for lock holder it's `holder` →
-  `session_id` → `claude_session_id`. `read_session()` and
-  `StateMachine.load()` auto-migrate on read so the next write
-  lands the new key without manual user action.
-- Bump **minor** for schema field renames that ship a read-side
-  fallback (existing files keep working). Bump **major** if a
-  rename breaks reads.
-
-## Debugging with session logs (0.10.0+)
-
-specode 默认收集每个 session 的日志到 `~/.specode/logs/<session_id>.jsonl`，
-含 hook 触发、主代理工具调用、CLI 调用、phase / lock 变化。
-
-```sh
-# 回放一个 session 的事件流（按时序）
-sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
-   "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/spec_log.py" \
-   replay --session <session_id>
-
-# 查看 logs/ 占用
-sh "$CLAUDE_PLUGIN_ROOT/scripts/run.sh" \
-   "$CLAUDE_PLUGIN_ROOT/scripts/spec_log.py" status
-
-# 临时关日志
-export SPECODE_LOG=off
-
-# 永久关：编辑 ~/.config/specode/config.json 加 "logging": false
-```
-
-排查"主代理为什么走偏"类问题时，用 replay 看 hook 时序 + 工具调用顺序，
-通常能定位到「该呈现 selector 没呈现」「fork spec-writer 漏了」「Status
-字段被越权改」之类的违规点。新增 hook / CLI 子命令时记得在入口加
-`_log_event("event_name", payload, session_id)`，便于日后调试。
-
-## Performance budget (guideline)
-
-| Hook | Budget |
-|---|---|
-| `SessionStart` / `SessionEnd` | <500 ms |
-| `UserPromptSubmit` | <80 ms (fires every user turn — keep it cheap) |
-| `PreToolUse` / `PostToolUse Task` | <100 ms |
-| `Stop` | <300 ms (runs once per turn) |
-
-If a change crosses these budgets, profile first; don't accept the
-regression.
+There is no per-session state file and no per-spec config/lock file
+anymore — spec state is inferred from the documents on disk (which
+fixed docs exist + `- [ ]` progress in `design.md`). Config writes use
+`tempfile + os.replace + fsync` (`_atomic_write_json` in
+`resolve_root.py`).
 
 ## Release
 
@@ -157,18 +99,21 @@ Two manifests carry `version`. They MUST match or the plugin tag
 tooling refuses to operate:
 
 - `plugins/specode/.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
-- `.claude-plugin/marketplace.json` → `plugins[0].version: "X.Y.Z"`
+- `.claude-plugin/marketplace.json` → the **specode** entry's `version`
+  (`plugins[0]`; leave the task-swarm entry untouched)
 
 ### Picking the next version (semver)
 
-"API surface" for semver purposes = the slash command set, agent
-names, hook event names, and persisted-state schema fields that
-users or future runtime code can observe.
+"API surface" for semver purposes (1.0.0+) = the `/spec` subcommand set
+(`/spec <需求>` / `/spec continue <slug>` / `/spec list`), the
+`SessionStart` hook event, the persisted `config.json.specsRoot` field,
+and the 3 fixed document filenames (`requirements.md` / `design.md` /
+`implementation-log.md`) that users or future runtime code observe.
 
 | Bump | When | Examples |
 | --- | --- | --- |
-| **major** | A user feels a breaking change after a plugin update | rename a slash command; remove an agent; rename a hook event; rename a schema field with no read-side fallback |
-| **minor** | Backwards-compatible new capability or evolution | new slash command; new agent; new optional label; schema field rename **with** read-side fallback |
+| **major** | A user feels a breaking change after a plugin update | rename / remove a `/spec` subcommand; rename a hook event; rename `config.json.specsRoot`; rename a fixed document filename |
+| **minor** | Backwards-compatible new capability or evolution | new `/spec` subcommand; new optional config field; new selector option |
 | **patch** | Bug fix / docs / internal refactor with no surface change | fix a typo in a prompt; clarify a reference; CI-only; remove dev-only files from the repo |
 
 When in doubt, bump higher.

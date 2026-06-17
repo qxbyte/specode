@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "0.11.0",
-  "description": "Specification-driven workflow with advisory hooks, selector prompts, and session-bound state.",
+  "version": "1.0.0",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 1.0.0 (2026-06-17)
+
+> specode 轻量化重构成「编排壳 + superpowers 引擎」：删掉整套 Python 状态机，specode 退化为一层薄壳，在各 phase 自主调用 superpowers 的成熟 skill（缺席则 specode-native 降级），固定产出 3 份文档落到用户的 specs 目录。**这是破坏性大版本**——重型实现全删、命令收敛、hook 收敛、持久 schema 弃用。
+
+### Removed -- 重型实现全删（BREAKING）
+
+- 删 `spec_session/` 整个状态机包、`~/.specode/sessions/<id>.json` + `<spec-dir>/.config.json` 双写、多窗口锁协议、`~/.specode/logs/` 会话日志收集。
+- 删 `spec_lint.py`（模板章节 / 追溯 lint）、`spec_status.py`、`spec_init.py`、`spec_vault.py`（瘦身为 `resolve_root.py`）、`spec_log.py`、引用 catalog（description-as-trigger）。
+- 删 11-selector 常量库（`SELECTOR_PROMPTS`）及其 snapshot / drift 测试；删 EARS-SHALL 需求形态；删模板结构 lint（模板只描述结构，不再被 lint 校验）。
+- **删 slash 命令** `/specode:continue`、`/specode:status`、`/specode:end`——全部并入 `/spec` 的参数分发。
+- **hook 从 8 个收敛为 1 个**：只留一个轻量 `SessionStart`（注入纪律提示）；删 UserPromptSubmit×3（prompt/heartbeat/catalog）、Stop、SessionEnd、PostToolUse、PreToolUse×2。
+
+### Added / Changed -- 编排壳 + superpowers 引擎
+
+- **各 phase 编排 superpowers**：requirements→`brainstorming`、design→`writing-plans`、执行→`subagent-driven-development` / `executing-plans`、验收→`verification-before-completion`（+ 可选 `requesting-code-review`）；superpowers 缺席时 **specode-native 降级**为一等路径（主代理用 AskUserQuestion 澄清 + 按模板写 + 顺序 TDD + 逐条核验）。
+- **3 份固定产物**：`requirements.md` / `design.md` / `implementation-log.md`，**固定文件名**，固定落 `<specsRoot>/<slug>/`；引擎只决定「谁生成内容」，不改产物形态 / 命名 / 位置（委托 superpowers 后做后置落盘归位校验）。
+- **首次设置 specsRoot**：首次使用、config 无 `specsRoot` 时用 `AskUserQuestion` 问用户「文档管理目录」，**原样作为 specs 根**（不拼接 / 不假设结构），持久化到 `~/.config/specode/config.json.specsRoot`，之后沉默自动用——替代旧版静默自动检测 obsidian vault。
+- **执行方式 selector**：design 完成后呈现**自适应 4 选项**（装了哪个引擎才显示对应选项：委托 task-swarm / superpowers subagent-driven / superpowers executing-plans / specode 自执行），由 SKILL 散文 + `references/selectors.md` 范例驱动（无常量库 / 无 drift 测试 / 无 PreToolUse 硬校验）。
+- **文档即状态**：无任何持久状态文件——活跃态与 phase 由「当前对话上下文 + spec 目录下哪些固定文档存在 + design.md 里 `- [ ]` 勾选进度」推断。
+- `project_root` 默认取当前终端 cwd（约定先 `cd` 到项目目录再开聊），不再设项目目录 selector。
+
+### Migration -- 无读端回退
+
+- 破坏性重构，**无读端回退迁移**：旧 `~/.specode/sessions/<id>.json`、旧 `<spec-dir>/.config.json`、旧 `config.json.obsidianRoot` 一律不再读取 / 写入，新版完全忽略它们。可手动清理 `rm -rf ~/.specode`（旧 sessions/logs）。新版只读 `~/.config/specode/config.json.specsRoot`。
+
 ## 0.11.0 (2026-06-15)
 
 > task-swarm 拆为独立 plugin（M1）+ specode 委托衔接 / `delegated` 阶段（M4）+ tasks.md 退场。**破坏性**：移除 `/specode:task-swarm` 命令、task-swarm-* agent、`tasks`/`implementation` 阶段。phase 取值变更有读端回退迁移，旧 session 照常加载。  

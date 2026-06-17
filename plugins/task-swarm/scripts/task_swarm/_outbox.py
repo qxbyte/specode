@@ -322,6 +322,11 @@ _VALIDATOR_SUBTASK_RE = re.compile(
 _VALIDATOR_VERDICT_VALUES = {"pass", "fail"}
 
 
+def _after_colon(s: str) -> str:
+    """Return text after the first ASCII or fullwidth colon in s, stripped."""
+    return s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+
+
 def _parse_fix_targets(body: str) -> list[ValidatorFixTarget]:
     targets: list[ValidatorFixTarget] = []
     cur: Optional[ValidatorFixTarget] = None
@@ -336,13 +341,13 @@ def _parse_fix_targets(body: str) -> list[ValidatorFixTarget]:
             continue
         s = line.strip()
         if s.startswith("- 文件:") or s.startswith("- 文件："):
-            cur.file_path = s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+            cur.file_path = _after_colon(s)
         elif s.startswith("- 位置:") or s.startswith("- 位置："):
-            cur.location = s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+            cur.location = _after_colon(s)
         elif s.startswith("- 问题:") or s.startswith("- 问题："):
-            cur.problem = s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+            cur.problem = _after_colon(s)
         elif s.startswith("- 建议:") or s.startswith("- 建议："):
-            cur.suggestion = s.split(":", 1)[1].strip() if ":" in s else s.split("：", 1)[1].strip()
+            cur.suggestion = _after_colon(s)
         elif "需求" in s and "_" in s:
             reqs = re.findall(r"_需求[：:]\s*([^_]+)_", s)
             for r in reqs:

@@ -66,7 +66,8 @@ def _resolve(root_flag):
     if env:
         return env
     cfg = _read_config()
-    val = cfg.get("specsRoot")
+    # specsRoot 是当前键；obsidianRoot 是 1.0.0 前的旧键，读端兜底让老用户升级即用、不必重设。
+    val = cfg.get("specsRoot") or cfg.get("obsidianRoot")
     return val or None
 
 

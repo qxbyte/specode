@@ -97,3 +97,26 @@ def test_get_root_unparseable_config_falls_through(run_script, fake_home, tmp_pa
     cfgp.write_text("42", encoding="utf-8")  # 合法 JSON 但非 dict
     cp = run_script("resolve_root.py", "get-root")
     assert cp.returncode == 3, cp.stderr  # 非 dict → 视为空配置 → 未配置 exit 3
+
+
+def test_get_root_falls_back_to_legacy_obsidian_root(run_script, fake_home, tmp_path):
+    # 1.0.0 前的旧键 obsidianRoot：读端兜底，老用户升级即用
+    cfgp = fake_home / ".config" / "specode" / "config.json"
+    cfgp.parent.mkdir(parents=True, exist_ok=True)
+    legacy = tmp_path / "legacy-specs"
+    cfgp.write_text(json.dumps({"obsidianRoot": str(legacy)}), encoding="utf-8")
+    cp = run_script("resolve_root.py", "get-root")
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout.strip() == str(legacy)
+
+
+def test_get_root_specsroot_beats_legacy_obsidian_root(run_script, fake_home, tmp_path):
+    cfgp = fake_home / ".config" / "specode" / "config.json"
+    cfgp.parent.mkdir(parents=True, exist_ok=True)
+    cfgp.write_text(json.dumps({
+        "specsRoot": str(tmp_path / "new-specs"),
+        "obsidianRoot": str(tmp_path / "old-specs"),
+    }), encoding="utf-8")
+    cp = run_script("resolve_root.py", "get-root")
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout.strip() == str(tmp_path / "new-specs")

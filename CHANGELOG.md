@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+## 2.0.0 (2026-06-19)
+
+### Changed (BREAKING) — 命令面拆分:`/spec` 子命令 → 三个扁平独立命令（→ 2.0.0）
+
+把原来单个 `/spec`（内部用 `$ARGUMENTS` dispatch `continue` / `list` 子命令）拆成三个各自独立的命令文件,让 `continue` / `list` 在 host 的 `/` 菜单里成为**可发现**的入口(原先藏在参数里,菜单看不见)。
+
+- `commands/spec.md` → 删除,拆为 `commands/specode-spec.md` / `specode-continue.md` / `specode-list.md`。
+  - 执行形态:`/specode:specode-spec <需求>`、`/specode:specode-continue <slug>`、`/specode:specode-list`(菜单显示短名 `/specode-spec` 等 + `(specode)` 标注)。
+- 同步更新所有引用:`skills/specode/SKILL.md`(description / Activation Guard / Continuation / task-swarm handoff)、`references/{obsidian,selectors,superpowers-wiring}.md`、`scripts/spec_hooks.py`(SessionStart 激活提示)、`README.md` / `README.zh-CN.md` / `CLAUDE.md`。
+- **迁移**:旧 `/spec ...` 不再存在;改用对应的 `/specode:specode-*`。
+
+### Fixed — `run.sh` 包装路径在 `$CLAUDE_PLUGIN_ROOT` 为空时 127
+
+`$CLAUDE_PLUGIN_ROOT` 只对 hook / MCP 子进程导出、且 inline 替换只认裸 token;从 SKILL 正文发出的 Bash 调用里它为空,旧写法 `${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}` 展开成 `/scripts/run.sh` → `Exit 127`。
+
+- `SKILL.md` + 三个命令文件改为带兜底的 resolver:env var 命中则用,否则 `find` 出插件 cache 里最新版本(`sort -V | tail -1`),**不写死版本号**。用 `find` 而非 shell glob——zsh 下不匹配的 glob 会 `no matches found` 中止,`2>/dev/null` 拦不住。
+
+### Changed — task-swarm 委托命令名 `/task-swarm` → `/task-swarm:swarm`
+
+配合 task-swarm 0.4.0 的命令叶子改名(去掉 `/task-swarm:task-swarm` 重复),specode 的 task-swarm handoff 引用同步改为 `/task-swarm:swarm`。
+
+### Changed — marketplace / 仓库改名 `qxbyte` → `pluginhub`
+
+仓库从单插件名 `specode` 改为中性伞名,定位为承载多插件的通用 marketplace(后续会加更多插件)。
+
+- `marketplace.json` `name`:`qxbyte` → `pluginhub`(`owner.name` 仍为 GitHub 用户名 `qxbyte`,不变)。
+- 仓库 URL `github.com/qxbyte/specode` → `github.com/qxbyte/pluginhub`(README×2 / 两个 plugin.json / marketplace.json 的 homepage/repository/badge/安装命令)。
+- 安装/卸载/升级命令的 marketplace 后缀 `@qxbyte` → `@pluginhub`,`marketplace remove|update qxbyte` → `... pluginhub`。
+- **迁移**:已按旧名 add 过的用户需 `marketplace remove qxbyte` 后重新 `marketplace add https://github.com/qxbyte/pluginhub`,或直接 `marketplace update`。
+- 注:CHANGELOG 历史条目里的旧名/旧 URL 保留不改(记录当时事实;GitHub 对改名仓库自动重定向)。
+
 ## 1.0.1 (2026-06-18)
 
 > 文档/指令语言优化，**无行为变更**：SKILL/commands/references 的指令性内容由中文改写为英文（语义重组，非直译），降低常驻上下文 token。

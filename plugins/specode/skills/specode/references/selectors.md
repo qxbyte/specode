@@ -37,4 +37,4 @@ When `resolve_root.py get-root` exits 3 (no config) — the script cannot resolv
 Once the user provides the path: `resolve_root.py set-root --root <user-provided-absolute-path>` persists it → all subsequent sessions read from config and will not ask again. The user may also provide the path directly in chat; handle that equivalently.
 
 ## Non-fixed selectors (informational — no examples here)
-- **continue requires a slug**: `/spec continue` does not perform dynamic slug selection; use `/spec list` to find slugs.
+- **continue requires a slug**: `/specode:specode-continue` does not perform dynamic slug selection; use `/specode:specode-list` to find slugs.

@@ -1,28 +1,31 @@
 <p align="right"><strong>English</strong> | <a href="./README.zh-CN.md">中文</a></p>
 
-# specode
+# pluginhub
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.md#license)
-[![specode](https://img.shields.io/badge/specode-1.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.3.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/specode#installation)
-[![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/specode#installation)
+[![specode](https://img.shields.io/badge/specode-2.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
+[![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
 [![Tests](https://img.shields.io/badge/pytest-12%20cases-success)](./plugins/specode/tests)
 
-> A lightweight spec-driven workflow plugin for CLI coding agents
+> qxbyte's plugin marketplace for CLI coding agents
 > (Claude Code / CodeBuddy).
 
-specode 1.0.0 turns a one-line requirement into a disciplined,
-document-first delivery loop — but it carries almost no machinery of
-its own. It is an **orchestration shell**: at each phase
-(requirements → design → 执行 → 验收) it **delegates the heavy
-lifting to [superpowers](https://github.com/obra/superpowers) skills**,
-and when superpowers isn't installed it falls back to a first-class
-**specode-native** path so the plugin works standalone. Every spec
-lands the same **3 fixed documents** in your specs directory.
+**pluginhub** is a small plugin marketplace: add it once, then install
+any plugin it hosts. More plugins will land here over time.
 
-If you've watched an LLM agent drift mid-task or merge unreviewed
-code, specode is the rails — now thin enough to stay out of your way.
+## Plugins
+
+| Plugin | Version | What it does |
+| --- | --- | --- |
+| **specode** | 2.0.0 | A lightweight spec-driven **workflow** — an orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (with a first-class native fallback) and lands 3 fixed docs per spec. Documented below. |
+| **task-swarm** | 0.4.0 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. See [`plugins/task-swarm/`](./plugins/task-swarm). |
+
+`## Installation` covers the whole marketplace; the other sections
+(Highlights, Usage, Architecture) document **specode**, the flagship
+plugin. For **task-swarm**, see its sources and `CHANGELOG` under
+[`plugins/task-swarm/`](./plugins/task-swarm).
 
 ## Highlights
 
@@ -66,12 +69,12 @@ CodeBuddy verified on 2.97.1.
 
 ```sh
 # CodeBuddy
-codebuddy plugin marketplace add https://github.com/qxbyte/specode
-codebuddy plugin install specode@qxbyte
+codebuddy plugin marketplace add https://github.com/qxbyte/pluginhub
+codebuddy plugin install specode@pluginhub
 
 # Claude Code
-claude plugin marketplace add https://github.com/qxbyte/specode
-claude plugin install specode@qxbyte
+claude plugin marketplace add https://github.com/qxbyte/pluginhub
+claude plugin install specode@pluginhub
 ```
 
 For the full superpowers-backed experience, also install the
@@ -82,9 +85,9 @@ self-executes sequentially otherwise:
 
 ```sh
 # Claude Code
-claude plugin install task-swarm@qxbyte
+claude plugin install task-swarm@pluginhub
 # CodeBuddy
-codebuddy plugin install task-swarm@qxbyte
+codebuddy plugin install task-swarm@pluginhub
 ```
 
 specode runs fine without either via its native fallbacks.
@@ -92,13 +95,13 @@ specode runs fine without either via its native fallbacks.
 ### One-shot (Claude Code only)
 
 ```sh
-claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
+claude --plugin-url https://github.com/qxbyte/pluginhub/archive/refs/heads/main.zip
 ```
 
 ### Local development
 
 ```sh
-git clone https://github.com/qxbyte/specode.git
+git clone https://github.com/qxbyte/pluginhub.git
 claude    --plugin-dir ./specode/plugins/specode
 codebuddy --plugin-dir ./specode/plugins/specode
 
@@ -109,9 +112,9 @@ claude --plugin-dir ./specode/plugins/specode --plugin-dir ./specode/plugins/tas
 ### Uninstall
 
 ```sh
-claude plugin uninstall specode@qxbyte
-claude plugin uninstall task-swarm@qxbyte   # if installed
-claude plugin marketplace remove qxbyte
+claude plugin uninstall specode@pluginhub
+claude plugin uninstall task-swarm@pluginhub   # if installed
+claude plugin marketplace remove pluginhub
 # optional: wipe user-level config (and legacy ~/.specode state)
 rm -rf ~/.specode ~/.config/specode
 ```
@@ -120,12 +123,12 @@ rm -rf ~/.specode ~/.config/specode
 
 ```sh
 # Claude Code
-claude plugin update specode@qxbyte
-claude plugin marketplace update qxbyte
+claude plugin update specode@pluginhub
+claude plugin marketplace update pluginhub
 
 # CodeBuddy
-codebuddy plugin update specode@qxbyte
-codebuddy plugin marketplace update qxbyte
+codebuddy plugin update specode@pluginhub
+codebuddy plugin marketplace update pluginhub
 ```
 
 ## Usage
@@ -135,7 +138,7 @@ specode has exactly three commands.
 ### 1. Start a spec
 
 ```sh
-/spec <requirement>
+/specode:specode-spec <requirement>
 ```
 
 `cd` to your project directory first — specode uses the current
@@ -159,18 +162,18 @@ All output lands under `<specsRoot>/<slug>/` as the 3 fixed documents.
 ### 2. Resume a spec
 
 ```sh
-/spec continue <slug>
+/specode:specode-continue <slug>
 ```
 
 `<slug>` is required. specode locates `<specsRoot>/<slug>/` and infers
 the phase from the documents present (and the `- [ ]` progress in
-`design.md`), then continues from there. Use `/spec list` to find a
-slug.
+`design.md`), then continues from there. Use `/specode:specode-list` to
+find a slug.
 
 ### 3. List specs
 
 ```sh
-/spec list
+/specode:specode-list
 ```
 
 Lists every spec under `<specsRoot>` with its inferred phase. Overview
@@ -181,9 +184,11 @@ only — it does not resume.
 ```
 .claude-plugin/marketplace.json   marketplace manifest (specode + task-swarm)
 plugins/specode/
-  .claude-plugin/plugin.json      plugin manifest (version 1.0.0)
+  .claude-plugin/plugin.json      plugin manifest (version 2.0.0)
   hooks/hooks.json                1 advisory SessionStart hook
-  commands/spec.md                /spec, /spec continue, /spec list
+  commands/specode-spec.md        /specode:specode-spec (new spec)
+  commands/specode-continue.md    /specode:specode-continue <slug>
+  commands/specode-list.md        /specode:specode-list
   scripts/
     resolve_root.py               specsRoot resolution + persistence + list
     spec_hooks.py                 SessionStart discipline injection

@@ -1,6 +1,6 @@
 ---
 name: specode
-description: Lightweight spec-driven workflow orchestration shell. Across the requirements → design → 「执行方式」 → execute → acceptance phases it autonomously calls mature superpowers skills to do the heavy lifting (clarification, design, TDD execution, acceptance), falling back to specode-native when superpowers is absent, and files the three fixed artifacts (requirements.md / design.md / implementation-log.md) into the user's document directory. Activates only when the user invokes `/spec <request>`, `/spec continue <slug>`, `/spec list`, or explicitly asks to enter spec mode; otherwise behave as a normal conversation.
+description: Lightweight spec-driven workflow orchestration shell. Across the requirements → design → 「执行方式」 → execute → acceptance phases it autonomously calls mature superpowers skills to do the heavy lifting (clarification, design, TDD execution, acceptance), falling back to specode-native when superpowers is absent, and files the three fixed artifacts (requirements.md / design.md / implementation-log.md) into the user's document directory. Activates only when the user invokes `/specode:specode-spec <request>`, `/specode:specode-continue <slug>`, `/specode:specode-list`, or explicitly asks to enter spec mode; otherwise behave as a normal conversation.
 ---
 
 # specode — orchestration shell
@@ -11,7 +11,7 @@ specode is no longer a state machine. It is an **orchestration shell** that hand
 
 Activate only in one of these cases:
 
-- The current user input is `/spec <request>`, `/spec continue <slug>`, or `/spec list`.
+- The current user input is `/specode:specode-spec <request>`, `/specode:specode-continue <slug>`, or `/specode:specode-list`.
 - The user explicitly says "use spec mode" / "按 spec 流程做" / equivalent.
 
 Otherwise **do not activate**; handle as normal conversation. There is **no session file** — whether a spec is active is inferred entirely from the **current conversation context** (which slug is running this turn) plus the **documents under that slug's directory in obsidian**. No persistent state file is ever read.
@@ -32,15 +32,14 @@ Bug fixes do not get a separate `bugfix.md` — write Current / Expected directl
 
 **Every time specode starts, first call `resolve_root.py get-root` via run.sh to read specsRoot.** Only when the config is missing (typically first use) ask the user via `AskUserQuestion`, then immediately `set-root` to write it back to config. Afterwards all sessions use it silently and automatically, never prompting again.
 
-All specode CLIs **must** be invoked through the `run.sh` wrapper, with the script path built as an **absolute path** using `$CLAUDE_PLUGIN_ROOT` (fallback `$CODEBUDDY_PLUGIN_ROOT`). Never assume cwd is the scripts directory, and never call a bare `python3 <script>`:
+All specode CLIs **must** be invoked through the `run.sh` wrapper with an **absolute** plugin-root path. Resolve that root robustly: prefer the host env var `$CLAUDE_PLUGIN_ROOT` (CodeBuddy: `$CODEBUDDY_PLUGIN_ROOT`), but **never assume it is set**. The host only inline-substitutes / exports `${CLAUDE_PLUGIN_ROOT}` for hooks and MCP/LSP subprocesses, and only the bare token — a CLI call emitted from *this skill body* with the `${VAR:-fallback}` form is neither substituted nor run in an env that carries the variable, so it expands **empty** and you get `sh: /scripts/run.sh: No such file or directory`. Always fall back to globbing the plugin cache, and never call a bare `python3 <script>`. Shell state does not persist between Bash calls, so prefix **every** CLI call with this self-contained resolver:
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
-   "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/resolve_root.py" \
-   <verb> <args...>
+R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/specode/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
+sh "$R/scripts/run.sh" "$R/scripts/resolve_root.py" <verb> <args...>
 ```
 
-`run.sh` auto-probes the interpreter (`python3 → python → py`) and execs through the args. The verbs match `commands/spec.md`:
+The resolver tries the env var first (works wherever the host exports it), verifies `run.sh` actually exists there, and otherwise locates the cached install with `find` and picks the newest version (`sort -V | tail -1`) — never a hard-coded version. Use `find` (not a shell glob): under zsh an unmatched glob aborts with `no matches found`, which `2>/dev/null` does not suppress; `find` stays silent on missing dirs / no match. `run.sh` auto-probes the interpreter (`python3 → python → py`) and execs through the args. The verbs match the `commands/specode-*.md` command files:
 
 | verb | Purpose | exit |
 |---|---|---|
@@ -114,7 +113,7 @@ When presenting, pass question / header / options **verbatim** per the `referenc
 
 ## Continuation (documents-as-state)
 
-`/spec continue <slug>` (slug required; missing or nonexistent → error + suggest `/spec list` first): locate `<specsRoot>/<slug>/`, read the directory contents, and infer the phase to resume per this table:
+`/specode:specode-continue <slug>` (slug required; missing or nonexistent → error + suggest `/specode:specode-list` first): locate `<specsRoot>/<slug>/`, read the directory contents, and infer the phase to resume per this table:
 
 | Directory state | Inferred phase | Resume action |
 |---|---|---|
@@ -123,18 +122,18 @@ When presenting, pass question / header / options **verbatim** per the `referenc
 | has `design.md` with unchecked `- [ ]` Tasks | executing | resume execution (task-swarm checks run state / superpowers resumes executing-plans / native resumes sequentially) |
 | all Tasks in `design.md` checked | complete | run acceptance / report already complete |
 
-`/spec list` lists every spec under `<specsRoot>` with each one's inferred phase (for looking up slugs / overview; **does not resume**); if there are no specs → suggest `/spec <request>` first.
+`/specode:specode-list` lists every spec under `<specsRoot>` with each one's inferred phase (for looking up slugs / overview; **does not resume**); if there are no specs → suggest `/specode:specode-spec <request>` first.
 
 ## task-swarm handoff (zero hard dependency)
 
-task-swarm is a **standalone plugin**; specode has **zero imports** of it and does not know its install path — all calls go through task-swarm's own `/task-swarm` command (which self-resolves its `$CLAUDE_PLUGIN_ROOT`). After the user picks "delegate":
+task-swarm is a **standalone plugin**; specode has **zero imports** of it and does not know its install path — all calls go through task-swarm's own `/task-swarm:swarm` command (which self-resolves its `$CLAUDE_PLUGIN_ROOT`). After the user picks "delegate":
 
 1. Read this spec's `design.md` Task list + each Task's `**Files:**` → mechanically derive `<specsRoot>/<slug>/pipeline.yml` (task groups / `@writes` files / `needs` topology).
 2. **Show the yml summary to the user** (number of task groups / same-file conflicts / topology); init only after the user confirms.
-3. Invoke task-swarm's own `/task-swarm` command to drive its plan → fork → advance → writeback → resolve orchestration until done.
+3. Invoke task-swarm's own `/task-swarm:swarm` command to drive its plan → fork → advance → writeback → resolve orchestration until done.
 4. Append to `implementation-log.md` throughout; run acceptance after done.
 
-**task-swarm not installed** (`/task-swarm` unavailable) → fall back on the spot to "specode self-execute" or the superpowers execution path, so the user is never stuck.
+**task-swarm not installed** (`/task-swarm:swarm` unavailable) → fall back on the spot to "specode self-execute" or the superpowers execution path, so the user is never stuck.
 
 ## Output Language
 
@@ -150,7 +149,7 @@ When writing / updating spec documents, **never** reprint the full text in chat.
 
 1. **Fixed-artifact invariant**: always produce only the 3 documents `requirements.md` / `design.md` / `implementation-log.md`, with fixed filenames, filed in `<specsRoot>/<slug>/`, independent of the execution engine; after delegating to superpowers you must run the post-relocation check.
 2. **specsRoot: read config first, then ask**: call `get-root` on every start; only when missing, `AskUserQuestion` once and `set-root` to write it back, then use it silently thereafter; use the user's directory verbatim as the root, appending nothing.
-3. **CLIs must go through run.sh + absolute path**: all specode CLIs go through the `run.sh` wrapper + a `$CLAUDE_PLUGIN_ROOT` (fallback `$CODEBUDDY_PLUGIN_ROOT`) absolute path; never a bare `python3 <script>`.
+3. **CLIs must go through run.sh + absolute path**: all specode CLIs go through the `run.sh` wrapper + an absolute plugin-root path resolved by the §specsRoot resolver (env var `$CLAUDE_PLUGIN_ROOT` / `$CODEBUDDY_PLUGIN_ROOT`, falling back to a cache glob — the env var is **not** reliably set in skill-driven Bash calls); never a bare `python3 <script>`, never a hard-coded version path.
 4. **执行方式 selector verbatim per example**: the `AskUserQuestion` question / header / options are taken verbatim from `references/selectors.md`, adaptively showing only options for installed engines; never invent / collapse.
 5. **Lightweight red line**: no more locking / takeover protocol / state machine; no more status-summary footer line; no more forced code-doc sync nagging; no more paired writes of a persistent session file and spec config file; no more pending-selector markers / phase-transition CLI / log collection. Active state is inferred from the current conversation context + document existence.
 

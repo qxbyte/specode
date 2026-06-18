@@ -10,8 +10,9 @@ import json
 import sys
 
 DISCIPLINE = (
-    "specode（spec-mode 轻量工作流）可用。仅在用户输入 `/spec`、`/spec continue <slug>`、"
-    "`/spec list` 或显式要求用 spec 模式时激活；否则按普通对话处理。激活后遵循 "
+    "specode（spec-mode 轻量工作流）可用。仅在用户输入 `/specode:specode-spec <需求>`、"
+    "`/specode:specode-continue <slug>`、`/specode:specode-list` 或显式要求用 spec 模式时激活；"
+    "否则按普通对话处理。激活后遵循 "
     "specode SKILL.md：① 在 requirements/design/执行/验收各 phase 优先调对应 superpowers "
     "skill（缺席则 specode-native 降级）；② 3 份固定产物 requirements.md / design.md / "
     "implementation-log.md 永远以固定文件名落在 <specsRoot>/<slug>/；③ design 完成后用 "

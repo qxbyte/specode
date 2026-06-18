@@ -24,11 +24,19 @@ argument-hint: "[<需求文档.md | pipeline.yml>] [--max-parallel N] [--max-rou
 
 > task-swarm 独立运行:无 session / 锁概念,用户可直接触发。state 落盘 `<workdir>/.task-swarm/runs/`。
 
+## 插件根解析(每个 task_swarm.py 调用都套这个前缀)
+
+`$CLAUDE_PLUGIN_ROOT`(CodeBuddy:`$CODEBUDDY_PLUGIN_ROOT`)在 skill 发出的 Bash 调用里**不保证有值**(host 只对 hook/MCP 子进程导出它),为空时旧写法会展开成 `/scripts/run.sh` → `Exit 127`。所以**每条** `task_swarm.py` 命令前都先解析根:env var 命中则用,否则 `find` 出 cache 里最新版本(`sort -V | tail -1`,**不写死版本号**)。用 `find` 而非 shell glob——zsh 下不匹配的 glob 会 `no matches found` 中止,`2>/dev/null` 拦不住。Bash 调用之间 shell 状态不保留,故每次都要重解析:
+
+```sh
+R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
+```
+
 ## 第二步:init
 
 ```sh
-sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
-   "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
+R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
+sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" \
    init --pipeline "<pipeline.yml 绝对路径>" --workdir "<项目根>" \
    [--project-root "<代码根>"] [--spec-id <id>] [--skip-validator] [--serial-validation]
 ```
@@ -43,7 +51,7 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 
 ## 第三步:7 步循环(plan → fork → 等齐 → advance → writeback → resolve → report)
 
-所有 `task_swarm.py` 子命令套同一 run.sh 包装模板:
+所有 `task_swarm.py` 子命令套同一 run.sh 包装模板(每次都先跑上面「插件根解析」的 `R=...` 前缀,再 `sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" <subcmd> ...`):
 
 1. `init`(第二步已做)
 2. `plan --run <run_id>` 拿**多组并发调度**:返回 `{schedule:{done,running,runnable,blocked,failed}, actions:[...], serial_validation, max_parallel}`。`actions` 列出每个 runnable/待推进组的 `fork` 列表;`schedule.runnable` 是当前可起的组,`blocked` 给出原因(`needs` 未满足 / `writes` 与在跑组冲突)。
@@ -65,8 +73,8 @@ sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
 主代理每 5 分钟 / 每完成一个 subagent 后可调,刷新 `last_activity_at`:
 
 ```sh
-sh "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/run.sh" \
-   "${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT}}/scripts/task_swarm.py" \
+R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
+sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" \
    heartbeat --run <run_id>
 ```
 

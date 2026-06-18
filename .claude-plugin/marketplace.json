@@ -1,6 +1,6 @@
 {
-  "name": "qxbyte",
-  "description": "qxbyte's plugin marketplace: specode (spec-driven workflow) and task-swarm (multi-agent orchestration).",
+  "name": "pluginhub",
+  "description": "qxbyte's Claude Code / CodeBuddy plugin marketplace. Currently hosts specode (spec-driven workflow) and task-swarm (multi-agent orchestration); more plugins to come.",
   "owner": {
     "name": "qxbyte",
     "url": "https://github.com/qxbyte"
@@ -9,20 +9,20 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "1.0.1",
+      "version": "2.0.0",
       "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
-      "homepage": "https://github.com/qxbyte/specode",
-      "repository": "https://github.com/qxbyte/specode",
+      "homepage": "https://github.com/qxbyte/pluginhub",
+      "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
       "keywords": ["spec", "specification", "workflow"]
     },
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops.",
-      "homepage": "https://github.com/qxbyte/specode",
-      "repository": "https://github.com/qxbyte/specode",
+      "homepage": "https://github.com/qxbyte/pluginhub",
+      "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
       "keywords": ["task-swarm", "multi-agent", "orchestration", "pipeline"]
     }

@@ -1,5 +1,5 @@
 ---
-description: Use when resolving the spec document root directory, performing first-time directory setup, or listing specs with `/spec list` — specsRoot three-tier resolution and directory conventions.
+description: Use when resolving the spec document root directory, performing first-time directory setup, or listing specs with `/specode:specode-list` — specsRoot three-tier resolution and directory conventions.
 ---
 
 # specsRoot resolution and directory conventions

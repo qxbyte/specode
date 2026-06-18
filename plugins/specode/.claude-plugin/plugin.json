@@ -1,12 +1,12 @@
 {
   "name": "specode",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"
   },
-  "homepage": "https://github.com/qxbyte/specode",
+  "homepage": "https://github.com/qxbyte/pluginhub",
   "license": "MIT",
   "keywords": ["spec", "specification", "workflow"]
 }

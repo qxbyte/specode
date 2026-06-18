@@ -1,12 +1,12 @@
 {
   "name": "task-swarm",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"
   },
-  "homepage": "https://github.com/qxbyte/specode",
+  "homepage": "https://github.com/qxbyte/pluginhub",
   "license": "MIT",
   "keywords": ["task-swarm", "multi-agent", "orchestration", "pipeline"]
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 '''scripts/task_swarm.py — 薄 launcher，把所有调用转给 task_swarm.cli.main()。
 
-文件名 `task_swarm.py` 保留作为外部 API surface：commands/task-swarm.md +
+文件名 `task_swarm.py` 保留作为外部 API surface：commands/swarm.md +
 spec_session/_hooks.py:_run_task_swarm_plan 都按此路径调用。实现拆到同目录的
 `task_swarm/` 包内（_state / _pipeline / _schedule / _outbox / _prompt / cli），
 launcher 只做两件事：

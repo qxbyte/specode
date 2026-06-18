@@ -16,4 +16,4 @@ description: Use when specode needs to invoke a superpowers skill at a given pha
 2. Post-call: after the skill returns, verify that `<specsRoot>/<slug>/<fixed-name>` is in place; if not, move/rename the skill's actual output to that path.
 
 ## Availability check
-Attempt to invoke superpowers via the Skill tool first; if unavailable or not installed, take the native branch. Same logic applies to task-swarm (if `/task-swarm` invocation fails, fall back to native).
+Attempt to invoke superpowers via the Skill tool first; if unavailable or not installed, take the native branch. Same logic applies to task-swarm (if `/task-swarm:swarm` invocation fails, fall back to native).

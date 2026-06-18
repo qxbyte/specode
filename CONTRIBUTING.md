@@ -38,8 +38,12 @@ Why:
   the scripts are not on PATH and the agent doesn't know where it
   is. See `SKILL.md` (Iron Rules) for the hard rule.
 
-`hooks/hooks.json` and the `commands/spec.md` invocation sections all
-use this template — match them when adding new entry points.
+`hooks/hooks.json` and the `commands/specode-*.md` invocation sections
+all use this template — match them when adding new entry points. Note:
+the command files additionally wrap it in a `find`-based fallback because
+`$CLAUDE_PLUGIN_ROOT` is not reliably set in skill-driven Bash calls
+(it is only guaranteed for hook subprocesses, which is why `hooks.json`
+can rely on the bare env-var form).
 
 ## Test conventions
 
@@ -104,16 +108,17 @@ tooling refuses to operate:
 
 ### Picking the next version (semver)
 
-"API surface" for semver purposes (1.0.0+) = the `/spec` subcommand set
-(`/spec <需求>` / `/spec continue <slug>` / `/spec list`), the
-`SessionStart` hook event, the persisted `config.json.specsRoot` field,
-and the 3 fixed document filenames (`requirements.md` / `design.md` /
-`implementation-log.md`) that users or future runtime code observe.
+"API surface" for semver purposes (2.0.0+) = the three command names
+(`/specode:specode-spec <需求>` / `/specode:specode-continue <slug>` /
+`/specode:specode-list`), the `SessionStart` hook event, the persisted
+`config.json.specsRoot` field, and the 3 fixed document filenames
+(`requirements.md` / `design.md` / `implementation-log.md`) that users
+or future runtime code observe.
 
 | Bump | When | Examples |
 | --- | --- | --- |
-| **major** | A user feels a breaking change after a plugin update | rename / remove a `/spec` subcommand; rename a hook event; rename `config.json.specsRoot`; rename a fixed document filename |
-| **minor** | Backwards-compatible new capability or evolution | new `/spec` subcommand; new optional config field; new selector option |
+| **major** | A user feels a breaking change after a plugin update | rename / remove a `/specode:specode-*` command; rename a hook event; rename `config.json.specsRoot`; rename a fixed document filename |
+| **minor** | Backwards-compatible new capability or evolution | new `/specode:specode-*` command; new optional config field; new selector option |
 | **patch** | Bug fix / docs / internal refactor with no surface change | fix a typo in a prompt; clarify a reference; CI-only; remove dev-only files from the repo |
 
 When in doubt, bump higher.

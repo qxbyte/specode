@@ -1,19 +1,26 @@
 <p align="right"><a href="./README.md">English</a> | <strong>中文</strong></p>
 
-# specode
+# pluginhub
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.zh-CN.md#许可证)
-[![specode](https://img.shields.io/badge/specode-1.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.3.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/specode#installation)
-[![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/specode#installation)
+[![specode](https://img.shields.io/badge/specode-2.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
+[![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
 [![Tests](https://img.shields.io/badge/pytest-12%20cases-success)](./plugins/specode/tests)
 
-> 面向 CLI 编码代理（Claude Code / CodeBuddy）的轻量级规格驱动工作流插件。
+> qxbyte 面向 CLI 编码代理（Claude Code / CodeBuddy）的插件 marketplace。
 
-specode 1.0.0 把一句话需求变成一条「文档优先」的纪律化交付链路——但自身几乎不携带任何机制。它是一个**编排外壳**：在每个阶段（需求 → 设计 → 执行 → 验收）把重活**委托给 [superpowers](https://github.com/obra/superpowers) 技能**；若未安装 superpowers，则自动降级到同等地位的 **specode 原生路径**，插件可独立运行。每条规格最终固定产出 **3 份文档**，落进你的规格目录。
+**pluginhub** 是一个插件 marketplace：`marketplace add` 一次，之后即可安装其中任意插件。后续会有更多插件加入。
 
-如果你见过 LLM 代理跑着跑着就飘、合上未审过的代码——specode 就是给它套的轻量轨道。
+## 插件一览
+
+| 插件 | 版本 | 做什么 |
+| --- | --- | --- |
+| **specode** | 2.0.0 | 轻量**规格驱动工作流**——编排外壳，每个阶段委托给 [superpowers](https://github.com/obra/superpowers) 技能（自带一等公民原生降级），每条规格固定产出 3 份文档。详见下文。 |
+| **task-swarm** | 0.4.0 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
+
+`## 安装` 覆盖整个 marketplace；其余章节（能力亮点、使用、项目结构）记录的是 **specode**（旗舰插件）。**task-swarm** 的文档见 [`plugins/task-swarm/`](./plugins/task-swarm) 下的源码与 `CHANGELOG`。
 
 ## 能力亮点
 
@@ -34,21 +41,21 @@ specode 1.0.0 把一句话需求变成一条「文档优先」的纪律化交付
 
 ```sh
 # CodeBuddy
-codebuddy plugin marketplace add https://github.com/qxbyte/specode
-codebuddy plugin install specode@qxbyte
+codebuddy plugin marketplace add https://github.com/qxbyte/pluginhub
+codebuddy plugin install specode@pluginhub
 
 # Claude Code
-claude plugin marketplace add https://github.com/qxbyte/specode
-claude plugin install specode@qxbyte
+claude plugin marketplace add https://github.com/qxbyte/pluginhub
+claude plugin install specode@pluginhub
 ```
 
 如需完整的 superpowers 加持体验，请额外安装 **superpowers** 插件。如需多 agent 并发执行，请从同一 marketplace 额外安装 **task-swarm**（**无需**再 `marketplace add`）——装了它 specode 会在执行阶段委托给它，没装则 specode 顺序自执行：
 
 ```sh
 # Claude Code
-claude plugin install task-swarm@qxbyte
+claude plugin install task-swarm@pluginhub
 # CodeBuddy
-codebuddy plugin install task-swarm@qxbyte
+codebuddy plugin install task-swarm@pluginhub
 ```
 
 specode 不依赖这两者，原生降级路径开箱即用。
@@ -56,13 +63,13 @@ specode 不依赖这两者，原生降级路径开箱即用。
 ### 一次性会话（仅 Claude Code）
 
 ```sh
-claude --plugin-url https://github.com/qxbyte/specode/archive/refs/heads/main.zip
+claude --plugin-url https://github.com/qxbyte/pluginhub/archive/refs/heads/main.zip
 ```
 
 ### 本地开发
 
 ```sh
-git clone https://github.com/qxbyte/specode.git
+git clone https://github.com/qxbyte/pluginhub.git
 claude    --plugin-dir ./specode/plugins/specode
 codebuddy --plugin-dir ./specode/plugins/specode
 
@@ -73,9 +80,9 @@ claude --plugin-dir ./specode/plugins/specode --plugin-dir ./specode/plugins/tas
 ### 卸载
 
 ```sh
-claude plugin uninstall specode@qxbyte
-claude plugin uninstall task-swarm@qxbyte   # 若已安装
-claude plugin marketplace remove qxbyte
+claude plugin uninstall specode@pluginhub
+claude plugin uninstall task-swarm@pluginhub   # 若已安装
+claude plugin marketplace remove pluginhub
 # 可选：清理用户级配置（含旧 ~/.specode 状态）
 rm -rf ~/.specode ~/.config/specode
 ```
@@ -84,12 +91,12 @@ rm -rf ~/.specode ~/.config/specode
 
 ```sh
 # Claude Code
-claude plugin update specode@qxbyte
-claude plugin marketplace update qxbyte
+claude plugin update specode@pluginhub
+claude plugin marketplace update pluginhub
 
 # CodeBuddy
-codebuddy plugin update specode@qxbyte
-codebuddy plugin marketplace update qxbyte
+codebuddy plugin update specode@pluginhub
+codebuddy plugin marketplace update pluginhub
 ```
 
 ## 使用
@@ -99,7 +106,7 @@ specode 只有三条命令。
 ### 1. 新建规格
 
 ```sh
-/spec <需求>
+/specode:specode-spec <需求>
 ```
 
 先 `cd` 到你的项目目录——specode 以当前终端 cwd 作为项目根（无需额外指定）。**首次运行**时会询问一次文档管理目录并记住它。之后代理依次走完流水线：
@@ -115,15 +122,15 @@ specode 只有三条命令。
 ### 2. 续接规格
 
 ```sh
-/spec continue <slug>
+/specode:specode-continue <slug>
 ```
 
-`<slug>` 为必填。specode 定位到 `<specsRoot>/<slug>/`，根据已存在的文档（以及 `design.md` 中的 `- [ ]` 进度）推断当前阶段，从那里继续。不知道 slug？用 `/spec list` 查找。
+`<slug>` 为必填。specode 定位到 `<specsRoot>/<slug>/`，根据已存在的文档（以及 `design.md` 中的 `- [ ]` 进度）推断当前阶段，从那里继续。不知道 slug？用 `/specode:specode-list` 查找。
 
 ### 3. 列出规格
 
 ```sh
-/spec list
+/specode:specode-list
 ```
 
 列出 `<specsRoot>` 下所有规格及其推断阶段，仅供概览，不会自动续接。
@@ -133,9 +140,11 @@ specode 只有三条命令。
 ```
 .claude-plugin/marketplace.json   marketplace 清单（specode + task-swarm）
 plugins/specode/
-  .claude-plugin/plugin.json      插件清单（version 1.0.0）
+  .claude-plugin/plugin.json      插件清单（version 2.0.0）
   hooks/hooks.json                1 个提醒式 SessionStart hook
-  commands/spec.md                /spec、/spec continue、/spec list
+  commands/specode-spec.md        /specode:specode-spec（新建）
+  commands/specode-continue.md    /specode:specode-continue <slug>
+  commands/specode-list.md        /specode:specode-list
   scripts/
     resolve_root.py               specsRoot 解析 + 持久化 + list
     spec_hooks.py                 SessionStart 规范注入

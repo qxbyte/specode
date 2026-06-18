@@ -120,7 +120,7 @@ def test_skill_md_exists_and_specode_free(tmp_path):
 
 
 def test_command_is_standalone_first(tmp_path):
-    cmd = (PLUGIN_DIR / "commands" / "task-swarm.md").read_text(encoding="utf-8")
+    cmd = (PLUGIN_DIR / "commands" / "swarm.md").read_text(encoding="utf-8")
     # 入口多态 + 无 specode 前置门
     assert "pipeline.yml" in cmd
     for bad in ("read-session", "/specode:task-swarm", "回到 spec-mode", "tasks-execution selector 选中"):

@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.zh-CN.md#许可证)
 [![specode](https://img.shields.io/badge/specode-2.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.1-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
 [![Tests](https://img.shields.io/badge/pytest-12%20cases-success)](./plugins/specode/tests)
@@ -18,7 +18,7 @@
 | 插件 | 版本 | 做什么 |
 | --- | --- | --- |
 | **specode** | 2.0.0 | 轻量**规格驱动工作流**——编排外壳，每个阶段委托给 [superpowers](https://github.com/obra/superpowers) 技能（自带一等公民原生降级），每条规格固定产出 3 份文档。详见下文。 |
-| **task-swarm** | 0.4.0 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
+| **task-swarm** | 0.4.1 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
 
 `## 安装` 覆盖整个 marketplace；其余章节（能力亮点、使用、项目结构）记录的是 **specode**（旗舰插件）。**task-swarm** 的文档见 [`plugins/task-swarm/`](./plugins/task-swarm) 下的源码与 `CHANGELOG`。
 

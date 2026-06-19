@@ -1,76 +1,76 @@
 ---
-description: 独立运行 task-swarm 多 agent 编排:把需求/pipeline.yml 拆成任务组、fork coder、按组跑 reviewer+validator 循环(state.json 单一事实源)
-argument-hint: "[<需求文档.md | pipeline.yml>] [--max-parallel N] [--max-rounds N]"
+description: Standalone task-swarm multi-agent orchestration — split requirements/pipeline.yml into task groups, fork coders, run per-group reviewer+validator loops (state.json is the single source of truth)
+argument-hint: "[<requirements.md | pipeline.yml>] [--max-parallel N] [--max-rounds N]"
 ---
 
-## ⛔ 强制前置阅读(不可跳过)
+## ⛔ Required pre-reading (do not skip)
 
-动手前先 Read **本插件自己的** `skills/task-swarm/SKILL.md`(独立运行人格 + 7 步流程 + 兼 planner 指引)。
-实操细节在 references:
-- pipeline.yml 编排格式 → `references/pipeline-yaml.md`
-- 角色 / 状态机 / 产物 schema / 死循环保护 / CLI 速查 → `references/task-swarm.md`(至少扫 TOC + §3 + §9)
+Before acting, Read **this plugin's own** `skills/task-swarm/SKILL.md` (standalone persona + 7-step flow + planner guidance).
+Operational details live in references:
+- pipeline.yml orchestration format → `references/pipeline-yaml.md`
+- roles / state machine / product schema / deadloop protection / CLI quick-ref → `references/task-swarm.md` (at least scan TOC + §3 + §9)
 
-**禁止凭印象推** plan 输出怎么解析 / advance 失败怎么办 / writeback 越界怎么办——都在 references。
+**Do not guess from memory** how plan output is parsed / what to do when advance fails / what to do when writeback goes out of bounds — all covered in references.
 
-## 入口路由(standalone)
+## Entry routing (standalone)
 
-参数 `$ARGUMENTS` 的第一个位置参数决定走哪条:
+The first positional arg in `$ARGUMENTS` decides the path:
 
-- **是 `pipeline.yml`(或 schema 校验能过的 yml)** → power-user 已手写编排 → 跳过 planner,直接第二步 init。
-- **是需求文档**(design.md / requirements / superpowers plan / 裸 .md)→ 先做**主代理兼 planner**:
-  按 SKILL.md §2 读需求 → 生成 `pipeline.yml`(需查代码库时 fork `Explore` 子 agent,你综合)→
-  写到 `<项目根>/.task-swarm/pipeline.yml` → 再第二步 init。
-- **无参数 / 模糊** → 在 chat 问用户要需求文档或 pipeline.yml 路径,不要 invent。
+- **A `pipeline.yml`** (or any .yml that passes schema validation) → power-user already hand-wrote the orchestration → skip the planner, go straight to step 2 init.
+- **A requirements doc** (design.md / requirements / superpowers plan / bare .md) → first act as **lead agent doubling as planner**:
+  per SKILL.md §2 read the requirements → produce `pipeline.yml` (fork an `Explore` subagent when you need to inspect the codebase, then you synthesize) →
+  persist to `<project-root>/.task-swarm/pipeline.yml` → then step 2 init.
+- **No arg / ambiguous** → ask the user in chat for a requirements doc or pipeline.yml path; do not invent one.
 
-> task-swarm 独立运行:无 session / 锁概念,用户可直接触发。state 落盘 `<workdir>/.task-swarm/runs/`。
+> task-swarm is standalone: no session / lock concept, the user can trigger it directly. State persists under `<workdir>/.task-swarm/runs/`.
 
-## 插件根解析(每个 task_swarm.py 调用都套这个前缀)
+## Plugin-root resolution (prefix every task_swarm.py call with this)
 
-`$CLAUDE_PLUGIN_ROOT`(CodeBuddy:`$CODEBUDDY_PLUGIN_ROOT`)在 skill 发出的 Bash 调用里**不保证有值**(host 只对 hook/MCP 子进程导出它),为空时旧写法会展开成 `/scripts/run.sh` → `Exit 127`。所以**每条** `task_swarm.py` 命令前都先解析根:env var 命中则用,否则 `find` 出 cache 里最新版本(`sort -V | tail -1`,**不写死版本号**)。用 `find` 而非 shell glob——zsh 下不匹配的 glob 会 `no matches found` 中止,`2>/dev/null` 拦不住。Bash 调用之间 shell 状态不保留,故每次都要重解析:
+`$CLAUDE_PLUGIN_ROOT` (CodeBuddy: `$CODEBUDDY_PLUGIN_ROOT`) is **not guaranteed to be set** in Bash calls the skill emits (the host only exports it to hook/MCP subprocesses); when empty, the old form expands to `/scripts/run.sh` → `Exit 127`. So **every** `task_swarm.py` command first resolves the root: use the env var if set, otherwise `find` the newest cached version (`sort -V | tail -1`, **never hard-code a version**). Use `find`, not a shell glob — an unmatched glob aborts with `no matches found` under zsh and `2>/dev/null` won't catch it. Shell state is not preserved between Bash calls, so re-resolve every time:
 
 ```sh
 R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
 ```
 
-## 第二步:init
+## Step 2: init
 
 ```sh
 R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
 sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" \
-   init --pipeline "<pipeline.yml 绝对路径>" --workdir "<项目根>" \
-   [--project-root "<代码根>"] [--spec-id <id>] [--skip-validator] [--serial-validation]
+   init --pipeline "<absolute path to pipeline.yml>" --workdir "<project root>" \
+   [--project-root "<code root>"] [--spec-id <id>] [--skip-validator] [--serial-validation]
 ```
 
-- `--pipeline`:pipeline.yml 绝对路径,**唯一输入**(语义任务组 + 组间 `needs` 依赖 + 组内 task `writes`)。
-- `--workdir`:state 落盘根(state 根 = `<workdir>/.task-swarm/runs/`)。缺省 = 当前 cwd;独立模式用项目根。
-- `--project-root`(可选):被改代码的根目录(缺省 = `--workdir`)。
-- `--skip-validator`:人工验收模式——review/p0-fix 完成后跳过 validation/v-fix 直接 writeback。
-- `--serial-validation`:跨组并发时让 **validator 全局串行**(同一时刻只跑一个组的 validation/v-fix)。测试有共享资源/端口冲突时加。
-- init 报"未解析出任何任务组" → pipeline.yml 格式不对,按 `references/pipeline-yaml.md` 修正后重试。
-- 拿到 `{run_id, run_dir, groups, skip_validator}` 后转第三步。
+- `--pipeline`: absolute path to pipeline.yml, the **only input** (semantic task groups + cross-group `needs` deps + per-group task `writes`).
+- `--workdir`: state persist root (state root = `<workdir>/.task-swarm/runs/`). Defaults to current cwd; in standalone mode use the project root.
+- `--project-root` (optional): root of the code being changed (defaults to `--workdir`).
+- `--skip-validator`: manual-acceptance mode — after review/p0-fix, skip validation/v-fix and writeback directly.
+- `--serial-validation`: make the **validator globally serial** under cross-group concurrency (only one group's validation/v-fix runs at a time). Add this when tests share resources / clash on ports.
+- init reports "no task groups resolved" → pipeline.yml format is wrong; fix per `references/pipeline-yaml.md` and retry.
+- Once you get `{run_id, run_dir, groups, skip_validator}`, move to step 3.
 
-## 第三步:7 步循环(plan → fork → 等齐 → advance → writeback → resolve → report)
+## Step 3: the 7-step loop (plan → fork → wait for all to complete → advance → writeback → resolve → report)
 
-所有 `task_swarm.py` 子命令套同一 run.sh 包装模板(每次都先跑上面「插件根解析」的 `R=...` 前缀,再 `sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" <subcmd> ...`):
+Every `task_swarm.py` subcommand uses the same run.sh wrapper template (always run the `R=...` plugin-root resolution prefix above first, then `sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" <subcmd> ...`):
 
-1. `init`(第二步已做)
-2. `plan --run <run_id>` 拿**多组并发调度**:返回 `{schedule:{done,running,runnable,blocked,failed}, actions:[...], serial_validation, max_parallel}`。`actions` 列出每个 runnable/待推进组的 `fork` 列表;`schedule.runnable` 是当前可起的组,`blocked` 给出原因(`needs` 未满足 / `writes` 与在跑组冲突)。
-3. `fork`:同一 message 把 `actions` 里**所有 runnable 组**的 coder 一起 fork(按各 `fork[].agent_key` **逐字**拷,**禁止**自创 `coder-fix-xxx`)。总并发受 `max_parallel` 约束——超出的组会留在下一轮。
-4. **等齐所有 in-flight Task ✓ completed 才能 advance**(强约束,违反必出乱):
-   - 必须在 teammates UI 看到所有 fork 的 Task ✓ completed;任何 ⠙ streaming / ⠴ running Bash 都不能 advance
-   - **不要**凭口头报告判定完成——只有 subagent 自己 Task tool 返回 ✓ 才算
-   - 不确定时调 `plan --run <run_id>`,返回 `coding-waiting`/`p0-fix-waiting`/`v-fix-waiting` 就回到等待
-5. `advance --run <run_id> --group <gid> --phase <p>`(gid 为字符串如 `g1`)推进**该组**子状态机
-6. `writeback --run <run_id> --group <gid>`(finalize 本组,不写 tasks.md)
-7. 全组完成 → `resolve --run <run_id>` 收尾 → `report --run <run_id>` 出报告
+1. `init` (done in step 2)
+2. `plan --run <run_id>` returns the **multi-group concurrent schedule**: `{schedule:{done,running,runnable,blocked,failed}, actions:[...], serial_validation, max_parallel}`. `actions` lists the `fork` set for each runnable/advanceable group; `schedule.runnable` is the groups startable now, `blocked` gives the reason (`needs` unmet / `writes` conflicts with a running group).
+3. `fork`: in a single message, fork the coders for **all runnable groups** in `actions` together (copy each `fork[].agent_key` **verbatim**, **never** invent `coder-fix-xxx`). Total concurrency is bounded by `max_parallel` — overflow groups carry to the next round.
+4. **Wait for all in-flight Tasks to be ✓ completed before you advance** (hard constraint; violating it breaks things):
+   - You must see every forked Task ✓ completed in the teammates UI; any ⠙ streaming / ⠴ running Bash blocks advance
+   - **Do not** judge completion from verbal reports — only a subagent's own Task tool returning ✓ counts
+   - When unsure, call `plan --run <run_id>`; if it returns `coding-waiting`/`p0-fix-waiting`/`v-fix-waiting`, go back to waiting
+5. `advance --run <run_id> --group <gid> --phase <p>` (gid is a string like `g1`) advances **that group's** sub state machine
+6. `writeback --run <run_id> --group <gid>` (finalize this group, does not write tasks.md)
+7. All groups done → `resolve --run <run_id>` to finalize → `report --run <run_id>` for the report
 
-> plan 的 `schedule` 是并发驱动核心:主代理按 `runnable` 同 message fork 多组,`running` 是在跑组,`blocked`(needs 未满足 / writes 与在跑组冲突)等解锁后下一轮 plan 才进 runnable。
+> plan's `schedule` is the concurrency-driving core: the lead agent forks multiple groups from `runnable` in one message, `running` are the groups in flight, `blocked` (`needs` unmet / `writes` conflicts with a running group) enter runnable only on a later plan once unblocked.
 
-完整规格见 `references/task-swarm.md`。
+Full spec in `references/task-swarm.md`.
 
-## heartbeat(长流程可选)
+## heartbeat (optional for long runs)
 
-主代理每 5 分钟 / 每完成一个 subagent 后可调,刷新 `last_activity_at`:
+The lead agent may call this every 5 minutes / after each subagent finishes to refresh `last_activity_at`:
 
 ```sh
 R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/task-swarm/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
@@ -78,24 +78,24 @@ sh "$R/scripts/run.sh" "$R/scripts/task_swarm.py" \
    heartbeat --run <run_id>
 ```
 
-## 术语区分:reviewer 分级 vs validator fail(容易混)
+## Terminology: reviewer severity vs validator fail (easily confused)
 
-| 概念 | 来源 | 触发 fix loop？ |
+| Concept | Source | Triggers fix loop? |
 |---|---|---|
-| **P0(带证据标签)** | reviewer `review.md` `## P0`,必带 `[req:x.y]`/`[security]`/`[contract]` | ✓ p0-fix(仅一轮,不 re-review,直接进 validation) |
-| **P0(无证据标签)** | reviewer `## P0` 漏标签 | 降级 advisory → ✗ 不修 |
-| **P1 / P2** | reviewer `## P1`/`## P2` | ✗ advisory,不修 |
-| **validator fail** | validator `validation.md` `## 判定 = fail` | ✓ v-fix 循环到 pass;连续 3 轮同 fail 签名 → `failed-deadloop` |
+| **P0 (with evidence tag)** | reviewer `review.md` `## P0`, must carry `[req:x.y]`/`[security]`/`[contract]` | ✓ p0-fix (one round only, no re-review, goes straight to validation) |
+| **P0 (no evidence tag)** | reviewer `## P0` missing the tag | downgraded to advisory → ✗ not fixed |
+| **P1 / P2** | reviewer `## P1`/`## P2` | ✗ advisory, not fixed |
+| **validator fail** | validator `validation.md` `## 判定 = fail` | ✓ v-fix loops until pass; 3 consecutive rounds with the same fail signature → `failed-deadloop` |
 
-validator **不输出 P0/P1/P2 标签**,它的 fix_targets 全是"任务没做完",fail 必修。
-用户问"能不能跳过"→ 按设计不能;唯一办法是中止 run + 改 pipeline.yml 移除该任务再重 init。
+The validator **does not emit P0/P1/P2 tags**; its fix_targets are all "task not finished", and a fail must be fixed.
+If the user asks "can I skip it" → by design no; the only way is to abort the run + edit pipeline.yml to remove that task and re-init.
 
-## advance 报 "result.md 缺 STATUS / 解析失败" 的正确应对
+## Correct response when advance reports "result.md missing STATUS / parse failure"
 
-- **保留**残缺 result.md(证据,别 Edit)→ `status --run <run_id>` 看是否还 in_flight
-- in_flight → 等真完成;>10 分钟不收尾 → esc 取消 + 报用户
-- 不在 in_flight 但产物残缺 → 重 fork **同名** agent(先 `rm -rf agents/<key>/outbox/*`),**禁止**起新名字、**禁止**手补 STATUS
+- **Keep** the incomplete result.md (it's evidence, don't Edit it) → `status --run <run_id>` to check whether it's still in_flight
+- in_flight → wait for real completion; if >10 minutes with no finalize → esc to cancel + report to user
+- Not in_flight but the product is incomplete → re-fork the **same-named** agent (first `rm -rf agents/<key>/outbox/*`); **never** invent a new name, **never** hand-patch STATUS
 
-## 异常出口
+## Failure exits
 
-coder STATUS=failed/blocked、writeback 越界、`failed-deadloop` → 停循环、报用户、等介入,**不自动 retry**。详见 `references/task-swarm.md` §3 / §8。
+coder STATUS=failed/blocked, writeback out of bounds, `failed-deadloop` → stop the loop, report to the user, wait for intervention, **do not auto-retry**. See `references/task-swarm.md` §3 / §8.

@@ -1,76 +1,76 @@
 ---
 name: task-swarm
-description: Use when driving the task-swarm multi-agent orchestrator standalone — reading a requirement/design doc, generating a pipeline.yml, then running the fork → review → validate loop to完成 a multi-task implementation. Trigger words：task-swarm、并发执行任务、pipeline.yml 编排、多 coder fork。
+description: Use when driving the task-swarm multi-agent orchestrator standalone — reading a requirement/design doc, generating a pipeline.yml, then running the fork → review → validate loop to complete a multi-task implementation. Trigger words: task-swarm, concurrent task execution, pipeline.yml orchestration, multi-coder fork.
 ---
 
-# task-swarm 独立编排 SKILL
+# task-swarm standalone orchestration SKILL
 
-## §0 你是谁
+## §0 Who you are
 
-主代理 = task-swarm 的 **orchestrator + planner**。task-swarm 提供四样东西:
-pipeline.yml 编排格式、状态机 CLI(`task_swarm.py`)、子 agent 角色定义
-(coder/reviewer/validator)、报告渲染。
+The lead agent = task-swarm's **orchestrator + planner**. task-swarm provides four things:
+the pipeline.yml orchestration format, the state-machine CLI (`task_swarm.py`), the sub-agent role
+definitions (coder/reviewer/validator), and report rendering.
 
-CLI **只守 4 处机械完整性**,其余编排判断全归你,CLI 不压你思考:
-1. schema 校验(pipeline.yml 格式合法)
-2. agent_key 一致(状态机与产物对得上)
-3. advance 产物齐全 / 格式检查
-4. 原子写 + 禁手改受控文件
+The CLI **only guards 4 points of mechanical integrity**; all other orchestration judgment is yours, and the CLI does not constrain your thinking:
+1. schema validation (pipeline.yml format is legal)
+2. agent_key consistency (state machine and artifacts line up)
+3. advance artifact completeness / format checks
+4. atomic writes + blocking manual edits to controlled files
 
-task-swarm **独立运行,不依赖 specode**。若同时装了 specode,由 specode 侧
-委托接入,那也是 specode 调 task-swarm 的独立接口,不是反向耦合。
+task-swarm **runs standalone and does not depend on specode**. If specode is also installed, the specode
+side delegates into it — but that is still specode calling task-swarm's standalone interface, not reverse coupling.
 
-### 委托模式(被上层 spec 工作流集成时)
+### Delegated mode (when integrated by an upper-layer spec workflow)
 
-被上层 spec 工作流委托执行时,`init` 会额外带 `--spec-id <id>` / `--spec-dir <dir>`
-两个**可选回溯参数**(已支持,见 §2 / commands),仅用于把本 run 标注到来源
-需求,方便报告回溯;task-swarm 自身行为、state 落盘位置、状态机都不变。
-run `resolve` 收尾后,由调用方主代理(按其自身工作流的规则)决定下一步——
-task-swarm 不感知、也不驱动调用方的后续阶段。
+When delegated by an upper-layer spec workflow, `init` additionally carries `--spec-id <id>` / `--spec-dir <dir>`,
+two **optional traceback parameters** (already supported, see §2 / commands), used only to tag this run to its source
+requirement for report traceback; task-swarm's own behavior, state persist location, and state machine are unchanged.
+After the run's `resolve` finalizes, the calling lead agent (per its own workflow's rules) decides the next step —
+task-swarm neither perceives nor drives the caller's subsequent phases.
 
-## §1 独立流程总览(7 步)
+## §1 Standalone flow overview (7 steps)
 
-1. **接需求**:design.md / requirements / superpowers plan / 裸需求 / 已写好的 pipeline.yml
-2. **兼 planner 生成 pipeline.yml**(§2);若入参已是 `.yml` 且 schema 通过 → 跳过此步
-3. `init --pipeline <yml> --workdir <项目根>` 拿 `run_id`(测试有共享资源/端口时加 `--serial-validation`)
-4. `plan --run <id>` 返回**runnable 组集** → **同一 message** fork 这些组的全部 coder(总并发 ≤ `max_parallel`,逐字拷 plan 给的 agent_key)
-5. **各组等齐所有 in-flight Task ✓ completed**(机械纪律,§4)→ `advance --run <id> --group <gid> --phase <p>`
-6. `writeback --run <id> --group <gid>`(finalize 本组)→ 回第 4 步;`needs` 满足后下游组解锁进 runnable,直到全组 done
-7. 全组 done → `resolve --run <id>` 收尾 → `report --run <id>` 出报告
+1. **Take the requirement**: design.md / requirements / superpowers plan / bare requirement / an already-written pipeline.yml
+2. **Act as planner to generate pipeline.yml** (§2); if the input is already a `.yml` and passes schema → skip this step
+3. `init --pipeline <yml> --workdir <project root>` to get a `run_id` (add `--serial-validation` when tests share resources/ports)
+4. `plan --run <id>` returns the **set of runnable groups** → in the **same message** fork all coders of those groups (total concurrency ≤ `max_parallel`, copy verbatim the agent_key plan gives you)
+5. **Each group waits for all in-flight Tasks ✓ completed** (mechanical discipline, §4) → `advance --run <id> --group <gid> --phase <p>`
+6. `writeback --run <id> --group <gid>` (finalize this group) → back to step 4; once `needs` is satisfied, downstream groups unlock into runnable, until all groups are done
+7. All groups done → `resolve --run <id>` to finalize → `report --run <id>` to produce the report
 
-所有 `task_swarm.py` 调用走 `run.sh` 包装(见 commands/swarm.md 模板)。
+All `task_swarm.py` calls go through the `run.sh` wrapper (see the commands/swarm.md template).
 
-## §2 主代理兼 planner —— 生成合规 pipeline.yml
+## §2 Lead agent as planner — generate a compliant pipeline.yml
 
-- 读需求文档,理解要做什么。需要代码库现状时 **fork `Explore` 子 agent 调研**,
-  但调研结果由**你**综合成 yml——planner 角色是你,不是子 agent。
-- 拆成 `task_group`(语义任务组),每组内 task 点遵守:
-  - `@writes`(yml 里 `writes:`)跨**可并发组**不相交;冲突文件必须串行,用 `needs` 拓扑表达
-  - 粒度 30min–2h 可完成;太大要拆;能并发就不硬绑依赖
-  - 每个任务组配 reviewer + validator(下沉到任务组;细化见后续里程碑)
-- **格式照 `references/pipeline-yaml.md` 写,别凭印象**(受限 YAML 子集,踩坑见该文)
-- 写完跑 `init --pipeline` 触发 schema 校验;报错按提示改 yml 重试(**自修环**,直到 init 成功)
+- Read the requirement doc and understand what to build. When you need the codebase's current state, **fork an `Explore` sub-agent to investigate**,
+  but **you** synthesize the findings into the yml — the planner role is yours, not the sub-agent's.
+- Split into `task_group`s (semantic task groups); the task points within each group obey:
+  - `@writes` (`writes:` in the yml) must not intersect across **concurrent-eligible groups**; conflicting files must be serialized, expressed via `needs` topology
+  - granularity 30min–2h to complete; split anything too large; do not hard-bind dependencies when work can run concurrently
+  - each task group is paired with a reviewer + validator (pushed down to the task group; refinement in later milestones)
+- **Write the format per `references/pipeline-yaml.md`, not from memory** (a restricted YAML subset; see that doc for pitfalls)
+- After writing, run `init --pipeline` to trigger schema validation; on errors, fix the yml per the hints and retry (**self-fix loop**, until init succeeds)
 
-## §3 角色 / 状态机 / 产物 schema / 死循环保护
+## §3 Roles / state machine / artifact schema / deadloop guard
 
-→ `references/task-swarm.md`(动手前至少扫 TOC + §3 状态机 + §9 CLI 速查)。
-**禁止凭印象推** advance/writeback 的失败处理——细节都在 references。
+→ `references/task-swarm.md` (before acting, at least skim the TOC + §3 state machine + §9 CLI quick reference).
+**Do not infer advance/writeback failure handling from memory** — the details are all in references.
 
-## §4 机械纪律(对应 CLI 4 守点,违反必出乱)
+## §4 Mechanical discipline (maps to the CLI's 4 guard points; violating it causes chaos)
 
-- **advance 前必须等齐本组所有 fork 的 Task ✓ completed**;任何 streaming/running Bash 都不能 `advance --group <gid>`。
-  不确定时调 `plan --run <id>`,若返回 `*-waiting` 动作就回到等待。
-- **禁止自创 agent_key**:必须用 plan 给的规范名(`coder-{gid}-s{n}-r1`、`reviewer-{gid}-r1`、`validator-{gid}-r1`、`coder-vfix-{gid}-r{R}-f{I}` 等,gid 为组 id 如 g1),不要自编 `coder-fix-xxx`。
-- **result.md 缺 STATUS** → 重 fork **同名** agent(先清其 outbox),**绝不手补 STATUS**(缺 STATUS 多半是 subagent 提前退出、代码没刷盘)。
-- **禁止手改受控文件**(state.json / outbox 产物)——CLI 会 exit 2 拦截。
+- **Before advance you must wait for all the group's forked Tasks ✓ completed**; no streaming/running Bash may `advance --group <gid>`.
+  When unsure, call `plan --run <id>`; if it returns a `*-waiting` action, return to waiting.
+- **Do not invent agent_key**: you must use the canonical names plan gives you (`coder-{gid}-s{n}-r1`, `reviewer-{gid}-r1`, `validator-{gid}-r1`, `coder-vfix-{gid}-r{R}-f{I}`, etc., where gid is the group id such as g1); do not make up `coder-fix-xxx`.
+- **result.md missing STATUS** → re-fork the **same-named** agent (clear its outbox first); **never hand-patch STATUS** (a missing STATUS usually means the subagent exited early and the code was not flushed to disk).
+- **Do not manually edit controlled files** (state.json / outbox artifacts) — the CLI will exit 2 to block it.
 
-## §5 异常出口
+## §5 Exception exits
 
-coder STATUS=failed/blocked、writeback 越界、`failed-deadloop`(连续 3 轮同 fail 签名)
-→ **停循环、向用户报告、等用户介入,不要自动 retry**。详见 `references/task-swarm.md` §3 / §8。
+coder STATUS=failed/blocked, writeback out-of-bounds, `failed-deadloop` (3 consecutive rounds with the same fail signature)
+→ **stop the loop, report to the user, wait for user intervention; do not auto-retry**. See `references/task-swarm.md` §3 / §8.
 
-## §6 无 specode 依赖声明
+## §6 No-specode-dependency declaration
 
-本 SKILL 不引用 specode 的会话脚本 / selector / 验收阶段。state 落盘
-`<workdir>/.task-swarm/runs/<run_id>/`。独立模式无 spec 锁概念,无 session 门槛——
-用户可直接 `/task-swarm:swarm <需求文档>` 触发。
+This SKILL does not reference any specode session script, selector, or acceptance stage. State persists to
+`<workdir>/.task-swarm/runs/<run_id>/`. Standalone mode has no spec-lock concept and no session gate —
+the user can trigger it directly with `/task-swarm:swarm <requirement doc>`.

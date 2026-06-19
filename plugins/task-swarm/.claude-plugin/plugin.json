@@ -1,6 +1,6 @@
 {
   "name": "task-swarm",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops.",
   "author": {
     "name": "xueqiang",

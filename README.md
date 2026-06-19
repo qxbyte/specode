@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.md#license)
 [![specode](https://img.shields.io/badge/specode-2.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.4.1-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
 [![Tests](https://img.shields.io/badge/pytest-12%20cases-success)](./plugins/specode/tests)
@@ -20,7 +20,7 @@ any plugin it hosts. More plugins will land here over time.
 | Plugin | Version | What it does |
 | --- | --- | --- |
 | **specode** | 2.0.0 | A lightweight spec-driven **workflow** — an orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (with a first-class native fallback) and lands 3 fixed docs per spec. Documented below. |
-| **task-swarm** | 0.4.0 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. See [`plugins/task-swarm/`](./plugins/task-swarm). |
+| **task-swarm** | 0.4.1 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. See [`plugins/task-swarm/`](./plugins/task-swarm). |
 
 `## Installation` covers the whole marketplace; the other sections
 (Highlights, Usage, Architecture) document **specode**, the flagship

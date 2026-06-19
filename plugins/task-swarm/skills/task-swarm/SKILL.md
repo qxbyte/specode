@@ -1,6 +1,6 @@
 ---
 name: task-swarm
-description: Use when driving the task-swarm multi-agent orchestrator standalone — reading a requirement/design doc, generating a pipeline.yml, then running the fork → review → validate loop to complete a multi-task implementation. Trigger words: task-swarm, concurrent task execution, pipeline.yml orchestration, multi-coder fork.
+description: Use when driving the task-swarm multi-agent orchestrator standalone — reading a requirement/design doc, generating a pipeline.yml, then running the fork → review → validate loop to complete a multi-task implementation. Trigger words — task-swarm, concurrent task execution, pipeline.yml orchestration, multi-coder fork.
 ---
 
 # task-swarm standalone orchestration SKILL

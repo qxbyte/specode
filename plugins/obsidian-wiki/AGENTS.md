@@ -1,7 +1,7 @@
 # obsidian-wiki — agent guide
 
-维护 Obsidian **LLM-Wiki** 的一套 skill。代码通用、**零结构硬编码**：每个库的目录结构外置到
-`<vault>/.wiki/config.json`，脚本据此运行。数据留在 vault，代码随插件安装。
+维护 Obsidian **LLM-Wiki** 的一套 skill。代码通用、**零结构硬编码**：每个库的结构配置存在**家目录注册表**
+`~/.config/obsidian-wiki/configs/<名>.json`（按 `--vault` 路径解析；未注册则回退库内 `<vault>/.wiki/config.json`）。数据留在 vault，代码随插件安装，配置在家目录。
 
 > **给 Claude Code / Copilot CLI / CodeBuddy**：四个 skill 在 `skills/` 下，宿主会自动发现，
 > 直接用触发语（`/wiki-struct`、`/spec-distill`、`/wiki-curate`、`/wiki-orchestrate` 或「整理笔记库」）即可。
@@ -23,7 +23,7 @@
 
 ## 跑脚本
 
-脚本是 Python 3 标准库、UTF-8、零外部依赖。**`--vault` 必填**，脚本据此读 `<vault>/.wiki/config.json`。
+脚本是 Python 3 标准库、UTF-8、零外部依赖。**`--vault` 必填**，脚本经 `load_config` 按该路径在家目录注册表取配置（未注册则回退 `<vault>/.wiki/config.json`）。
 先把插件根解析成 `$WIKI`（脚本在 `$WIKI/skills/<name>/scripts/` 下）：
 
 ```bash
@@ -37,10 +37,17 @@ python3 "$WIKI/skills/wiki-curate/scripts/lint.py"       lint  --vault "$V"
 
 三者皆只读，仅向 `<vault>/<system_dir>/`（默认 `00-Index/_system/`）写体检报告。
 
-## 首次配置
+## 首次配置（家目录多库注册表）
 
-vault 缺 `.wiki/config.json` 时，从插件根 `config.example.json` 抄一份到 `<vault>/.wiki/config.json`，
-按你的目录名改（`index_dir` / `structure.dirs[]` / `lint` / `knowledge` 等）。
+各库的结构配置存在家目录 `~/.config/obsidian-wiki/`（`vaults.json` 记各库 path+active，`configs/<名>.json` 存结构），**不写进 vault**。注册一个库：
+
+```bash
+python3 "$WIKI/lib/registry.py" register --name <短名> --path "/path/to/vault" --activate --config-from "$WIKI/config.example.json"
+```
+
+然后按你的目录名编辑 `~/.config/obsidian-wiki/configs/<短名>.json`（`index_dir` / `structure.dirs[]` / `lint` / `knowledge` 等）。
+之后脚本传 `--vault <path>` 即按路径在注册表里取该库配置（未注册则回退库内 `<vault>/.wiki/config.json`）。
+`registry.py list` 看全部、`resolve` 解析 active、`set-active --name <名>` 切库。
 
 ## 红线（所有 skill 共同遵守）
 

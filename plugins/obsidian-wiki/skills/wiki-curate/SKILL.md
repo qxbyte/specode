@@ -6,7 +6,7 @@ description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpat
 
 # Wiki Curate
 
-> **配置说明**：vault 目录结构来自 `<vault>/.wiki/config.json`（schema 见本插件根 `config.example.json`）；脚本需通过 `--vault "<vault 根路径>"` 指定 vault。
+> **配置说明**：vault 的结构配置存在**家目录注册表** `~/.config/obsidian-wiki/configs/<库名>.json`（按 active 库解析；未注册则回退库内 `<vault>/.wiki/config.json`）。schema 见本插件根 `config.example.json`。脚本仍通过 `--vault "<vault 根路径>"` 指定 vault，结构由注册表/回退提供。
 >
 > **脚本定位（插件）**：脚本随插件安装，运行前先解析插件根 `$WIKI`：
 > ```bash

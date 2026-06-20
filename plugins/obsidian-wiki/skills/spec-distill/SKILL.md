@@ -10,7 +10,7 @@ description: >
 
 # spec-distill
 
-> **配置说明**：vault 目录结构来自 `<vault>/.wiki/config.json`（schema 见本插件根 `config.example.json`）；脚本需通过 `--vault "<vault 根路径>"` 指定 vault。
+> **配置说明**：vault 的结构配置存在**家目录注册表** `~/.config/obsidian-wiki/configs/<库名>.json`（按 active 库解析；未注册则回退库内 `<vault>/.wiki/config.json`）。schema 见本插件根 `config.example.json`。脚本仍通过 `--vault "<vault 根路径>"` 指定 vault，结构由注册表/回退提供。
 >
 > **脚本定位（插件）**：脚本随插件安装，运行前先解析插件根 `$WIKI`：
 > ```bash
@@ -44,7 +44,7 @@ description: >
 ## scan 流程
 
 1. 运行脚本：`python3 "$WIKI/skills/spec-distill/scripts/kn_scan.py" scan --vault "<vault>" [--source <路径>]`
-   - `--vault` 必填（脚本据此读 `<vault>/.wiki/config.json`）。
+   - `--vault` 必填（脚本经 `load_config` 按该路径在家目录注册表取配置，未注册则回退 `<vault>/.wiki/config.json`）。
    - 源目录默认 `<SpecInRoot>/windows-Public/specs/`；`SpecInRoot` 自动探测 `SpecIn/`（无则 `spec-in/`），可由配置 `knowledge.spec_in_candidates` 改。
 2. 读报告 `00-Index/_system/spec-distill-report.md`（脚本写出）。
 3. 向用户汇报：

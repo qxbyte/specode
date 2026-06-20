@@ -1,6 +1,6 @@
 # 目录配置参考（dir-config）
 
-`struct_gen.py` 的遍历与渲染行为由 `<vault>/.wiki/config.json` 中的 `structure.dirs` 驱动（schema 见本插件根 `config.example.json`）。本文档提供人类可读的配置表、渲染规则说明，以及新增/改名一级目录的操作步骤。
+`struct_gen.py` 的遍历与渲染行为由该库结构配置里的 `structure.dirs` 驱动——配置存家目录注册表 `~/.config/obsidian-wiki/configs/<名>.json`（未注册则回退 `<vault>/.wiki/config.json`；schema 见本插件根 `config.example.json`）。本文档提供人类可读的配置表、渲染规则说明，以及新增/改名一级目录的操作步骤。
 
 > **单一真相来源**：`config.json` 中的 `structure.dirs` 是权威。本文档中的目录表是示例配置的镜像（对应 `config.example.json`）；两者如有出入，以实际 `config.json` 为准。
 

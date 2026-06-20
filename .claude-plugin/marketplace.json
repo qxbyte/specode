@@ -1,6 +1,6 @@
 {
   "name": "pluginhub",
-  "description": "qxbyte's Claude Code / CodeBuddy plugin marketplace. Currently hosts specode (spec-driven workflow) and task-swarm (multi-agent orchestration); more plugins to come.",
+  "description": "qxbyte's Claude Code / CodeBuddy plugin marketplace. Currently hosts specode (spec-driven workflow), task-swarm (multi-agent orchestration) and obsidian-wiki (Obsidian LLM-Wiki maintenance); more plugins to come.",
   "owner": {
     "name": "qxbyte",
     "url": "https://github.com/qxbyte"
@@ -25,6 +25,16 @@
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
       "keywords": ["task-swarm", "multi-agent", "orchestration", "pipeline"]
+    },
+    {
+      "name": "obsidian-wiki",
+      "source": "./plugins/obsidian-wiki",
+      "version": "1.0.0",
+      "description": "Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / READMEs / partition pages), SpecIn->knowledge-base distillation + MEMORY, content curation (lint/ingest/curate), and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure.",
+      "homepage": "https://github.com/qxbyte/pluginhub",
+      "repository": "https://github.com/qxbyte/pluginhub",
+      "license": "MIT",
+      "keywords": ["obsidian", "llm-wiki", "knowledge-base", "notes", "curation"]
     }
   ]
 }

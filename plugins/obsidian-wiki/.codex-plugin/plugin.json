@@ -1,0 +1,14 @@
+{
+  "name": "obsidian-wiki",
+  "version": "1.0.0",
+  "description": "Maintain an Obsidian LLM-Wiki: deterministic structure layer, SpecIn->knowledge-base distillation + MEMORY, content curation, and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure.",
+  "author": {
+    "name": "xueqiang",
+    "email": "xueqiang361@gmail.com",
+    "url": "https://github.com/qxbyte"
+  },
+  "homepage": "https://github.com/qxbyte/pluginhub",
+  "repository": "https://github.com/qxbyte/pluginhub",
+  "license": "MIT",
+  "keywords": ["obsidian", "llm-wiki", "knowledge-base", "notes", "curation", "workflow"]
+}

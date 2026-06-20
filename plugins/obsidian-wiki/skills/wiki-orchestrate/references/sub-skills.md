@@ -63,6 +63,6 @@
 
 ## 共用产物与约定
 
-- 三者都向 `<vault>/<system_dir>/wiki-log.md`（`system_dir` 来自 `<vault>/.wiki/config.json`，默认 `00-Index/_system`）追加 append-only 操作日志（编排入口也写）。
+- 三者都向 `<vault>/<system_dir>/wiki-log.md`（`system_dir` 来自该库配置（家目录注册表 `configs/<名>.json`，回退 `<vault>/.wiki/config.json`），默认 `00-Index/_system`）追加 append-only 操作日志（编排入口也写）。
 - 三者报告都落在 `<vault>/<system_dir>/` 下，编排入口只读汇总，不覆盖它们。
-- 三者脚本 `--vault` **必填**（代码在仓里、不从位置推断 vault）；结构由 `<vault>/.wiki/config.json` 给。
+- 三者脚本 `--vault` **必填**（代码在插件 cache、不从位置推断 vault）；结构配置由家目录注册表 `~/.config/obsidian-wiki/configs/<名>.json` 给（未注册则回退 `<vault>/.wiki/config.json`）。

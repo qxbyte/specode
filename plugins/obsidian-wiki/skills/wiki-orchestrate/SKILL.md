@@ -40,7 +40,7 @@ LLM 驱动的 SKILL.md 流程"两部分组成。本入口因此这样执行：
 |---|---|
 | `/wiki-orchestrate`（= `run`） | 定位 vault → 三方只读体检 → 写 orchestrate-report → 呈现行动计划 → 用户批准后逐阶段执行 |
 | `/wiki-orchestrate scan` | 只定位 + 三方只读体检 + 写 orchestrate-report，**不执行任何写阶段** |
-| `/wiki-orchestrate set-vault [<路径>]` | 强制重设 vault 路径并写回 `$VPATH`（用户配置目录，见第 0 步；不传则询问用户） |
+| `/wiki-orchestrate set-vault [<路径>\|<名>]` | 重设/切换 active 库：已注册库用 `registry.py set-active --name <名>`，新库用 `register --activate`（见第 0 步）；不传则询问用户 |
 | `/wiki-orchestrate help` | 显示本命令表与三个子 skill 概览 |
 
 未给子命令时按 `run` 处理。
@@ -49,43 +49,45 @@ LLM 驱动的 SKILL.md 流程"两部分组成。本入口因此这样执行：
 
 ## 第 0 步：定位 vault（每个命令都先做）
 
-> **本套件作为插件安装、代码不在 vault 内**，所以 vault 路径**只能**由配置 / 用户给，不能从脚本位置推断。
-> 状态文件 `vault-path.json` **不能**写在插件目录（cache，更新即丢），统一落到用户配置目录 `$VPATH`：
-> ```bash
-> VPATH="${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-wiki/vault-path.json"
-> ```
+> **本套件作为插件安装、代码不在 vault 内**；vault 路径与各库结构配置都登记在**家目录注册表** `~/.config/obsidian-wiki/`（`vaults.json` 存各库 path + active，`configs/<名>.json` 存各库结构）。**既不写插件目录**（cache，更新即丢）、**也不再写进 vault**。注册表读写统一走 `registry.py`。
 
-1. 读 `$VPATH` 的 `path` 字段（不存在视为未配置）。
-2. **校验**：路径存在，且命中标志物 `<index_dir>/`（默认 `00-Index/`，标志物即"该库的 index 目录"），且 `<path>/.wiki/config.json` 存在。
-3. 命中 → **静默复用**，不打扰用户，直接进入后续步骤。
-4. 缺失 / 失效 → AskUserQuestion 询问 vault 路径（无法再从脚本位置上溯推断）。推荐选项 = `$VPATH` 里上次记录的路径；用户给出后**再次校验**（标志物 + `.wiki/config.json`），通过才 `mkdir -p` 其父目录并写回 `$VPATH`。
-5. vault 路径含 `/Volumes/` → 额外确认外置盘已挂载（如 `ls "<path>"` 可访问）；未挂载**报错停止**，不静默写到别处。
-6. 缺 `<path>/.wiki/config.json` → 报错并提示：从插件根 `config.example.json`（`$WIKI/config.example.json`，`$WIKI` 见第 1 步）抄一份到 `<path>/.wiki/config.json` 再跑。
-
-`$VPATH` 文件结构（运行时生成 / 更新；机器相关，不入库）：
-
-```json
-{
-  "path": "/Volumes/External HD/Obsidian/Notes",
-  "updated": "2026-06-20",
-  "host": "macos-xueqiang"
-}
-```
-
-> `host` 仅作记录。跨终端 / 移动目录导致路径不命中时，走第 4 步重问并覆盖。
-> `set-vault` 命令则**无条件**走第 4 步重设（写回 `$VPATH`）。
-
----
-
-## 第 1 步：只读体检（不写任何笔记）
-
-先解析插件根 `$WIKI`（四个子 skill 脚本都在 `$WIKI/skills/<name>/scripts/` 下）：
+先解析插件根 `$WIKI`（脚本与 `registry.py` 都在其下，后续步骤复用）：
 
 ```bash
 WIKI="${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT:-}}"; [ -d "$WIKI/skills/wiki-orchestrate" ] || WIKI="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" "$HOME/.copilot/installed-plugins" -type d -path '*/obsidian-wiki/skills/wiki-orchestrate' 2>/dev/null | sort -V | tail -1 | sed 's:/skills/wiki-orchestrate$::')"
 ```
 
-依次运行（`<vault>` = 第 0 步定位结果），三者皆只读（只写各自 `_system/` 报告）：
+1. 解析 active 库：`python3 "$WIKI/lib/registry.py" resolve`。
+   - 成功 → 输出 JSON `{name, path, config, config_exists}`；取 `path` 作 `<vault>`。
+   - 退出码 **3**（未配置）→ 走第 4 步注册。
+2. **校验**：`path` 存在、命中标志物 `<index_dir>/`（默认 `00-Index/`，即"该库的 index 目录"）、且 `config_exists=true`。
+3. 命中 → **静默复用**，不打扰用户，直接进入后续步骤。
+4. 未配置 / 失效 → AskUserQuestion 询问 vault 路径，注册并播种配置：
+   ```bash
+   python3 "$WIKI/lib/registry.py" register --name <短名> --path "<vault>" --activate --config-from "$WIKI/config.example.json"
+   ```
+   然后**提示用户按自己库的目录名编辑** `~/.config/obsidian-wiki/configs/<短名>.json`（模板即 config.example.json）。改完再次校验通过才继续。
+5. vault 路径含 `/Volumes/` → 额外确认外置盘已挂载（如 `ls "<path>"` 可访问）；未挂载**报错停止**，不静默写到别处。
+6. `config_exists=false`（已注册但缺配置）→ 报错并提示：把 `$WIKI/config.example.json` 抄到 `~/.config/obsidian-wiki/configs/<名>.json` 并按库改，再跑。
+
+注册表结构（`registry.py` 维护；机器相关，不入库）：
+
+```json
+{
+  "active": "notes",
+  "vaults": { "notes": { "path": "/Volumes/External HD/Obsidian/Notes" } }
+}
+```
+
+> 多库：`vaults` 可有多个条目，`active` 决定默认操作哪个；`registry.py list` 查看、`set-active --name <名>` 切换。
+> 跨终端 / 移动目录导致 active 库路径不命中时，走第 4 步重问并 `register --activate` 覆盖。
+
+---
+
+## 第 1 步：只读体检（不写任何笔记）
+
+复用第 0 步解析好的 `$WIKI`（四个子 skill 脚本都在 `$WIKI/skills/<name>/scripts/` 下）。
+依次运行（`<vault>` = 第 0 步 `registry.py resolve` 得到的 `path`），三者皆只读（只写各自 `_system/` 报告）：
 
 ```bash
 python3 "$WIKI/skills/wiki-struct/scripts/struct_gen.py" check --vault "<vault>"
@@ -176,9 +178,9 @@ python3 "$WIKI/skills/wiki-curate/scripts/lint.py" lint --vault "<vault>"
 
 ## 跨平台
 
-- **代码（本插件）与数据（vault）解耦**：代码随插件安装在 plugin cache（`$WIKI`），vault 结构在 `<vault>/.wiki/config.json`，vault 根由 `$VPATH`/用户给。零位置、零结构硬编码。
-- 子脚本 `struct_gen.py` / `kn_scan.py` / `lint.py` 用 Python 标准库、UTF-8、不依赖外部包；调用一律传 `--vault "<vault>"`（必填），脚本据此读 `<vault>/.wiki/config.json`。
-- 别人安装 = `/plugin` 装 obsidian-wiki → 在自己 vault 写 `.wiki/config.json`（抄插件根 `config.example.json`）→ 跑，无需改代码。
+- **代码（本插件）/ 配置（家目录）/ 数据（vault）三者解耦**：代码随插件装在 plugin cache（`$WIKI`），各库结构配置在家目录注册表 `~/.config/obsidian-wiki/configs/<名>.json`，vault 根由 `registry.py resolve` 给。零位置、零结构硬编码，库内不再有 `.wiki/`。
+- 子脚本 `struct_gen.py` / `kn_scan.py` / `lint.py` 用 Python 标准库、UTF-8、不依赖外部包；调用一律传 `--vault "<vault>"`（必填），脚本经 `load_config` 按 vault 路径在注册表里取该库配置（未注册则回退库内 `<vault>/.wiki/config.json`）。
+- 别人安装 = `/plugin` 装 obsidian-wiki → `registry.py register --name <名> --path <vault> --config-from config.example.json` → 按库改 `configs/<名>.json` → 跑，无需改代码。
 - `spec-distill` 源目录探测候选由配置 `knowledge.spec_in_candidates` 给（默认 `SpecIn` 无则 `spec-in`），兼容不同库。
 
 ---

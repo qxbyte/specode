@@ -5,10 +5,50 @@ def read_text(p):
     with open(p, encoding="utf-8", newline="") as f:
         return f.read().replace("\r\n", "\n").replace("\r", "\n")
 
-def load_config(vault):
-    p = os.path.join(vault, ".wiki", "config.json")
+def config_home():
+    """家目录配置根：$OBSIDIAN_WIKI_CONFIG_DIR 优先，否则 ${XDG_CONFIG_HOME:-~/.config}/obsidian-wiki。"""
+    base = os.environ.get("OBSIDIAN_WIKI_CONFIG_DIR")
+    if base:
+        return base
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg, "obsidian-wiki")
+
+def registry_path():
+    return os.path.join(config_home(), "vaults.json")
+
+def load_registry():
+    """读多库注册表 {active, vaults:{<名>:{path}}}；不存在则返回空壳。"""
+    p = registry_path()
     if not os.path.isfile(p):
-        raise SystemExit("错误：未找到配置 %s。请参考 obsidian-wiki/config.example.json 写一份。" % p)
+        return {"active": None, "vaults": {}}
+    try:
+        d = json.loads(read_text(p))
+    except json.JSONDecodeError as e:
+        raise SystemExit("错误：注册表 JSON 解析失败 %s：%s" % (p, e))
+    d.setdefault("active", None)
+    d.setdefault("vaults", {})
+    return d
+
+def _registry_config_for(vault):
+    """按 vault 绝对路径在注册表里匹配库，返回其家目录配置路径；找不到返回 None。"""
+    want = os.path.realpath(vault)
+    for name, meta in load_registry()["vaults"].items():
+        p = meta.get("path")
+        if p and os.path.realpath(p) == want:
+            return os.path.join(config_home(), "configs", name + ".json")
+    return None
+
+def load_config(vault):
+    """优先家目录注册表 configs/<名>.json（按 --vault 路径匹配）；未注册则回退库内 <vault>/.wiki/config.json。"""
+    p = _registry_config_for(vault)
+    if p is None:
+        p = os.path.join(vault, ".wiki", "config.json")
+    if not os.path.isfile(p):
+        raise SystemExit(
+            "错误：未找到配置 %s。\n"
+            "  · 家目录注册表：%s（用 registry.py register 注册本库，并把 config.example.json 抄到 configs/<名>.json）\n"
+            "  · 或库内回退：<vault>/.wiki/config.json\n"
+            "  模板见插件根 config.example.json。" % (p, registry_path()))
     try:
         return json.loads(read_text(p))
     except json.JSONDecodeError as e:

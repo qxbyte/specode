@@ -10,13 +10,42 @@ def mkvault(tree):
     return root
 
 class LoadTest(unittest.TestCase):
-    def test_load_config_ok(self):
+    def setUp(self):
+        # 隔离家目录配置，避免读到真实 ~/.config/obsidian-wiki
+        self._home = tempfile.mkdtemp(prefix="wchome-")
+        self.addCleanup(shutil.rmtree, self._home, True)
+        self._old = os.environ.get("OBSIDIAN_WIKI_CONFIG_DIR")
+        os.environ["OBSIDIAN_WIKI_CONFIG_DIR"] = self._home
+    def tearDown(self):
+        if self._old is None:
+            os.environ.pop("OBSIDIAN_WIKI_CONFIG_DIR", None)
+        else:
+            os.environ["OBSIDIAN_WIKI_CONFIG_DIR"] = self._old
+    def _register(self, name, vault, cfg):
+        os.makedirs(os.path.join(self._home, "configs"), exist_ok=True)
+        json.dump({"active": name, "vaults": {name: {"path": vault}}},
+                  open(os.path.join(self._home, "vaults.json"), "w", encoding="utf-8"))
+        json.dump(cfg, open(os.path.join(self._home, "configs", name + ".json"),
+                            "w", encoding="utf-8"))
+
+    def test_load_config_invault_fallback(self):
+        # 未注册 → 回退库内 .wiki/config.json
         v = mkvault({".wiki/config.json": json.dumps({"index_dir": "00-Index"})})
         self.addCleanup(shutil.rmtree, v, True)
         self.assertEqual(wc.load_config(v)["index_dir"], "00-Index")
     def test_load_config_missing_raises(self):
         v = mkvault({"x.md": "x"}); self.addCleanup(shutil.rmtree, v, True)
         with self.assertRaises(SystemExit): wc.load_config(v)
+    def test_load_config_from_registry(self):
+        # 注册表里有本库 → 读家目录 configs/<名>.json（库内无 .wiki）
+        v = mkvault({"x.md": "x"}); self.addCleanup(shutil.rmtree, v, True)
+        self._register("t", v, {"index_dir": "IDX"})
+        self.assertEqual(wc.load_config(v)["index_dir"], "IDX")
+    def test_registry_takes_precedence_over_invault(self):
+        v = mkvault({".wiki/config.json": json.dumps({"index_dir": "INVAULT"})})
+        self.addCleanup(shutil.rmtree, v, True)
+        self._register("t", v, {"index_dir": "HOME"})
+        self.assertEqual(wc.load_config(v)["index_dir"], "HOME")
     def test_read_text_crlf(self):
         v = mkvault({}); self.addCleanup(shutil.rmtree, v, True)
         p = os.path.join(v, "a.md")

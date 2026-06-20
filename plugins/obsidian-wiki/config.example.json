@@ -1,0 +1,44 @@
+{
+  "vault_name": "Obsidian 知识库",
+  "index_dir": "00-Index",
+  "home_file": "00-Index/Home.md",
+  "system_dir": "00-Index/_system",
+  "skip_dirs": [".obsidian", ".claude", ".claudian", ".git", "skills"],
+
+  "structure": {
+    "dirs": [
+      {"dir": "00-Index", "emoji": "🗂️", "desc": "索引与导航中枢（分区索引 + 系统报告）", "callout": "abstract", "readme": false, "partition": false, "sensitive": false},
+      {"dir": "01-Concepts", "emoji": "📘", "desc": "概念与原理：Java、Spring、中间件、架构、设计模式", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "02-Models", "emoji": "🤖", "desc": "AI/ML 模型", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "03-Memo", "emoji": "🔐", "desc": "运维备忘（敏感：服务器/激活码/账号/密钥）", "callout": "warning", "readme": true, "partition": true, "sensitive": true},
+      {"dir": "04-Tools", "emoji": "🛠️", "desc": "AI 工具、CLI、应用", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "05-Workflows", "emoji": "⚙️", "desc": "工作流程、操作手册、工程模板", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "06-Prompts", "emoji": "✍️", "desc": "提示词模板与工程工作流", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "07-Ideas", "emoji": "💡", "desc": "项目想法、产品需求、技术探索", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "08-Sources", "emoji": "📚", "desc": "外部资料来源", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "09-Journal", "emoji": "🗓️", "desc": "每日日记与观察", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "10-Work", "emoji": "💼", "desc": "工作资料、需求、系统、运维", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "99-Inbox", "emoji": "📥", "desc": "收件箱（待整理）", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "Clippings", "emoji": "✂️", "desc": "Web Clipper 剪藏暂存", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "Database", "emoji": "🗃️", "desc": "Obsidian Bases 数据库视图", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "SpecIn", "emoji": "📐", "desc": "Specode 需求规格输入（按 host/需求号归类）", "callout": "note", "readme": true, "partition": true, "sensitive": false},
+      {"dir": "_scaffold", "emoji": "🧩", "desc": "笔记模板与脚手架资源", "callout": "note", "readme": true, "partition": true, "sensitive": false}
+    ]
+  },
+
+  "lint": {
+    "purpose_heading": "用途",
+    "purpose_dirs": ["01-Concepts", "02-Models", "04-Tools", "05-Workflows", "06-Prompts", "08-Sources"],
+    "orphan_dirs": ["01-Concepts", "02-Models", "04-Tools", "05-Workflows", "06-Prompts", "08-Sources", "09-Journal"],
+    "required_frontmatter": ["类型", "状态", "标签", "更新"],
+    "sensitive_dirs": ["03-Memo", "10-Work/权限申请", "10-Work/系统", "99-Inbox/账号", "99-Inbox/激活"]
+  },
+
+  "knowledge": {
+    "kb_root": "10-Work/知识库",
+    "spec_in_candidates": ["SpecIn", "spec-in"],
+    "spec_source_default": "windows-Public/specs",
+    "memory_file": "MEMORY.md",
+    "memory_reverse_section": "需求反向索引"
+  }
+}

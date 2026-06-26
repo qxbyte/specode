@@ -66,6 +66,14 @@ def ingest_lessons(sm: Any) -> dict[str, Any]:
     pitfalls_dir = knowledge_root / "pitfalls"
     cases_dir.mkdir(parents=True, exist_ok=True)
     pitfalls_dir.mkdir(parents=True, exist_ok=True)
+    # Twin md tree under <project_root>/knowledge-base/ — same stems as the
+    # yml side; preserves narrative/ascii structure that yml fields lose.
+    # Future P1-3 embedding indexer reads these md for higher-quality vectors.
+    md_root = project_root / "knowledge-base"
+    md_cases_dir = md_root / "cases"
+    md_pitfalls_dir = md_root / "pitfalls"
+    md_cases_dir.mkdir(parents=True, exist_ok=True)
+    md_pitfalls_dir.mkdir(parents=True, exist_ok=True)
 
     spec_id = sm.spec_id or sm.run_id
     run_dir = Path(sm.run_dir)
@@ -94,6 +102,9 @@ def ingest_lessons(sm: Any) -> dict[str, Any]:
         case_path = cases_dir / f"{case_yml['knowledge_id']}.yml"
         _dump_yaml(case_path, case_yml)
         written_cases.append(str(case_path))
+        # twin md (knowledge-base/cases/case-*.md)
+        case_md_path = md_cases_dir / f"{case_yml['knowledge_id']}.md"
+        _atomic_write_text(case_md_path, _case_to_md(case_yml))
 
         for val in validations:
             if val.verdict != "fail":
@@ -112,6 +123,9 @@ def ingest_lessons(sm: Any) -> dict[str, Any]:
             _dump_yaml(pit_path, pit_yml)
             if str(pit_path) not in written_pitfalls:
                 written_pitfalls.append(str(pit_path))
+            # twin md (knowledge-base/pitfalls/pit-*.md)
+            pit_md_path = md_pitfalls_dir / f"pit-{sig}.md"
+            _atomic_write_text(pit_md_path, _pit_to_md(pit_yml))
 
     return {"cases": written_cases, "pitfalls": written_pitfalls, "skipped": None}
 
@@ -395,3 +409,140 @@ def _load_yaml_if_exists(path: Path) -> Any:
 # Re-exported for tests / future use.
 def _stable_sig(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+# ---------- md rendering (twin of yml, written under knowledge-base/) ----------
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _yml_frontmatter(payload: dict[str, Any]) -> str:
+    """Minimal yaml frontmatter dump for md files. Avoids importing yaml
+    here — keep _ingest_lessons' optional-yaml stance intact."""
+    if _HAS_YAML:
+        return yaml.safe_dump(payload, allow_unicode=True, sort_keys=False)  # type: ignore[name-defined]
+    # JSON-as-YAML fallback (valid YAML 1.2 subset)
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def _case_to_md(case: dict[str, Any]) -> str:
+    """Render a case yml dict to its knowledge-base/cases/*.md twin.
+
+    Layout matches references/doc-template.md §4.2 case md template
+    (specode-distill 3.0+)."""
+    fm = {
+        "knowledge_id": case.get("knowledge_id", ""),
+        "type": "case",
+        "version": case.get("version", 1),
+        "updated_at": case.get("updated_at", ""),
+        "tags": case.get("tags", []) or [],
+        "related_requirements": case.get("related_requirements", []) or [],
+        "related_knowledge": case.get("related_knowledge", []) or [],
+        "related_code": case.get("related_code", []) or [],
+    }
+    lines: list[str] = ["---", _yml_frontmatter(fm).rstrip(), "---", ""]
+    title = case.get("title") or case.get("knowledge_id", "")
+    lines += [f"# case {case.get('spec_id', '')} — {title}".rstrip(), ""]
+
+    summary = (case.get("implementation_summary") or "").strip()
+    if summary:
+        lines += ["## 实现摘要", "", summary, ""]
+
+    changed = case.get("changed_files") or []
+    if changed:
+        lines += ["## 改动文件", ""]
+        lines += [f"- `{p}`" for p in changed]
+        lines.append("")
+
+    decisions = case.get("key_decisions") or []
+    if decisions:
+        lines += ["## 关键决策", "", "| 决策 | 理由 |", "|---|---|"]
+        for d in decisions:
+            dec = (d.get("decision") if isinstance(d, dict) else str(d)).replace("|", "\\|")
+            rsn = (d.get("reason", "") if isinstance(d, dict) else "").replace("|", "\\|") or "—"
+            lines.append(f"| {dec} | {rsn} |")
+        lines.append("")
+
+    bugs = case.get("bugs_encountered") or []
+    if bugs:
+        lines += ["## 实施中遇到的 bug", ""]
+        lines += [f"- {b}" for b in bugs]
+        lines.append("")
+
+    findings = case.get("review_findings") or []
+    if findings:
+        lines += ["## Review 反馈", "", "| 发现 | 严重度 | 处理 |", "|---|---|---|"]
+        for f in findings:
+            ft = f.get("finding", "").replace("|", "\\|")
+            sv = f.get("severity", "")
+            ac = f.get("action", "")
+            lines.append(f"| {ft} | {sv} | {ac} |")
+        lines.append("")
+
+    acceptance = case.get("acceptance_status", "")
+    if acceptance:
+        lines += ["## 验收", "", f"- 状态：**{acceptance}**", ""]
+
+    lines.append(
+        "> 自动由 `task-swarm resolve` 写入；同名 yml 见 `.ai-memory/knowledge/cases/`。"
+    )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _pit_to_md(pit: dict[str, Any]) -> str:
+    """Render a pitfall yml dict to its knowledge-base/pitfalls/*.md twin.
+
+    Layout matches references/doc-template.md §5.2 pit md template."""
+    fm = {
+        "knowledge_id": pit.get("knowledge_id", ""),
+        "type": "pitfall",
+        "version": pit.get("version", 1),
+        "updated_at": pit.get("updated_at", ""),
+        "tags": pit.get("tags", []) or [],
+        "related_requirements": (
+            [pit.get("first_seen_in")] if pit.get("first_seen_in") else []
+        )
+        + (pit.get("seen_again_in") or []),
+        "related_knowledge": [],
+        "related_code": [{"file": f} for f in (pit.get("affects") or [])],
+    }
+    lines: list[str] = ["---", _yml_frontmatter(fm).rstrip(), "---", ""]
+    title = pit.get("title") or pit.get("knowledge_id", "")
+    lines += [f"# pit — {title}", ""]
+
+    symptom = (pit.get("symptom") or "").strip()
+    if symptom:
+        lines += ["## 症状", "", "```", symptom, "```", ""]
+
+    fix = pit.get("fix") or []
+    if fix:
+        lines += ["## 修复", ""]
+        lines += [f"- {f}" for f in fix]
+        lines.append("")
+
+    affects = pit.get("affects") or []
+    if affects:
+        lines += ["## 影响范围", ""]
+        lines += [f"- `{a}`" for a in affects]
+        lines.append("")
+
+    history_lines = []
+    first = pit.get("first_seen_in")
+    if first:
+        history_lines.append(f"| 首次踩到 | [[case-{first}]] | — |")
+    for again in pit.get("seen_again_in") or []:
+        history_lines.append(f"| 再次踩到 | {again} | 已合并教训 |")
+    if history_lines:
+        lines += ["## 历史", "", "| 时间 | spec | 备注 |", "|---|---|---|"]
+        lines += history_lines
+        lines.append("")
+
+    lines.append(
+        "> 自动由 `task-swarm resolve` 写入；同 signature 后续重复触发会追加到上表。"
+    )
+    return "\n".join(lines).rstrip() + "\n"

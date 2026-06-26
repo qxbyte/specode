@@ -4,6 +4,39 @@ obsidian-wiki 是维护 Obsidian LLM-Wiki 的多 agent 插件（从独立 skills
 
 ## Unreleased
 
+## 2.0.0 (2026-06-26)
+
+### BREAKING — spec-distill 已剥离
+
+spec-distill 作为 "对接 specode 沉淀知识"的工具，本质不属于"Obsidian
+vault 维护"工具集，曾在 v1/v2 期间临时寄放在本插件内。v2.0 将其完整
+迁移到 **specode 内子 skill specode-distill**（slash command 改为
+`/specode:specode-distill <slug>`），并对触发模型做了根本性调整：
+单 spec 触发、写到 spec 自己的 project_root，彻底消除 v1/v2 spec-distill
+依赖 vault 全局 scan 时的跨项目混淆问题。
+
+obsidian-wiki **本体仍然存在**，剩余三件套：
+
+- `wiki-struct` — 维护 Obsidian Home 树 / 各一级目录 README / 00-Index
+  分区页的受管块
+- `wiki-curate` — Karpathy 方法论的内容向 ingest / curate / lint
+- `wiki-orchestrate` — 只读体检 → 行动计划 → 编排上面两个
+
+如果你之前依赖 v1/v2 spec-distill：
+
+1. 安装最新 specode 3.0+（`/plugin install specode`）。
+2. 用 `/specode:specode-distill <slug>` 替代 `/spec-distill sync`。
+3. 知识不再写到 `<vault>/10-Work/知识库/<系统>/`，而是写到每个 spec
+   的 `<project_root>/.ai-memory/knowledge/` + `<project_root>/knowledge-base/`。
+4. vault 内 `00-Index/_system/spec-distill-state.yml` 与
+   `spec-distill-report.yml` 不再被维护——可以保留作为历史档案，也
+   可以删除。
+
+### 移除
+
+- `skills/spec-distill/`（整个子目录）
+- `scripts/kn_scan.py`（连同 17 个单测）— 单 spec 模型不需要全局扫描
+
 ## 1.1.0 (2026-06-25)
 
 ### BREAKING: spec-distill 完全重写输出层（v2）

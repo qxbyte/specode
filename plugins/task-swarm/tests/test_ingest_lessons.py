@@ -292,6 +292,47 @@ class IngestLessonsTest(unittest.TestCase):
         case = _read_yml(Path(result["cases"][0]))
         self.assertTrue(case["knowledge_id"].startswith("case-r1-"))
 
+    # ---------- knowledge-base/ md twin ----------
+
+    def test_case_md_twin_written_alongside_yml(self) -> None:
+        _write_outbox(self.run_dir, "coder-g1-s1-r1", "result.md", _CODER_RESULT)
+        _write_outbox(self.run_dir, "reviewer-g1-r1", "review.md", _VALID_REVIEW)
+        result = ingest_lessons(self.sm)
+        yml_path = Path(result["cases"][0])
+        md_path = self.project / "knowledge-base" / "cases" / f"{yml_path.stem}.md"
+        self.assertTrue(md_path.is_file(), f"missing twin md at {md_path}")
+        body = md_path.read_text(encoding="utf-8")
+        # frontmatter present
+        self.assertTrue(body.startswith("---\n"))
+        # title carries spec + group name
+        self.assertIn("checkout pricing pipeline", body)
+        # changed files surfaced
+        self.assertIn("src/pricing.py", body)
+        # implementation_summary surfaced
+        self.assertIn("null-guard", body)
+
+    def test_pit_md_twin_written_for_validator_fail(self) -> None:
+        _write_outbox(self.run_dir, "coder-g1-s1-r1", "result.md", _CODER_RESULT)
+        self.sm.task_groups[0].validator_history = [{"round": 1, "verdict": "fail"}]
+        _write_outbox(self.run_dir, "validator-g1-r1", "validation.md", _VALID_VALIDATION_FAIL)
+        result = ingest_lessons(self.sm)
+        yml_path = Path(result["pitfalls"][0])
+        md_path = self.project / "knowledge-base" / "pitfalls" / f"{yml_path.stem}.md"
+        self.assertTrue(md_path.is_file(), f"missing twin md at {md_path}")
+        body = md_path.read_text(encoding="utf-8")
+        self.assertIn("BigDecimal.add NPE", body)
+        self.assertIn("Optional.ofNullable", body)
+        # affects section lists the file
+        self.assertIn("src/pricing.py", body)
+        # history line for first_seen_in
+        self.assertIn("REQ-001", body)
+
+    def test_knowledge_base_dirs_created_even_without_signal(self) -> None:
+        result = ingest_lessons(self.sm)
+        self.assertIsNone(result["skipped"])
+        self.assertTrue((self.project / "knowledge-base" / "cases").is_dir())
+        self.assertTrue((self.project / "knowledge-base" / "pitfalls").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,7 +1,7 @@
 {
   "name": "obsidian-wiki",
-  "version": "1.1.0",
-  "description": "Maintain an Obsidian LLM-Wiki + AI-Enterprise-Delivery-System knowledge: deterministic structure layer (Home tree / per-dir READMEs / partition pages), spec-distill v2 (writes yml knowledge to <project_root>/.ai-memory/knowledge/{rules,business,modules,cases,pitfalls}/ — discards all .md outputs), content curation (lint/ingest/curate), and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure.",
+  "version": "2.0.0",
+  "description": "Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / per-dir READMEs / partition pages), content curation (lint/ingest/curate), and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure. v2.0 BREAKING: spec-distill has been extracted out of this plugin into specode (as specode-distill sub-skill); obsidian-wiki now focuses purely on vault maintenance.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

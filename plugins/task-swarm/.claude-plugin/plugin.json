@@ -1,7 +1,7 @@
 {
   "name": "task-swarm",
-  "version": "0.5.0",
-  "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops. v0.5 adds P2-1 feedback loop — `resolve` ingests case/pitfall yml into <project_root>/.ai-memory/knowledge/.",
+  "version": "0.6.0",
+  "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops. v0.5 added P2-1 feedback loop (resolve ingests case/pitfall yml into <project_root>/.ai-memory/knowledge/). v0.6 adds twin md output under <project_root>/knowledge-base/cases/ + pitfalls/ — same stems as the yml; preserves narrative for future embedding indexer.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

@@ -1,0 +1,69 @@
+# Changelog — specode
+
+specode 是 spec-driven 轻量工作流插件：requirements → design → execute → acceptance 四阶段编排 + 三份固定产物（requirements.md / design.md / implementation-log.md）。本文件记录其自身版本。
+
+## Unreleased
+
+## 3.0.0 (2026-06-26)
+
+### Added — specode-distill 子 skill（spec-distill 迁入 specode 并改造为单 spec 模型）
+
+specode 是 spec 全生命周期的入口（requirements → design → execute →
+acceptance），把"知识沉淀"也纳入其中 → specode 成为 single source of
+truth，闭环更紧。
+
+新增 `skills/specode-distill/`：
+
+- 5 步流程：解析 project_root → 准备 yml + md 目录 → 读 spec 全文 →
+  AskUserQuestion 拆分提议 → 同时写 yml + md 双产
+- 写到 spec 自己的 `project_root`（绝对路径从 `requirements.md`
+  frontmatter 读），**严格 per-spec**，彻底消除原 spec-distill 跨项目
+  混淆问题（一个 vault 内多项目 spec 沉到不同 project_root）
+- 双产物：
+  - `<project_root>/.ai-memory/knowledge/{rules,business,modules,cases,pitfalls}/*.yml`
+    （机器源，给 `codemap recall` 和未来 embedding indexer）
+  - `<project_root>/knowledge-base/{rules,business,modules,cases,pitfalls}/*.md`
+    （人读 + embedding 源，保留散文/ascii/表格结构）
+- 同 stem、同 knowledge_id；同次 LLM 一次性产 yml + md
+
+新增 slash command：`/specode:specode-distill <slug>`。
+
+主 SKILL.md step 6 acceptance 末尾新增 `AskUserQuestion` 提示：
+*"是否立即沉淀本次需求知识？"* — "是"自动调 specode-distill；"否"输出
+后续手动命令提示。不强制；refusal 不影响 spec 状态。
+
+### Schema
+
+5 类 yml schema + 5 类 md 模板的完整定义在
+`skills/specode-distill/references/doc-template.md`：
+
+- `rules/rule-*` — 业务规则 / 全局机制（statement / why /
+  trigger_conditions / exceptions / enforcement）
+- `business/biz-*` — 业务流程 / 功能页（trigger / end_state / steps
+  with branches / data_flow / ui_constraints）
+- `modules/mod-*` — 表 / 字段 / 调用链 / 模块地图（scope=table
+  with columns/enum/shard，或 scope=call_chain）
+- `cases/case-*` — 历史案例（implementation_summary / changed_files /
+  key_decisions / bugs_encountered / lessons / review_findings /
+  acceptance_status）每个 spec 必产 1 篇
+- `pitfalls/pit-*` — 可复用坑点（symptom / root_cause / fix /
+  prevention / affects / first_seen_in / seen_again_in）
+
+### 砍掉的东西（v1/v2 spec-distill 有 → v3 没有）
+
+| 移除 | 原因 |
+|---|---|
+| `scan` 子命令（vault-wide 列待沉淀） | 单 spec 模型无 "vault 全局待沉淀" 概念 |
+| `<vault>/00-Index/_system/spec-distill-state.yml` | 不再需要全局 state；每个 spec 写自己项目 |
+| `<vault>/00-Index/_system/spec-distill-report.yml` | 同上 |
+| 按"系统"分组（`<vault>/10-Work/知识库/<系统>/`） | 替换为按"项目"分组（`<project_root>/knowledge-base/`） |
+| `MEMORY.md` / `wiki-log.md` | v2 已废 |
+| `--vault <path>` 标志 | 不再适用——输入只是 `<specsRoot>/<slug>/` 与 spec 自己的 `project_root` |
+| Python 辅助脚本 `kn_scan.py` | 纯 LLM-driven 流程；无脚本需要 |
+
+### Breaking changes
+
+- **install dependency change**：obsidian-wiki **不再是 AI-EDS 工作流必装**。
+  之前依赖 `/spec-distill sync` 的用户改用 `/specode:specode-distill <slug>`。
+- 配套 obsidian-wiki **2.0.0** 同步移除 `skills/spec-distill/` 子目录。
+- 配套 task-swarm **0.6.0** 同步加 `knowledge-base/*.md` 双产。

@@ -77,6 +77,7 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
    - superpowers installed → call `superpowers:verification-before-completion` (optionally also `superpowers:requesting-code-review`).
    - not installed → **specode-native**: the host agent verifies item by item against `design.md` test points / the `AC-N` in `requirements.md`.
    - Say "请验收" in prose and write an acceptance summary in `implementation-log.md`. **There is no formal acceptance-gate selector.**
+   - **distill prompt (sub-step, after acceptance summary is written)**: call `AskUserQuestion` once: *"是否立即沉淀本次需求知识到 <project_root>/.ai-memory/knowledge/ + knowledge-base/？"* — options: `立即沉淀（推荐）` / `稍后再说`. If the user picks "立即沉淀", invoke the `specode-distill` skill with this spec's slug (it follows the 5-step flow in `skills/specode-distill/SKILL.md`). If the user picks "稍后再说", just print: *"可后续运行 `/specode:specode-distill <slug>` 完成沉淀"* and return. **Do not block on this prompt** — refusal must not affect spec status; acceptance has already been written. Skip the prompt entirely if `specode-distill` skill is not installed (defensive: should always be present since v3.0+, but keep the check).
 
 phase ↔ skill quick map: `requirements` → brainstorming; `design` → writing-plans; execution → subagent-driven-development / executing-plans (the task-swarm path does not use superpowers); acceptance → verification-before-completion / requesting-code-review.
 

@@ -4,6 +4,86 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 3.1.0 (2026-06-27)
+
+### Changed — step 2.2 injection 升级为内容摘要（P3-2 闭环 part 1）
+
+主 `SKILL.md` step 2.2 注入命令从
+
+```
+codemap recall '<request>' --top-k 5 -o yaml
+```
+
+升级为
+
+```
+codemap recall '<request>' --top-k 5 --with-content -o yaml
+```
+
+注入格式从"wikilink 一句话摘要"升级为"完整字段表格"：
+
+```markdown
+### [[rule-coupon-mutex]] (business_rule, ranked_score=7)
+
+**优惠券和积分互斥**
+
+| 字段 | 值 |
+|---|---|
+| statement | Coupons and points can't both apply to the same order |
+| why | Prevents stacking discounts beyond margin |
+| exceptions | VIP ≥ 8 |
+| enforcement | service layer throws / frontend disables checkbox |
+```
+
+每个 category 渲染不同字段集（rules → statement/why/exceptions/...；
+pitfalls → symptom/fix/...；cases → implementation_summary/...；business
+→ trigger/steps/...；modules → scope/columns/...）。
+
+**修复闭环断点**：v3.0 注入只放了 wikilink，design phase 的 LLM
+（superpowers:writing-plans / native）很可能不主动去读 yml/md，错过
+关键约束。v3.1 把内容直接铺到 requirements.md 上，下游 skill 一定
+能看到。
+
+`stale` 命中（freshness_score < 0.5，由 codemap-aimemory 0.4.0 引入）
+在子标题前加 ⚠️ 前缀，让用户决定是否仍要遵守过期知识。
+
+### Added — step 3 design phase rule-acknowledgement post-check (P3-2 闭环 part 2)
+
+`design.md` 写完后，host agent 自动扫 requirements 的
+`## 已知约束 / 历史坑` 段提取所有 `[[rule-*]]`，逐一在 design.md grep
+是否被显式 acknowledge 或 override。缺失时 `AskUserQuestion`：
+
+```
+设计未显式涉及以下规则，可能违背或遗漏：
+- [[rule-X]] — <title>
+- [[rule-Y]] — <title>
+
+选择处理方式：
+- 补充 design.md 说明如何遵守 (recommended)
+- 显式声明覆盖（override rule-X: <reason>）
+- 跳过（认为不适用，标记到 implementation-log）
+```
+
+用户选完后 host agent 写回 design.md 或 implementation-log。规则不再
+能"悄悄遛过" design 阶段。如果 step 2.2 没召回任何 rule，post-check
+自动跳过（无可校验）。
+
+### Requirements
+
+- **`codemap-aimemory>=0.4.0`** for `--with-content` flag + freshness
+  fields. Older codemap：注入退化到 wikilink-only（v3.0 行为，依然
+  能用），post-check 仍生效。
+
+### Why this closes P3-2
+
+P3-2 的设计目标是 "design 阶段强制规则校验"。要做到这点，前置条件
+是 design phase 真的看到了规则**内容**（v3.0 wikilink-only 注入
+不够）。v3.1 两个改动是缺一不可的双臂：
+- step 2.2 内容注入 → 让 LLM 看见规则的具体约束
+- step 3 post-check → 让"规则没被处理"不能静悄悄发生
+
+到此 specode 闭环 "知识 → spec → design → 实施" 真正闭合。
+
 ## 3.0.1 (2026-06-26)
 
 ### Added — specode-distill step 4 pre-check (P2-2)

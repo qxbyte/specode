@@ -56,16 +56,54 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
 1. **specsRoot**: `get-root` (first-time setup if missing) → obtain `<specsRoot>` → `mkdir -p <specsRoot>/<slug>/` (the host agent derives the kebab-case slug from the request).
 2. **requirements (clarify + requirements)** — three sub-steps, always in this order:
    1. **`project_root` confirmation (required)**: infer the default — first `git rev-parse --show-toplevel` in cwd, fall back to cwd itself — and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and ends up in frontmatter at sub-step 3.
-   2. **context-recall (P3-1, optional but recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 -o yaml` to pull the top-K most relevant prior knowledge (rules / business / cases / pitfalls). Parse the yml output and **inject the hits as a markdown block** into the requirements draft's `## 已知约束 / 历史坑` section (use the template — see below). One bullet per knowledge hit, format `- [[<knowledge_id>]] (<type>, score=<n>) — <title> · <summary>`. If `codemap recall` is unavailable (codemap-aimemory not installed) or returns empty, **skip silently** — the requirements draft just omits that section. This sub-step makes the spec author see prior rules / cases / pitfalls before drafting, so the spec doesn't re-walk known mines.
+   2. **context-recall (P3-1 + P3-2 content injection, recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 --with-content -o yaml` to pull the top-K most relevant prior knowledge **with their core fields** (requires `codemap-aimemory>=0.4.0`; older versions silently skip `--with-content` and fall back to the wikilink-only injection below). Parse the yml output and inject each hit into the requirements draft's `## 已知约束 / 历史坑` section as a **content subsection** (not just a wikilink) — this is what makes the design phase actually see the constraints. Template per hit:
+
+      ```markdown
+      ### [[<knowledge_id>]] (<type>, ranked_score=<n>{, ⚠️ stale if `stale:true`})
+
+      **<title>**
+
+      | 字段 | 值 |
+      |---|---|
+      | <field_1> | <value_1> |
+      | <field_2> | <value_2> |
+      ```
+
+      Field set depends on `category`:
+      - **rules**: statement / why / trigger_conditions / exceptions / enforcement
+      - **pitfalls**: symptom / root_cause / fix / prevention / affects
+      - **cases**: implementation_summary / key_decisions / lessons / acceptance_status
+      - **business**: trigger / end_state / steps / ui_constraints
+      - **modules**: scope / primary_entity / columns / shard / call_chain
+
+      Hits flagged `stale: true` (freshness_score < 0.5) get a ⚠️ prefix in the heading so the user can decide whether to honor or update them.
+
+      If `codemap recall` is unavailable (codemap-aimemory not installed) or returns empty, **skip silently** — the requirements draft just omits the section. This sub-step makes the spec author see prior rules / cases / pitfalls **with content** before drafting, so the spec doesn't re-walk known mines and the design phase has the full constraints in-context (not just wikilink references it might never resolve).
    3. **draft requirements**:
       - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate). Pre-instruct it with the recall hits from sub-step 2 so brainstorming weaves them in.
       - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template — including the recall hits in the `## 已知约束 / 历史坑` section.
       - Relocate the artifact to `<specsRoot>/<slug>/requirements.md` (see §superpowers orchestration + relocation).
       - Write the YAML frontmatter (`spec_id: <slug>` / `project_root: <abs path from sub-step 1>` / `created_at: YYYY-MM-DD`). Downstream skills (e.g. `spec-distill`) read `project_root` from this frontmatter.
 3. **design (executable plan)**:
-   - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review).
+   - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review). **Pre-instruct it to honor every `[[rule-*]]` listed in the requirements `## 已知约束 / 历史坑` section** — design must either explicitly say how the rule is enforced, or note an explicit override + reason.
    - not installed → **specode-native**: break down into `## Task N` + `**Files:**` + `验证: AC-N` + `- [ ]` TDD steps per the `assets/templates/design.md` template.
    - Relocate the artifact to `<specsRoot>/<slug>/design.md`.
+   - **rule-acknowledgement post-check (P3-2, after design.md is written)**: scan the requirements `## 已知约束 / 历史坑` section for every `[[rule-*]]` id. For each id, grep the freshly-written `design.md` for either:
+     - a textual reference to the id (e.g. `[[rule-coupon-mutex]]` or `rule-coupon-mutex`), **or**
+     - an explicit override statement (`override rule-coupon-mutex: <reason>`).
+
+     If any `rule-*` from requirements is **missing** from `design.md`, call `AskUserQuestion`:
+
+     > 设计未显式涉及以下规则，可能违背或遗漏：
+     > - [[rule-X]] — <title>
+     > - [[rule-Y]] — <title>
+     >
+     > 选择处理方式：
+     > - 补充 design.md 说明如何遵守 (recommended)
+     > - 显式声明覆盖（`override rule-X: <reason>`）
+     > - 跳过（认为不适用，标记到 implementation-log）
+
+     The user's pick drives the next action (write back to design.md / log skip reason). Skip the post-check entirely if no rules were recalled in step 2.2 — there's nothing to verify. This closes the AI-EDS P3-2 loop: rules don't quietly slip through the design phase.
 4. **「执行方式」selector**: after design completes, call `AskUserQuestion` to present it (adaptive 4 options, see §执行方式 selector), verbatim per the `references/selectors.md` example.
 5. **Execution** (branches by selector choice, all TDD):
    - Delegate to task-swarm (installed) → see §task-swarm handoff.

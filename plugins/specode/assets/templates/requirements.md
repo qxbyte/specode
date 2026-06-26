@@ -8,6 +8,13 @@ created_at: YYYY-MM-DD
 
 > specode requirements — 散文描述 + 验收标准追溯标签。
 
+## 已知约束 / 历史坑
+
+<由 host agent 在 phase-0 context-recall 步骤自动注入；
+当 `<project_root>/.ai-memory/knowledge/` 为空或 `codemap recall` 不可用时本段省略。
+格式：每行 `- [[<knowledge_id>]] (<type>, score=<n>) — <title> · <summary>`。
+草稿作者写需求时务必先看这段，再决定是否覆盖/绕过历史结论。>
+
 ## 背景 / 为什么
 
 <这个需求解决什么问题、为谁、动机。>

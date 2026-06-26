@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "2.0.0",
-  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
+  "version": "2.1.0",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v2.1 adds phase-0 context-recall — pulls relevant prior knowledge from <project_root>/.ai-memory/ via `codemap recall` and injects it into the requirements draft before clarification.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

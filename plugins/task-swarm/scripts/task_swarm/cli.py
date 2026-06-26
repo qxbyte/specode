@@ -935,12 +935,41 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sm.completed_at = sm.completed_at or _now_iso()
         sm.failed_status = sm.failed_status or "done"
         sm.events_append({"type": "resolve", "status": sm.failed_status})
+
+    # P2-1: ingest lessons into <project_root>/.ai-memory/knowledge/
+    # only on successful runs; never bubble up — ingest failures must not
+    # turn a successful run into a failed resolve.
+    ingest_result: dict[str, Any] = {"cases": [], "pitfalls": [], "skipped": "not-done"}
+    if sm.failed_status == "done" and not getattr(args, "no_ingest", False):
+        try:
+            from task_swarm._ingest_lessons import ingest_lessons
+
+            ingest_result = ingest_lessons(sm)
+            sm.events_append(
+                {
+                    "type": "ingest-lessons",
+                    "cases": len(ingest_result.get("cases", [])),
+                    "pitfalls": len(ingest_result.get("pitfalls", [])),
+                    "skipped": ingest_result.get("skipped"),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 — ingest must never block resolve
+            ingest_result = {"cases": [], "pitfalls": [], "skipped": f"error:{type(exc).__name__}"}
+            sm.events_append(
+                {"type": "ingest-lessons", "error": f"{type(exc).__name__}: {exc}"}
+            )
+
     sm.save()
     _emit({
         "ok": True,
         "run_id": sm.run_id,
         "status": sm.failed_status,
         "completed_at": sm.completed_at,
+        "ingest": {
+            "cases": len(ingest_result.get("cases", [])),
+            "pitfalls": len(ingest_result.get("pitfalls", [])),
+            "skipped": ingest_result.get("skipped"),
+        },
     })
     return 0
 
@@ -1015,6 +1044,12 @@ def _build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("resolve")
     pr.add_argument("--run", required=True)
     pr.add_argument("--abort", action="store_true")
+    pr.add_argument(
+        "--no-ingest",
+        dest="no_ingest",
+        action="store_true",
+        help="skip writing case/pitfall yml to <project_root>/.ai-memory/knowledge/",
+    )
 
     prep = sub.add_parser("report")
     prep.add_argument("--run", required=True)

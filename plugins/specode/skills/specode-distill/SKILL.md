@@ -103,6 +103,36 @@ memory for step 4.
 
 ### Step 4 — `AskUserQuestion` — propose breakdown (**non-skippable**)
 
+**Pre-step (P2-2 — reverse-check existing pitfalls + rules)**: before
+forming proposals, query the project's existing knowledge base for any
+pitfalls / rules whose territory overlaps this spec. This prevents
+proposing a *rule* that contradicts a known *pitfall*, and surfaces
+historical context the LLM should weave into the new knowledge:
+
+```bash
+codemap recall --from-spec "<specsRoot>/<slug>/requirements.md" \
+               --project "<project_root>" \
+               --types rules,pitfalls \
+               --top-k 5 \
+               --output json
+```
+
+(Requires `codemap-aimemory>=0.3.6`. If `codemap recall` is unavailable,
+silently skip the pre-step — proposals fall back to spec-only context.)
+
+Parse the JSON; for each hit show the user a short bullet:
+`- [[<knowledge_id>]] (<type>, score=<n>) — <title> · <summary>`. Do
+NOT auto-merge the hits into proposals — they're context only. The
+host agent uses them to:
+
+1. Avoid proposing a `rule-*` whose `statement` directly conflicts
+   with an existing `pit-*.symptom` (sanity check).
+2. When proposing `case-*` / `pit-*` for this spec, link the existing
+   ids into `related_knowledge` / `seen_again_in` where appropriate.
+
+After the recall context is on screen, proceed with the breakdown
+proposal proper:
+
 Apply `references/breakdown-heuristics.md` (5 dimensions → 5
 categories) to propose N knowledge candidates. Each candidate
 **must** carry:
@@ -111,6 +141,7 @@ categories) to propose N knowledge candidates. Each candidate
 - `knowledge_id` — `<prefix>-<kebab-slug>` matching the category
 - `title` (Chinese) and a one-line summary
 - `tags` (best-effort)
+- `related_knowledge` — pre-fill with any recall hits judged relevant
 
 Always include at least one `cases/case-<slug>-implementation.yml`
 candidate (records this spec's implementation; source:

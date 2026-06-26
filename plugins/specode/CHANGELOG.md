@@ -4,6 +4,50 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 3.0.1 (2026-06-26)
+
+### Added — specode-distill step 4 pre-check (P2-2)
+
+`skills/specode-distill/SKILL.md` step 4 now starts with a pre-step
+that queries the project's existing knowledge base for relevant rules
+and pitfalls **before** the LLM forms breakdown proposals:
+
+```bash
+codemap recall --from-spec "<specsRoot>/<slug>/requirements.md" \
+               --project "<project_root>" \
+               --types rules,pitfalls \
+               --top-k 5 \
+               --output json
+```
+
+Each hit is surfaced to the user as a short context bullet
+`- [[<knowledge_id>]] (<type>, score=<n>) — <title> · <summary>`. The
+host agent then forms proposals **with awareness of**:
+
+- existing `rule-*` statements (don't propose contradictory new rules)
+- existing `pit-*` symptoms (link via `seen_again_in` if this spec
+  re-touches the same area; treat as risk if proposed code path
+  matches a known failure pattern)
+
+Proposed knowledge candidates now pre-fill `related_knowledge` with
+any recall hits judged relevant.
+
+Requires **codemap-aimemory>=0.3.6** (the `--from-spec` flag). If
+`codemap recall` is unavailable (codemap-aimemory not installed or
+older), the pre-step is silently skipped — proposals fall back to
+spec-only context. No hard dependency.
+
+### Why this closes P2-2
+
+The AI-EDS roadmap defined P2-2 as "spec-distill writes rules with
+awareness of historical pitfalls / cases". Until now the breakdown
+step in step 4 only had the current spec's documents in context, so
+the LLM had no way to know it was about to propose a rule that
+contradicted last quarter's hard-won pitfall. The pre-step closes
+that gap by injecting the cross-project knowledge that already lives
+in `.ai-memory/knowledge/` — produced by prior runs of either
+specode-distill itself or task-swarm's auto ingest.
+
 ## 3.0.0 (2026-06-26)
 
 ### Added — specode-distill 子 skill（spec-distill 迁入 specode 并改造为单 spec 模型）

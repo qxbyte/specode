@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "3.0.0",
-  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v2.1 added phase-0 context-recall (codemap recall before clarification). v3.0 adds **specode-distill** sub-skill (`/specode:specode-distill <slug>`) — distills a single spec's knowledge into the spec's own project_root (`.ai-memory/knowledge/{rules,business,modules,cases,pitfalls}/*.yml` + `knowledge-base/*.md` twin), and acceptance phase ends with an AskUserQuestion prompt to trigger it. Strictly per-spec (each spec writes to its own project; no cross-project mixing).",
+  "version": "3.0.1",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v2.1 added phase-0 context-recall (codemap recall before clarification). v3.0 added specode-distill sub-skill (per-spec yml+md knowledge distillation). v3.0.1 closes AI-EDS P2-2: specode-distill step 4 now pre-checks existing rules/pitfalls via `codemap recall --from-spec --types rules,pitfalls` before proposing breakdown — so proposed rules don't contradict known pitfalls.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

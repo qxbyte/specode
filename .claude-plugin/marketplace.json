@@ -9,8 +9,8 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "2.0.0",
-      "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir.",
+      "version": "3.2.0",
+      "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v3.0 added specode-distill sub-skill; v3.1 closes AI-EDS P3-2 (step 2.2 injection renders knowledge content + step 3 design post-check); v3.2 lands FIX-1 (project_root single-source-of-truth via resolve_root verbs) + FIX-2 (knowledge writer rewire via codemap knowledge write) + FIX-3d/3e consumer updates (--include-shared + 🌐 badge).",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
@@ -19,8 +19,8 @@
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.4.1",
-      "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops.",
+      "version": "0.7.0",
+      "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops. v0.5 added auto ingest_lessons; v0.6 added knowledge-base/*.md dual write; v0.7 rewires ingest to codemap knowledge write (FIX-2) + frontmatter-first project_root (FIX-1).",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
@@ -29,7 +29,7 @@
     {
       "name": "obsidian-wiki",
       "source": "./plugins/obsidian-wiki",
-      "version": "1.0.1",
+      "version": "2.0.0",
       "description": "Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / READMEs / partition pages), SpecIn->knowledge-base distillation + MEMORY, content curation (lint/ingest/curate), and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure.",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",

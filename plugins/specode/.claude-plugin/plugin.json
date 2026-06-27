@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "3.1.0",
-  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v2.1 added phase-0 context-recall. v3.0 added specode-distill sub-skill. v3.0.1 added specode-distill P2-2 rules/pitfalls pre-check. v3.1 closes AI-EDS P3-2 — step 2.2 injection now renders knowledge *content* (not just wikilinks) so the design phase sees actual rules/pitfalls; step 3 design phase ends with a post-check that flags any rule-* from requirements not acknowledged in design.md (requires codemap-aimemory 0.4.0+ for --with-content / freshness fields).",
+  "version": "3.2.0",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v3.0 added specode-distill sub-skill. v3.1 closes AI-EDS P3-2 (step 2.2 injection renders knowledge content + step 3 design post-check). v3.2 lands FIX-1 (project_root single-source-of-truth via resolve_root verbs) + FIX-2 (knowledge writer rewire — specode-distill delegates yml/md writes to `codemap knowledge write`) + FIX-3d/3e consumer (`--include-shared` flag + 🌐 badge for cross-project shared knowledge). Requires codemap-aimemory 0.4.3+ for FIX-2 / 0.4.4+ for FIX-3d/3e.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

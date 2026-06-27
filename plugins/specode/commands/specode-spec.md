@@ -16,5 +16,8 @@ After activation, follow the orchestration logic in specode SKILL.md (each phase
 
 1. `resolve_root.py get-root` (exit 3 / not configured → first-time setup per SKILL.md §specsRoot: `AskUserQuestion` for the document directory, then `set-root --root <abs>`) → `<specsRoot>`.
 2. The host agent derives a kebab-case `<slug>` from the requirement; `mkdir -p <specsRoot>/<slug>/`.
-3. `project_root = current terminal cwd` (do not ask; convention is that the user has already `cd`-ed to the project directory before starting the conversation).
+3. `project_root` — the project whose `.ai-memory/knowledge` this spec feeds — is the **single source of truth** for every downstream consumer (specode-distill, task-swarm, codemap recall). Resolve it through the script, never re-derive from cwd ad hoc:
+   - default: `resolve_root.py resolve-project-root` (returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) → present it via `AskUserQuestion` **once** for the user to confirm/override.
+   - persist: after requirements.md exists, `resolve_root.py write-project-root --spec <specsRoot>/<slug> --root <abs>` writes it into the requirements.md YAML frontmatter (validates absolute path / dir exists / `/Volumes` mounted). This frontmatter field is the **only** place project_root lives.
+   - read (any later phase / skill): `resolve_root.py read-project-root --spec <specsRoot>/<slug>` — the single read entry. Never read cwd/workdir instead.
 4. Follow SKILL.md §pipeline: requirements (brainstorming/native) → design (writing-plans/native) → "execution mode" selector → execution → acceptance. Three fixed artifacts land under `<specsRoot>/<slug>/`.

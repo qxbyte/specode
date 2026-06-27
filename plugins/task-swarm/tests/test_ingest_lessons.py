@@ -17,6 +17,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from task_swarm._ingest_lessons import ingest_lessons  # noqa: E402
 from task_swarm._state import GroupState, StateMachine  # noqa: E402
+from unittest import mock  # noqa: E402
 
 
 def _mk_state(workdir: Path, *, project_root: Path | None = None,
@@ -161,6 +162,11 @@ class IngestLessonsTest(unittest.TestCase):
         self.project.mkdir()
         self.sm = _mk_state(self.project, project_root=self.project)
         self.run_dir = Path(self.sm.run_dir)
+        # Force the inline-fallback writer so these tests assert task-swarm's
+        # own output contract deterministically (codemap CLI may be absent).
+        patcher = mock.patch("task_swarm._ingest_lessons._codemap_write", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -191,11 +197,11 @@ class IngestLessonsTest(unittest.TestCase):
         self.assertEqual(len(result["cases"]), 1)
         case_path = Path(result["cases"][0])
         case = _read_yml(case_path)
-        self.assertEqual(case["knowledge_id"], "case-REQ-001-g1")
+        # FIX-2: one canonical case per spec, id = case-<kebab(spec_id)>
+        self.assertEqual(case["knowledge_id"], "case-req-001")
         self.assertEqual(case["type"], "case")
         self.assertEqual(case["spec_id"], "REQ-001")
-        self.assertEqual(case["group_id"], "g1")
-        self.assertEqual(case["title"], "checkout pricing pipeline")
+        self.assertIn("g1", case["group_ids"])
         self.assertIn("src/pricing.py", case["changed_files"])
         # key_changes go into implementation_summary; reviewer hints into key_decisions.
         self.assertIn("null-guard", case["implementation_summary"])
@@ -290,7 +296,7 @@ class IngestLessonsTest(unittest.TestCase):
         self.sm.spec_id = None
         result = ingest_lessons(self.sm)
         case = _read_yml(Path(result["cases"][0]))
-        self.assertTrue(case["knowledge_id"].startswith("case-r1-"))
+        self.assertEqual(case["knowledge_id"], "case-r1")
 
     # ---------- knowledge-base/ md twin ----------
 
@@ -332,6 +338,137 @@ class IngestLessonsTest(unittest.TestCase):
         self.assertIsNone(result["skipped"])
         self.assertTrue((self.project / "knowledge-base" / "cases").is_dir())
         self.assertTrue((self.project / "knowledge-base" / "pitfalls").is_dir())
+
+
+class CodemapWriterPathTest(unittest.TestCase):
+    """FIX-2: when the codemap CLI is available, ingest routes payloads
+    through `codemap knowledge write` (the single writer) instead of the
+    inline fallback."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ts-codemap-"))
+        self.project = self.tmp / "project"
+        self.project.mkdir()
+        self.sm = _mk_state(self.project, project_root=self.project)
+        self.run_dir = Path(self.sm.run_dir)
+        _write_outbox(self.run_dir, "coder-g1-s1-r1", "result.md", _CODER_RESULT)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_case_routed_through_codemap_write(self) -> None:
+        calls: list = []
+
+        def fake_write(project_root, category, payload):
+            calls.append((project_root, category, payload))
+            return {
+                "knowledge_id": "case-req-001",
+                "yml_path": str(self.project / ".ai-memory/knowledge/cases/case-req-001.yml"),
+                "md_path": str(self.project / "knowledge-base/cases/case-req-001.md"),
+                "action": "created",
+                "errors": [],
+            }
+
+        with mock.patch("task_swarm._ingest_lessons._codemap_write", side_effect=fake_write):
+            result = ingest_lessons(self.sm)
+
+        self.assertEqual(len(calls), 1)
+        _, category, payload = calls[0]
+        self.assertEqual(category, "cases")
+        self.assertEqual(payload["spec_id"], "REQ-001")
+        self.assertIn("fields", payload)
+        self.assertIn("src/pricing.py", payload["fields"]["changed_files"])
+        self.assertTrue(result["cases"][0].endswith("case-req-001.yml"))
+
+    def test_pitfall_routed_through_codemap_write(self) -> None:
+        self.sm.task_groups[0].validator_history = [{"round": 1, "verdict": "fail"}]
+        _write_outbox(self.run_dir, "validator-g1-r1", "validation.md", _VALID_VALIDATION_FAIL)
+        seen: list = []
+
+        def fake_write(project_root, category, payload):
+            seen.append((category, payload))
+            stem = payload.get("signature", "x")
+            return {
+                "knowledge_id": f"pit-{stem}",
+                "yml_path": str(self.project / f".ai-memory/knowledge/pitfalls/pit-{stem}.yml"),
+                "md_path": str(self.project / f"knowledge-base/pitfalls/pit-{stem}.md"),
+                "action": "created",
+                "errors": [],
+            }
+
+        with mock.patch("task_swarm._ingest_lessons._codemap_write", side_effect=fake_write):
+            result = ingest_lessons(self.sm)
+
+        cats = [c for c, _ in seen]
+        self.assertIn("pitfalls", cats)
+        self.assertTrue(result["pitfalls"])
+
+
+class ResolveProjectRootTest(unittest.TestCase):
+    """FIX-1: project_root resolution is frontmatter-first (single source of
+    truth), so task-swarm and specode-distill never diverge to different
+    .ai-memory/ targets (ISSUE-3)."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ts-projroot-"))
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _spec_with_frontmatter(self, spec_dir: Path, project_root: Path) -> None:
+        spec_dir.mkdir(parents=True, exist_ok=True)
+        (spec_dir / "requirements.md").write_text(
+            f"---\nspec_id: x\nproject_root: {project_root}\ncreated_at: 2026-06-27\n---\n\n# x\n",
+            encoding="utf-8",
+        )
+
+    def test_frontmatter_wins_over_workdir(self) -> None:
+        from task_swarm._ingest_lessons import _resolve_project_root
+
+        fm_root = self.tmp / "real-project"
+        fm_root.mkdir()
+        workdir = self.tmp / "wrong-workdir"
+        workdir.mkdir()
+        spec_dir = self.tmp / "specs" / "slug"
+        self._spec_with_frontmatter(spec_dir, fm_root)
+        sm = _mk_state(workdir, project_root=workdir)
+        sm.spec_dir = str(spec_dir)
+        resolved = _resolve_project_root(sm)
+        self.assertEqual(resolved, fm_root)
+
+    def test_relative_spec_dir_resolved_against_workdir(self) -> None:
+        from task_swarm._ingest_lessons import _resolve_project_root
+
+        workdir = self.tmp / "wd"
+        workdir.mkdir()
+        fm_root = self.tmp / "proj"
+        fm_root.mkdir()
+        spec_dir = workdir / "SpecIn" / "specs" / "slug"
+        self._spec_with_frontmatter(spec_dir, fm_root)
+        sm = _mk_state(workdir, project_root=workdir)
+        sm.spec_dir = "SpecIn/specs/slug"  # relative → resolve against workdir
+        resolved = _resolve_project_root(sm)
+        self.assertEqual(resolved, fm_root)
+
+    def test_falls_back_to_project_root_when_no_frontmatter(self) -> None:
+        from task_swarm._ingest_lessons import _resolve_project_root
+
+        workdir = self.tmp / "wd"
+        workdir.mkdir()
+        # spec dir exists but no requirements.md / no project_root frontmatter
+        sm = _mk_state(workdir, project_root=workdir)
+        sm.spec_dir = str(self.tmp / "no-spec")
+        resolved = _resolve_project_root(sm)
+        self.assertEqual(resolved, workdir)
+
+    def test_returns_none_when_nothing_resolvable(self) -> None:
+        from task_swarm._ingest_lessons import _resolve_project_root
+
+        sm = _mk_state(self.tmp / "wd-missing")
+        sm.project_root = None
+        sm.workdir = None
+        sm.spec_dir = None
+        self.assertIsNone(_resolve_project_root(sm))
 
 
 if __name__ == "__main__":

@@ -46,6 +46,11 @@ The resolver tries the env var first (works wherever the host exports it), verif
 | `get-root [--root P]` | Resolve specsRoot (`--root` > env `SPECODE_ROOT` > config.specsRoot) | 0 ok / 3 unconfigured |
 | `set-root --root <abs>` | Absolute path, persisted to `~/.config/specode/config.json.specsRoot` | 0 / 1 path not absolute |
 | `list-specs [--root P]` | List subdirectory names (slugs, one per line) under root that contain `requirements.md` | 0 / 3 unconfigured |
+| `resolve-project-root [--cwd P]` | Compute the project_root default (`git rev-parse --show-toplevel` of cwd, else cwd) for the user to confirm | 0 |
+| `write-project-root --spec <dir\|file> --root <abs>` | **Single writer** of project_root → spec's requirements.md frontmatter (validates absolute / dir exists / `/Volumes` mounted) | 0 / 1 invalid |
+| `read-project-root --spec <dir\|file>` | **Single reader** of project_root from requirements.md frontmatter — all downstream skills use this | 0 / 3 missing field / 4 invalid value |
+
+**project_root single-source-of-truth rule 🔒**: project_root lives in exactly one place — the spec's `requirements.md` frontmatter. specode writes it once (via `write-project-root`); every later phase and downstream skill (specode-distill, task-swarm, codemap recall `--project`) obtains it via `read-project-root`. No component re-derives it from cwd / workdir / guessing.
 
 **First-time setup flow**: `get-root` exits 3 → call `AskUserQuestion` to ask the user for the document directory (absolute path, used **verbatim** as the specs root; specode makes no assumptions about its structure and appends nothing) → after the user provides it, persist with `set-root --root <abs>` → never ask again. `project_root` is **inferred per-spec** (default: `git rev-parse --show-toplevel` of cwd, falling back to cwd itself) and **confirmed once via `AskUserQuestion`** before requirements is written — see §requirements phase. Path-resolution details are in `references/obsidian.md`.
 
@@ -55,7 +60,7 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
 
 1. **specsRoot**: `get-root` (first-time setup if missing) → obtain `<specsRoot>` → `mkdir -p <specsRoot>/<slug>/` (the host agent derives the kebab-case slug from the request).
 2. **requirements (clarify + requirements)** — three sub-steps, always in this order:
-   1. **`project_root` confirmation (required)**: infer the default — first `git rev-parse --show-toplevel` in cwd, fall back to cwd itself — and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and ends up in frontmatter at sub-step 3.
+   1. **`project_root` confirmation (required)**: get the default via `resolve_root.py resolve-project-root` (it returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and gets persisted to frontmatter at sub-step 3 **via `resolve_root.py write-project-root`** (the single writer — do not hand-write the frontmatter field).
    2. **context-recall (P3-1 + P3-2 content injection, recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 --with-content -o yaml` to pull the top-K most relevant prior knowledge **with their core fields** (requires `codemap-aimemory>=0.4.0`; older versions silently skip `--with-content` and fall back to the wikilink-only injection below). Parse the yml output and inject each hit into the requirements draft's `## 已知约束 / 历史坑` section as a **content subsection** (not just a wikilink) — this is what makes the design phase actually see the constraints. Template per hit:
 
       ```markdown
@@ -79,11 +84,22 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
       Hits flagged `stale: true` (freshness_score < 0.5) get a ⚠️ prefix in the heading so the user can decide whether to honor or update them.
 
       If `codemap recall` is unavailable (codemap-aimemory not installed) or returns empty, **skip silently** — the requirements draft just omits the section. This sub-step makes the spec author see prior rules / cases / pitfalls **with content** before drafting, so the spec doesn't re-walk known mines and the design phase has the full constraints in-context (not just wikilink references it might never resolve).
+
+      **Cold-start fallback (FIX-3b)**: when `knowledge` is empty (a fresh project with no distilled knowledge yet) but the recall result carries a non-empty `code_context` array, inject a `## 相关代码地图（冷启动）` section instead, listing each entity with its signature / `called_by` / `related_tables` / `knowledge_refs`. This makes the **first** spec on a project useful (relevant code map) rather than blank — the value no longer waits for the 2nd spec. Template per entity:
+
+      ```markdown
+      ### `<id>` <signature>
+
+      - file: `<file>`
+      - 被调用: <called_by joined>
+      - 关联表: <related_tables joined>
+      - 关联知识: <knowledge_refs as [[..]] wikilinks>
+      ```
    3. **draft requirements**:
       - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate). Pre-instruct it with the recall hits from sub-step 2 so brainstorming weaves them in.
       - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template — including the recall hits in the `## 已知约束 / 历史坑` section.
       - Relocate the artifact to `<specsRoot>/<slug>/requirements.md` (see §superpowers orchestration + relocation).
-      - Write the YAML frontmatter (`spec_id: <slug>` / `project_root: <abs path from sub-step 1>` / `created_at: YYYY-MM-DD`). Downstream skills (e.g. `spec-distill`) read `project_root` from this frontmatter.
+      - Write the YAML frontmatter: set `spec_id: <slug>` / `created_at: YYYY-MM-DD`, then persist `project_root` **via `resolve_root.py write-project-root --spec <specsRoot>/<slug> --root <abs from sub-step 1>`** (single validated writer; never hand-write this field). Downstream skills (e.g. `specode-distill`, task-swarm) read `project_root` back via `resolve_root.py read-project-root` — the single read entry.
 3. **design (executable plan)**:
    - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review). **Pre-instruct it to honor every `[[rule-*]]` listed in the requirements `## 已知约束 / 历史坑` section** — design must either explicitly say how the rule is enforced, or note an explicit override + reason.
    - not installed → **specode-native**: break down into `## Task N` + `**Files:**` + `验证: AC-N` + `- [ ]` TDD steps per the `assets/templates/design.md` template.

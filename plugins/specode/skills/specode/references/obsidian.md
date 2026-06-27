@@ -19,7 +19,7 @@ CLI via run.sh: `resolve_root.py get-root` / `set-root --root P` / `list-specs` 
 - The directory the user provides is used **verbatim** as the specs root; specode appends no internal sub-structure (the user may supply a fully qualified path such as `.../spec-in/<os>-<user>/specs`).
 - Each spec = `<specsRoot>/<slug>/`, containing the fixed files `requirements.md` / `design.md` / `implementation-log.md`.
 - `pipeline.yml` is generated only when delegating to task-swarm; it is not a fixed artifact.
-- project_root = current terminal cwd (do not ask; convention is that the user has already `cd`-ed to the project directory before starting the conversation).
+- project_root = the project whose `.ai-memory/knowledge` a spec feeds. It is the **single join key** between a spec and its project, stored in **exactly one place** — the spec's `requirements.md` YAML frontmatter — and accessed only through `resolve_root.py {resolve,write,read}-project-root`. Default is `git rev-parse --show-toplevel` of cwd (fallback cwd), **confirmed once via `AskUserQuestion`**, then persisted to frontmatter by `write-project-root`. Every later phase/skill (distill, task-swarm, recall) reads it via `read-project-root` — never re-derive from cwd/workdir, never guess.
 
 ## Documents as state (phase inference)
 | Directory state | Phase |

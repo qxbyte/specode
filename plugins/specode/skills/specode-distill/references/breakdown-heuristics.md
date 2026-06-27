@@ -4,8 +4,9 @@
 > 拆分方案由 LLM 提议、用户在 `AskUserQuestion` 中最终拍板。
 >
 > **v2 重要变化**：5 维启发式映射到 `.ai-memory/knowledge/` 下的 **5 类目录**；
-> 每个候选知识点必须明确 `category` + `knowledge_id`（前缀必须正确）。
-> 写 `.yml` 而非 `.md` — schema 见 `references/doc-template.md`。
+> 每个候选知识点必须明确 `category`（`knowledge_id` 由写入器派生，可选）。
+> 落盘经 `codemap knowledge write`（content payload），写入器同时产 yml + md 双产；
+> 字段集见 `references/doc-template.md`。
 
 ## 五维 → 五类目录映射表
 
@@ -125,11 +126,11 @@
 
 ## 拆分流程
 
-1. LLM 读完全 spec 文档后，按上述五种维度各提一批候选；**每个候选必须标注** `category` + 拟 `knowledge_id`（前缀正确）+ 拟标题 + 一句摘要 + 拟 tags。
-2. 至少强制一篇 `cases/case-<spec-id>.yml`（记录本次实现，来源 `implementation-log.md` / `bugfix.md` / `acceptance-checklist.md`）。
+1. LLM 读完全 spec 文档后，按上述五种维度各提一批候选；**每个候选标注** `category` + 拟标题 + 一句摘要 + 拟 tags（`knowledge_id` 可选——写入器据 category + spec_id/title/signature 自动派生）。
+2. 至少强制一篇 `cases` 候选（记录本次实现，来源 `implementation-log.md` / `bugfix.md` / `acceptance-checklist.md`）；写入器据 `spec_id` 派生为 `case-<spec_id>`，与 task-swarm 自动 case 同 id 以触发 supersede。
 3. 用 `AskUserQuestion` 呈现给用户，让用户**增删/合并/改名/改归属**。
-4. 用户确认后才开始写 `.yml`，**不自动跳过此步**。
-5. 按 `references/doc-template.md` 中对应类型的 schema 写文件到 `<project_root>/.ai-memory/knowledge/<category>/<knowledge_id>.yml`。
+4. 用户确认后才开始落盘，**不自动跳过此步**。
+5. 对每个候选构造 content payload（`category` + `fields` + `md_body`）→ 调 `codemap knowledge write`（见 `SKILL.md` Step 5）；字段集见 `references/doc-template.md`。**不手写 yml**（写入器不可用时才回退手写）。
 
 ---
 

@@ -1,11 +1,23 @@
-# specode-distill — yml + md 双产模板（5 类 × 2 形式）
+# specode-distill — 字段参考（payload `fields` + md 正文）
 
-> `specode-distill` step 5 写每个知识点时，同时按本文件产出两份：
+> **重要（FIX-2）**：specode-distill **不再手写 yml**。它构造 *content payload*
+> 交给单一写入器 `codemap knowledge write`（见 `SKILL.md` Step 5）。本文件因此
+> 是**字段参考**：每类 payload 的 `fields` 应包含哪些语义字段、md 正文长什么样。
 >
-> - `<project_root>/.ai-memory/knowledge/<category>/<knowledge_id>.yml` — 机器源
-> - `<project_root>/knowledge-base/<category>/<knowledge_id>.md` — 人读 + embedding 源
+> 由**写入器**自动盖章、**不要**放进 `fields` 的字段：
+> `schema_version` / `knowledge_id` / `type` / `version` / `created_at` /
+> `updated_at`（写入器据 category + spec_id/title/signature 推导 id、盖日期、
+> 按同 id 合并规则升 version）。
 >
-> 两份 stem 完全相同，是同一知识点的双形式。yml 给 `codemap recall` / 未来 P1-3 embedding indexer 用；md 保留散文叙事、ascii 调用链、字段表等 yml 难以承载的人可读结构，**P1-3 上 embedding 时优先用 md 切片**。
+> 由 **LLM 提供**：
+> - `fields`：下面各类列出的语义字段（`statement` / `why` / `steps` /
+>   `implementation_summary` / `symptom` / ... ）。
+> - `md_body`：人读叙事正文（散文 / ascii 调用链 / `[[wikilink]]`），写入器逐字
+>   写进孪生 md 的机器渲染 frontmatter 之下（方案A）。
+>
+> 下面每类的 "yml schema" 段落即该类 `fields` 的字段集；"md 模板" 段即 `md_body`
+> 的推荐结构。**fallback**（写入器不可用）时才需按完整 yml schema 手写双产。
+
 
 ---
 

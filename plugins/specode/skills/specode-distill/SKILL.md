@@ -41,20 +41,36 @@ Two triggers (both end up calling the same flow):
 | `<specsRoot>/<slug>/` | The spec directory: `requirements.md` / `design.md` / `implementation-log.md` / `tasks.md` / `bugfix.md` / `acceptance-checklist.md` / test reports |
 | `<specsRoot>/<slug>/requirements.md` YAML frontmatter | **`project_root`** (absolute path; written by specode v2.1+ at requirements-phase sub-step 2.1) |
 
-## Outputs (dual: yml + md)
+## Outputs (dual: yml + md) — written by the single writer
 
 For each knowledge point identified by the LLM and confirmed by the
-user (see §flow step 4), this skill writes **two parallel files** —
-same content, different format:
+user (see §flow step 4), this skill **does not hand-write files**. It
+builds a *content payload* (semantic fields + an authored md body) and
+invokes the single deterministic writer:
+
+```
+codemap knowledge write --project <project_root> --category <category> --payload -
+```
+
+The writer (codemap-aimemory ≥ 0.4.3) owns everything mechanical —
+`knowledge_id` derivation, `schema_version` / `created_at` / `updated_at`
+/ `version` stamping, schema validation, same-id merge, and the **atomic
+dual write** of the twin files:
 
 ```
 <project_root>/
 ├── .ai-memory/knowledge/<category>/<knowledge_id>.yml   ← machine source
 │   (consumed by codemap recall + future embedding indexer)
 └── knowledge-base/<category>/<knowledge_id>.md          ← human + embedding source
-    (Obsidian-friendly narrative; preserves prose / ascii flow charts /
-     wikilinks that yml fields necessarily lose)
+    (Obsidian-friendly narrative; the LLM-authored `md_body`, preserved
+     verbatim — prose / ascii flow charts / wikilinks that yml fields lose)
 ```
+
+> **Division of labour (方案A)**: the LLM owns *content* — which knowledge
+> points exist, their category, each semantic field's value, and the md
+> narrative body. Code owns *form* — id, schema, dates, paths, merge,
+> validation. This is why the schema / id / merge logic lives in exactly
+> one place (codemap-aimemory) instead of being re-described here.
 
 Categories (same in both directories):
 
@@ -66,8 +82,13 @@ Categories (same in both directories):
 | `cases/` | `case-` | `case` | this spec's implementation (always 1 per spec) |
 | `pitfalls/` | `pit-` | `pitfall` | reusable failure / fix lesson |
 
-See `references/doc-template.md` for both schema templates and md
-templates per category.
+See `references/doc-template.md` for the per-category field set (what the
+payload `fields` carry) and md body shape.
+
+> **Fallback**: if `codemap knowledge write` is unavailable (codemap-aimemory
+> not installed / too old), the host agent MAY hand-write the twin files per
+> `references/doc-template.md` as a degraded mode — but the writer is the
+> canonical path and should always be preferred.
 
 ---
 
@@ -75,24 +96,33 @@ templates per category.
 
 ### Step 1 — Resolve `project_root`
 
-Priority (first non-empty wins):
-
-1. CLI / argument `--project <abs>` (override; rare)
-2. `<specsRoot>/<slug>/requirements.md` YAML frontmatter `project_root` field
-3. **error: refuse to proceed**. Do not guess. Print one line:
-   > `requirements.md` 缺 `project_root` frontmatter；specode v2.0 之前生成的 spec 需先手动补字段后重试。
-
-Validate: path is absolute and the directory exists; else error and stop.
-
-### Step 2 — Prepare target directories
+Use the **single read entry** — do not parse the frontmatter by hand, do not
+guess from cwd:
 
 ```bash
-mkdir -p "<project_root>/.ai-memory/knowledge/"{rules,business,modules,cases,pitfalls}
-mkdir -p "<project_root>/knowledge-base/"{rules,business,modules,cases,pitfalls}
+resolve_root.py read-project-root --spec <specsRoot>/<slug>
 ```
 
-Existing files are not touched at this step — the per-knowledge merge
-rule in step 5 handles same-id collisions.
+Outcomes:
+
+1. `--project <abs>` argument given (override; rare) → use it directly.
+2. exit 0 → stdout is the validated absolute `project_root` (the verb already
+   checked absolute path / dir exists / `/Volumes` mounted). Use it.
+3. exit 3 (field missing) → **refuse to proceed**. Print one line:
+   > `requirements.md` 缺 `project_root` frontmatter；specode v2.0 之前生成的 spec 需先手动补字段后重试（或重跑 specode requirements 阶段由 `write-project-root` 补写）。
+4. exit 4 (value invalid: not absolute / dir missing / drive unmounted) → stop
+   and surface the verb's stderr message; do not fall back to a guessed path.
+
+> This is the same byte task-swarm reads for its ingest target, so the two
+> channels can never diverge to different `.ai-memory/` (AI-EDS ISSUE-3).
+
+### Step 2 — (no manual dir prep needed)
+
+The writer (`codemap knowledge write`) creates
+`<project_root>/.ai-memory/knowledge/<category>/` and
+`<project_root>/knowledge-base/<category>/` on demand and handles same-id
+collisions in step 5. Nothing to do here in the canonical path. (Only the
+hand-write fallback needs `mkdir -p` — see step 5 fallback.)
 
 ### Step 3 — Read the full spec
 
@@ -138,41 +168,69 @@ categories) to propose N knowledge candidates. Each candidate
 **must** carry:
 
 - `category` — `rules` / `business` / `modules` / `cases` / `pitfalls`
-- `knowledge_id` — `<prefix>-<kebab-slug>` matching the category
+- `knowledge_id` — optional; the writer derives it (`<prefix>-<kebab>`) from
+  `title` / `spec_id` / `signature` when omitted. Supply one only to pin it.
 - `title` (Chinese) and a one-line summary
 - `tags` (best-effort)
 - `related_knowledge` — pre-fill with any recall hits judged relevant
 
-Always include at least one `cases/case-<slug>-implementation.yml`
-candidate (records this spec's implementation; source:
-`implementation-log.md` + `bugfix.md` + `acceptance-checklist.md`).
+Always include exactly one `cases` candidate for this spec — the writer
+ids it `case-<spec_id>` (the **same** id task-swarm's auto-ingest uses, so
+the human distill supersedes the auto case instead of duplicating it;
+source: `implementation-log.md` + `bugfix.md` + `acceptance-checklist.md`).
 
 Use `AskUserQuestion` to let the user **confirm / add / drop / rename
 / recategorize**. Never auto-skip this confirmation. After confirmation,
 proceed to step 5 with the locked list.
 
-### Step 5 — Write yml + md per knowledge point
+### Step 5 — Write each knowledge point via the single writer
 
-For each confirmed knowledge point:
+For each confirmed knowledge point, build a **content payload** and pipe it
+to the writer (it owns id / schema / dates / version / merge / atomic dual
+write — see §Outputs). Do **not** hand-render yml:
 
-1. Render the **yml** per `references/doc-template.md` schema for its
-   category. Write atomically to
-   `<project_root>/.ai-memory/knowledge/<category>/<knowledge_id>.yml`.
-2. Render the **md** per `references/doc-template.md` md template for
-   its category. Write atomically to
-   `<project_root>/knowledge-base/<category>/<knowledge_id>.md`.
+```bash
+echo '<payload-json>' | codemap knowledge write \
+    --project "<project_root>" --category <category> --payload - -o json
+```
 
-**Same-id collision rule** (applies to both files):
+Payload shape (json):
 
-- `Read` the existing file first.
-- For `cases/case-*`: this spec re-runs supersede the prior write
-  (overwrite both yml + md; bump `version: 1` → `version: 2`).
-- For `rules/business/modules/pitfalls`: append-only changes —
-  `updated_at: today`, `version +1`, `related_requirements` append
-  this spec's id, `seen_again_in` (pitfall only) append. Do **not**
-  rewrite structural fields without `AskUserQuestion` confirmation.
+```json
+{
+  "knowledge_id": "rule-coupon-mutex",   // optional — omit to let writer derive
+  "spec_id": "<slug>",                    // case id + related_requirements
+  "signature": "<sig>",                   // pitfalls only (→ pit-<sig>)
+  "title": "优惠券与积分互斥",
+  "fields": { "statement": "...", "why": "...", "...": "..." },
+  "md_body": "## 一句话规则\n\n散文正文 + ascii + [[wikilink]] ...\n"
+}
+```
 
-Both files share identical `knowledge_id` and stem — yml and md are
+- `fields` carries the category's semantic fields (see
+  `references/doc-template.md` for the per-category set). Do **not** put
+  `schema_version` / `knowledge_id` / dates / `version` in `fields` — the
+  writer stamps those.
+- `md_body` is the **LLM-authored narrative** (方案A): prose, ascii flow
+  charts, wikilinks. The writer writes it verbatim into the twin md under a
+  machine-rendered frontmatter. Omit it only for trivially-structured
+  knowledge (the writer then renders a minimal body from `fields`).
+- Check the json result's `errors` (empty == ok) and `action`
+  (`created` / `merged` / `superseded`).
+
+**Same-id merge** is handled by the writer: `cases` supersede (overwrite +
+`version` bump, `created_at` preserved); `rules` / `business` / `modules` /
+`pitfalls` are append-only (structural fields preserved, `related_*`
+appended, pitfalls' `seen_again_in` appended). If new info contradicts a
+preserved structural field, surface it to the user via `AskUserQuestion`
+(overwrite / new `-v2` id / skip) before forcing it.
+
+**Fallback (writer unavailable)**: if `codemap knowledge write` is missing,
+`mkdir -p` the two category dirs and hand-write the twin yml + md per
+`references/doc-template.md`, applying the same merge rules manually. This is
+a degraded path — prefer the writer.
+
+Both files share an identical `knowledge_id` and stem — yml and md are
 strictly twin views of the same knowledge.
 
 ---

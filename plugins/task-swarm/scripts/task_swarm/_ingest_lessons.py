@@ -27,6 +27,7 @@ import datetime
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
@@ -50,90 +51,165 @@ __all__ = ["ingest_lessons"]
 
 
 def ingest_lessons(sm: Any) -> dict[str, Any]:
-    """Walk ``sm.task_groups`` and write case + pitfall yml to
-    ``<project_root>/.ai-memory/knowledge/``.
+    """Aggregate a finished run into one case-per-spec plus per-signature
+    pitfalls, written through the single knowledge writer.
+
+    FIX-2: payloads are routed to ``codemap knowledge write`` when the CLI is
+    available (the one deterministic writer that owns id / schema / dates /
+    merge); otherwise an inline fallback keeps task-swarm self-contained.
 
     Returns ``{"cases": [...], "pitfalls": [...], "skipped": str|None}``.
-    ``skipped`` is set (and the lists empty) when the project root or
-    ``.ai-memory/`` cannot be located — never raises.
+    Never raises — resolve must not fail because of ingest.
     """
     project_root = _resolve_project_root(sm)
     if project_root is None:
         return {"cases": [], "pitfalls": [], "skipped": "no project_root"}
 
-    knowledge_root = project_root / ".ai-memory" / "knowledge"
-    cases_dir = knowledge_root / "cases"
-    pitfalls_dir = knowledge_root / "pitfalls"
-    cases_dir.mkdir(parents=True, exist_ok=True)
-    pitfalls_dir.mkdir(parents=True, exist_ok=True)
-    # Twin md tree under <project_root>/knowledge-base/ — same stems as the
-    # yml side; preserves narrative/ascii structure that yml fields lose.
-    # Future P1-3 embedding indexer reads these md for higher-quality vectors.
-    md_root = project_root / "knowledge-base"
-    md_cases_dir = md_root / "cases"
-    md_pitfalls_dir = md_root / "pitfalls"
-    md_cases_dir.mkdir(parents=True, exist_ok=True)
-    md_pitfalls_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_dirs(project_root)
 
     spec_id = sm.spec_id or sm.run_id
     run_dir = Path(sm.run_dir)
     today = datetime.date.today().isoformat()
 
+    done_groups = [gs for gs in sm.task_groups if gs.status in {"done", "writeback"}]
+
     written_cases: list[str] = []
     written_pitfalls: list[str] = []
 
-    for gs in sm.task_groups:
-        # Skip groups that never finished or hard-failed — no signal worth ingesting.
-        if gs.status not in {"done", "writeback"}:
-            continue
-        coder_results = _load_coder_results(run_dir, gs)
-        review = _load_review(run_dir, gs)
-        validations = _load_validations(run_dir, gs)
+    # One canonical case per spec (FIX-2 / ISSUE-2), aggregating all groups —
+    # so its id (case-<spec_id>) matches the human specode-distill case and the
+    # documented supersede actually fires.
+    if done_groups:
+        fields, md_body = _build_case_fields(spec_id, done_groups, run_dir, sm)
+        payload = {"spec_id": spec_id, "fields": fields, "md_body": md_body}
+        res = _write_payload(project_root, "cases", payload, today)
+        if res and res.get("yml_path"):
+            written_cases.append(res["yml_path"])
 
-        case_yml = _build_case(
-            spec_id=spec_id,
-            gs=gs,
-            coder_results=coder_results,
-            review=review,
-            validations=validations,
-            today=today,
-            sm=sm,
-        )
-        case_path = cases_dir / f"{case_yml['knowledge_id']}.yml"
-        _dump_yaml(case_path, case_yml)
-        written_cases.append(str(case_path))
-        # twin md (knowledge-base/cases/case-*.md)
-        case_md_path = md_cases_dir / f"{case_yml['knowledge_id']}.md"
-        _atomic_write_text(case_md_path, _case_to_md(case_yml))
-
-        for val in validations:
+    # Pitfalls: one per distinct validator-fail signature (writer merges
+    # repeats via seen_again_in).
+    for gs in done_groups:
+        for val in _load_validations(run_dir, gs):
             if val.verdict != "fail":
                 continue
             sig = val.fail_signature()
             if not sig:
                 continue
-            pit_path = pitfalls_dir / f"pit-{sig}.yml"
-            pit_yml = _merge_pitfall(
-                existing_path=pit_path,
-                sig=sig,
-                validation=val,
-                spec_id=spec_id,
-                today=today,
-            )
-            _dump_yaml(pit_path, pit_yml)
-            if str(pit_path) not in written_pitfalls:
-                written_pitfalls.append(str(pit_path))
-            # twin md (knowledge-base/pitfalls/pit-*.md)
-            pit_md_path = md_pitfalls_dir / f"pit-{sig}.md"
-            _atomic_write_text(pit_md_path, _pit_to_md(pit_yml))
+            fields = _build_pit_fields(val, spec_id)
+            payload = {"signature": sig, "spec_id": spec_id, "fields": fields}
+            res = _write_payload(project_root, "pitfalls", payload, today)
+            if res and res.get("yml_path") and res["yml_path"] not in written_pitfalls:
+                written_pitfalls.append(res["yml_path"])
 
     return {"cases": written_cases, "pitfalls": written_pitfalls, "skipped": None}
+
+
+def _ensure_dirs(project_root: Path) -> None:
+    for sub in ("cases", "pitfalls"):
+        (project_root / ".ai-memory" / "knowledge" / sub).mkdir(parents=True, exist_ok=True)
+        (project_root / "knowledge-base" / sub).mkdir(parents=True, exist_ok=True)
+
+
+# ---------- write dispatch: codemap CLI (single writer) → inline fallback ----------
+
+
+def _write_payload(
+    project_root: Path, category: str, payload: dict[str, Any], today: str
+) -> Optional[dict[str, Any]]:
+    res = _codemap_write(project_root, category, payload)
+    if res is not None:
+        return res
+    return _inline_write(project_root, category, payload, today)
+
+
+def _codemap_write(
+    project_root: Path, category: str, payload: dict[str, Any]
+) -> Optional[dict[str, Any]]:
+    """Route a payload to ``codemap knowledge write``. Returns the parsed
+    result dict when codemap ran, or ``None`` when the CLI is absent / crashed
+    (caller then falls back to the inline writer). Never raises."""
+    argv = [
+        "codemap", "knowledge", "write",
+        "--project", str(project_root),
+        "--category", category,
+        "--payload", "-",
+        "-o", "json",
+    ]
+    try:
+        proc = subprocess.run(
+            argv,
+            input=json.dumps(payload, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (FileNotFoundError, OSError, subprocess.SubprocessError):
+        return None
+    try:
+        result = json.loads(proc.stdout)
+    except (ValueError, json.JSONDecodeError):
+        return None
+    return result if isinstance(result, dict) else None
+
+
+def _inline_write(
+    project_root: Path, category: str, payload: dict[str, Any], today: str
+) -> dict[str, Any]:
+    if category == "cases":
+        return _inline_write_case(project_root, payload, today)
+    return _inline_write_pitfall(project_root, payload, today)
 
 
 # ---------- project root resolution ----------
 
 
+def _read_frontmatter_project_root(sm: Any) -> Optional[Path]:
+    """Read project_root from the spec's requirements.md YAML frontmatter.
+
+    This is the single source of truth (FIX-1): the same byte distill reads.
+    Returns the path only when present AND an existing directory, so a stale
+    or malformed frontmatter cleanly falls through to the legacy fallback.
+    stdlib-only line parsing (yaml is optional in this plugin)."""
+    spec_dir = getattr(sm, "spec_dir", None)
+    if not spec_dir:
+        return None
+    p = Path(spec_dir)
+    if not p.is_absolute():
+        workdir = getattr(sm, "workdir", None)
+        if workdir:
+            p = Path(workdir) / p
+    req = p / "requirements.md"
+    if not req.is_file():
+        return None
+    try:
+        text = req.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    lines = text.split("\n")
+    if lines[0].strip() != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            break
+        line = lines[i]
+        if line.startswith("project_root:"):
+            val = line[len("project_root:") :].strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in {'"', "'"}:
+                val = val[1:-1]
+            if not val:
+                return None
+            candidate = Path(val)
+            return candidate if candidate.is_dir() else None
+    return None
+
+
 def _resolve_project_root(sm: Any) -> Optional[Path]:
+    # frontmatter (single source of truth) > sm.project_root > sm.workdir
+    fm = _read_frontmatter_project_root(sm)
+    if fm is not None:
+        return fm
     raw = getattr(sm, "project_root", None) or getattr(sm, "workdir", None)
     if not raw:
         return None
@@ -194,71 +270,100 @@ def _load_validations(run_dir: Path, gs: Any) -> list[ValidatorValidation]:
     return out
 
 
+# ---------- id helpers (mirror codemap_aimemory.knowledge_ids, stdlib-only) ----------
+
+_NON_SLUG = re.compile(r"[^a-z0-9]+")
+
+
+def _kebab(text: str) -> str:
+    slug = _NON_SLUG.sub("-", (text or "").lower()).strip("-")
+    return slug or hashlib.sha1((text or "").encode("utf-8")).hexdigest()[:8]
+
+
+def _case_id(spec_id: str) -> str:
+    slug = _kebab(spec_id)
+    return slug if slug.startswith("case-") else f"case-{slug}"
+
+
+def _pit_knowledge_id(sig: str) -> str:
+    slug = _kebab(sig)
+    return slug if slug.startswith("pit-") else f"pit-{slug}"
+
+
 # ---------- builders ----------
 
 
-def _build_case(
-    spec_id: str,
-    gs: Any,
-    coder_results: list,
-    review: Optional[ReviewerReview],
-    validations: list[ValidatorValidation],
-    today: str,
-    sm: Any,
-) -> dict[str, Any]:
-    knowledge_id = f"case-{spec_id}-{gs.id}"
-
+def _build_case_fields(
+    spec_id: str, done_groups: list, run_dir: Path, sm: Any
+) -> tuple[dict[str, Any], str]:
+    """Aggregate all finished groups of a run into the semantic fields of one
+    case (FIX-2). Returns ``(fields, md_body)`` — the writer stamps identity /
+    schema / dates / version on top of ``fields``."""
     changed_files: list[str] = []
-    for item in gs.items:
-        for w in item.get("writes", []) or []:
-            if w not in changed_files:
-                changed_files.append(w)
-
     key_decisions: list[dict[str, str]] = []
     bugs_encountered: list[str] = []
-    for cr in coder_results:
-        for hint in cr.hints or []:
-            text = hint.strip()
-            if text:
-                key_decisions.append({"decision": text, "reason": ""})
-        if cr.status == "failed" and cr.status_reason:
-            bugs_encountered.append(cr.status_reason.strip())
-
-    for val in validations:
-        if val.verdict == "fail" and val.failure_excerpt:
-            excerpt = val.failure_excerpt.strip().splitlines()
-            if excerpt:
-                bugs_encountered.append(excerpt[0][:200])
-
     review_findings: list[dict[str, str]] = []
-    if review is not None:
-        for finding in review.p0_items:
-            review_findings.append(
-                {"finding": finding.text[:240], "severity": "p0", "action": "addressed"}
-            )
-        for finding in review.p1_items:
-            review_findings.append(
-                {"finding": finding.text[:240], "severity": "p1", "action": "addressed"}
-            )
+    summary_parts: list[str] = []
+    group_ids: list[str] = []
+    titles: list[str] = []
+    verdicts: list[str] = []
 
-    last_verdict = validations[-1].verdict if validations else "n/a"
-    if last_verdict == "pass":
+    for gs in done_groups:
+        group_ids.append(gs.id)
+        if gs.name:
+            titles.append(gs.name)
+        coder_results = _load_coder_results(run_dir, gs)
+        review = _load_review(run_dir, gs)
+        validations = _load_validations(run_dir, gs)
+
+        for item in gs.items:
+            for w in item.get("writes", []) or []:
+                if w not in changed_files:
+                    changed_files.append(w)
+
+        for cr in coder_results:
+            for hint in cr.hints or []:
+                text = hint.strip()
+                if text:
+                    key_decisions.append({"decision": text, "reason": ""})
+            if cr.status == "failed" and cr.status_reason:
+                bugs_encountered.append(cr.status_reason.strip())
+
+        for val in validations:
+            if val.verdict == "fail" and val.failure_excerpt:
+                excerpt = val.failure_excerpt.strip().splitlines()
+                if excerpt:
+                    bugs_encountered.append(excerpt[0][:200])
+
+        if review is not None:
+            for finding in review.p0_items:
+                review_findings.append(
+                    {"finding": finding.text[:240], "severity": "p0", "action": "addressed"}
+                )
+            for finding in review.p1_items:
+                review_findings.append(
+                    {"finding": finding.text[:240], "severity": "p1", "action": "addressed"}
+                )
+
+        part = _summarize_implementation(coder_results, gs)
+        if part:
+            summary_parts.append(part)
+        if validations:
+            verdicts.append(validations[-1].verdict)
+
+    if verdicts and all(v == "pass" for v in verdicts):
         acceptance = "passed"
-    elif last_verdict == "fail":
+    elif any(v == "fail" for v in verdicts):
         acceptance = "failed"
     else:
-        acceptance = "passed" if gs.status == "done" else "partial"
+        acceptance = "passed" if all(gs.status == "done" for gs in done_groups) else "partial"
 
-    implementation_summary = _summarize_implementation(coder_results, gs)
+    title = titles[0] if len(titles) == 1 else (spec_id or "case")
+    implementation_summary = "\n".join(summary_parts)
 
-    out: dict[str, Any] = {
-        "schema_version": "1.0",
-        "knowledge_id": knowledge_id,
-        "type": "case",
-        "case_id": knowledge_id,
-        "spec_id": spec_id,
-        "group_id": gs.id,
-        "title": gs.name or knowledge_id,
+    fields: dict[str, Any] = {
+        "title": title,
+        "group_ids": group_ids,
         "implementation_summary": implementation_summary,
         "changed_files": changed_files,
         "key_decisions": key_decisions,
@@ -267,16 +372,59 @@ def _build_case(
         "acceptance_status": acceptance,
         "source_spec": sm.spec_dir or "",
         "source_files": ["requirements.md", "design.md", "implementation-log.md"],
-        "related_requirements": [spec_id],
-        "related_knowledge": [],
         "related_code": [{"file": p} for p in changed_files],
         "tags": [],
-        "created_at": today,
-        "updated_at": today,
-        "status": "active",
         "confidence": "high" if acceptance == "passed" else "medium",
     }
-    return out
+    return fields, ""
+
+
+def _inline_write_case(
+    project_root: Path, payload: dict[str, Any], today: str
+) -> dict[str, Any]:
+    spec_id = payload.get("spec_id") or ""
+    knowledge_id = _case_id(spec_id)
+    cases_dir = project_root / ".ai-memory" / "knowledge" / "cases"
+    yml_path = cases_dir / f"{knowledge_id}.yml"
+
+    fields = dict(payload.get("fields") or {})
+    confidence = fields.pop("confidence", None) or "high"
+    fields.pop("status", None)
+
+    existing = _load_yaml_if_exists(yml_path)
+    if isinstance(existing, dict):
+        version = (existing.get("version") if isinstance(existing.get("version"), int) else 1) + 1
+        created_at = existing.get("created_at", today)
+    else:
+        version = 1
+        created_at = today
+
+    related = [spec_id] if spec_id else []
+    kn: dict[str, Any] = {
+        "schema_version": "1.0",
+        "knowledge_id": knowledge_id,
+        "type": "case",
+        "case_id": knowledge_id,
+        "spec_id": spec_id,
+        "version": version,
+        "created_at": created_at,
+        "updated_at": today,
+        "status": "active",
+        "confidence": confidence,
+        **fields,
+        "related_requirements": related,
+        "related_knowledge": [],
+    }
+    _dump_yaml(yml_path, kn)
+    md_path = project_root / "knowledge-base" / "cases" / f"{knowledge_id}.md"
+    _atomic_write_text(md_path, _case_to_md(kn))
+    return {
+        "knowledge_id": knowledge_id,
+        "yml_path": str(yml_path),
+        "md_path": str(md_path),
+        "action": "superseded" if version > 1 else "created",
+        "errors": [],
+    }
 
 
 def _summarize_implementation(coder_results: list, gs: Any) -> str:
@@ -298,16 +446,10 @@ def _summarize_implementation(coder_results: list, gs: Any) -> str:
 _TITLE_FROM_EXCERPT_RE = re.compile(r"(AssertionError|Error|Exception)[^\n]*")
 
 
-def _merge_pitfall(
-    existing_path: Path,
-    sig: str,
-    validation: ValidatorValidation,
-    spec_id: str,
-    today: str,
-) -> dict[str, Any]:
-    knowledge_id = f"pit-{sig}"
-    title = _extract_pit_title(validation.failure_excerpt) or knowledge_id
-
+def _extract_pit_parts(validation: ValidatorValidation) -> tuple[str, str, list[str], list[str]]:
+    """Pull (title, symptom, fix_steps, affects) out of a validator fail."""
+    title = _extract_pit_title(validation.failure_excerpt)
+    symptom = (validation.failure_excerpt or "").strip()[:1000]
     fix_steps: list[str] = []
     affects: list[str] = []
     for tgt in validation.fix_targets or []:
@@ -315,27 +457,53 @@ def _merge_pitfall(
             fix_steps.append(tgt.suggestion.strip())
         if tgt.file_path and tgt.file_path not in affects:
             affects.append(tgt.file_path)
+    return title, symptom, fix_steps, affects
 
-    existing = _load_yaml_if_exists(existing_path)
+
+def _build_pit_fields(validation: ValidatorValidation, spec_id: str) -> dict[str, Any]:
+    """Semantic fields of a pitfall (FIX-2). The writer stamps identity /
+    dates / version and merges ``seen_again_in`` on repeats."""
+    title, symptom, fix_steps, affects = _extract_pit_parts(validation)
+    return {
+        "title": (title or "")[:200],
+        "symptom": symptom,
+        "fix": fix_steps,
+        "affects": affects,
+        "first_seen_in": spec_id,
+        "tags": ["validator-fail"],
+        "confidence": "medium",
+    }
+
+
+def _inline_write_pitfall(
+    project_root: Path, payload: dict[str, Any], today: str
+) -> dict[str, Any]:
+    sig = payload.get("signature") or ""
+    spec_id = payload.get("spec_id") or ""
+    knowledge_id = _pit_knowledge_id(sig)
+    pit_path = project_root / ".ai-memory" / "knowledge" / "pitfalls" / f"{knowledge_id}.yml"
+    fields = dict(payload.get("fields") or {})
+    incoming_affects = list(fields.get("affects") or [])
+    incoming_fix = list(fields.get("fix") or [])
+
+    existing = _load_yaml_if_exists(pit_path)
     if isinstance(existing, dict):
-        # Already seen — append spec_id to seen_again_in and refresh.
         seen_again = list(existing.get("seen_again_in") or [])
-        if (
-            spec_id != existing.get("first_seen_in")
-            and spec_id not in seen_again
-        ):
+        if spec_id and spec_id != existing.get("first_seen_in") and spec_id not in seen_again:
             seen_again.append(spec_id)
         merged_affects = list(existing.get("affects") or [])
-        for a in affects:
+        for a in incoming_affects:
             if a not in merged_affects:
                 merged_affects.append(a)
         merged_fix = list(existing.get("fix") or [])
-        for f in fix_steps:
+        for f in incoming_fix:
             if f not in merged_fix:
                 merged_fix.append(f)
+        version = (existing.get("version") if isinstance(existing.get("version"), int) else 1) + 1
         existing.update(
             {
                 "updated_at": today,
+                "version": version,
                 "seen_again_in": seen_again,
                 "affects": merged_affects,
                 "fix": merged_fix,
@@ -343,28 +511,42 @@ def _merge_pitfall(
         )
         existing.setdefault("schema_version", "1.0")
         existing.setdefault("type", "pitfall")
-        existing.setdefault("knowledge_id", knowledge_id)
+        existing["knowledge_id"] = knowledge_id
         existing.setdefault("pit_id", knowledge_id)
         existing.setdefault("status", "active")
         existing.setdefault("confidence", "medium")
-        return existing
+        kn = existing
+        action = "merged"
+    else:
+        kn = {
+            "schema_version": "1.0",
+            "knowledge_id": knowledge_id,
+            "type": "pitfall",
+            "pit_id": knowledge_id,
+            "version": 1,
+            "title": fields.get("title") or knowledge_id,
+            "symptom": fields.get("symptom", ""),
+            "fix": incoming_fix,
+            "affects": incoming_affects,
+            "first_seen_in": spec_id,
+            "seen_again_in": [],
+            "tags": fields.get("tags") or ["validator-fail"],
+            "created_at": today,
+            "updated_at": today,
+            "status": "active",
+            "confidence": fields.get("confidence") or "medium",
+        }
+        action = "created"
 
+    _dump_yaml(pit_path, kn)
+    md_path = project_root / "knowledge-base" / "pitfalls" / f"{knowledge_id}.md"
+    _atomic_write_text(md_path, _pit_to_md(kn))
     return {
-        "schema_version": "1.0",
         "knowledge_id": knowledge_id,
-        "type": "pitfall",
-        "pit_id": knowledge_id,
-        "title": title[:200],
-        "symptom": (validation.failure_excerpt or "").strip()[:1000],
-        "fix": fix_steps,
-        "affects": affects,
-        "first_seen_in": spec_id,
-        "seen_again_in": [],
-        "tags": ["validator-fail"],
-        "created_at": today,
-        "updated_at": today,
-        "status": "active",
-        "confidence": "medium",
+        "yml_path": str(pit_path),
+        "md_path": str(md_path),
+        "action": action,
+        "errors": [],
     }
 
 

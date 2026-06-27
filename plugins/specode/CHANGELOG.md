@@ -4,6 +4,34 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 3.2.0 (2026-06-27)
+
+### Added — FIX-1 project_root single source of truth
+
+`scripts/resolve_root.py` 加 3 个新 verb：
+
+- `resolve-project-root` — 默认值推导（`git rev-parse --show-toplevel` ‖ cwd），不再要求 cwd 是 git repo（**工作区根、非 git 目录也能跑**）
+- `write-project-root --spec <path> --root <abs>` — **唯一写入口**，校验绝对路径 / 目录存在 / `/Volumes` 挂载，原子写 frontmatter
+- `read-project-root --spec <path>` — **唯一读入口**，缺字段 exit 3 / 值非法 exit 4
+
+主 `SKILL.md` step 2.1/3 / `commands/specode-spec.md` step 3 / `skills/specode-distill/SKILL.md` step 1 / `references/obsidian.md` 全部改为引用这三个 verb，删除"do not ask / = cwd 不写 frontmatter"等矛盾表述。
+
+收敛 AI-EDS ISSUE-1（文档矛盾断链）+ ISSUE-3（双写分裂）。
+
+### Added — FIX-2 knowledge writer rewire（与 codemap-aimemory 0.4.3+ 配合）
+
+`specode-distill` 范式翻转：从"LLM 自己写 yml"改为"LLM 产 content payload + md_body → `codemap knowledge write` 落盘"。SKILL.md / doc-template.md / breakdown-heuristics.md 全部按新流程更新。task-swarm 同样收归（见其 0.7.0）。
+
+依赖：`codemap-aimemory >= 0.4.3`（含 `codemap knowledge` CLI）。
+
+### Added — FIX-3d/3e consumer 更新
+
+主 `SKILL.md` step 2.2 recall call 默认带 `--include-shared` flag（codemap-aimemory >= 0.4.4 起，opt-in 跨项目共享 knowledge）—— 未配置 `~/.config/codemap/recall.yaml shared_roots` 时是 no-op，所以**永远可以传**。
+
+注入模板对 `source: shared` 命中加 🌐 prefix，让 reviewer 一眼区分项目本地知识 vs 团队共享知识。
+
+依赖：`codemap-aimemory >= 0.4.4` + `codemap-semantic-index >= 0.2.0`（可选）。
+
 ## 3.1.0 (2026-06-27)
 
 ### Changed — step 2.2 injection 升级为内容摘要（P3-2 闭环 part 1）

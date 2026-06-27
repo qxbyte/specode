@@ -480,11 +480,17 @@ def _resolve_project_root(sm: StateMachine) -> Optional[str]:
 
 
 def _items_as_stages(gs: "GroupState") -> list[StageEntry]:
-    """GroupState.items(dict) → StageEntry 列表，供 render_* 的属性访问。"""
+    """GroupState.items(dict) → StageEntry 列表，供 render_* 的属性访问。
+
+    v0.9 痛点 #13: 每条 StageEntry 还要把**自己这条 item** 透传到 ``items``
+    字段，否则 ``_prompt.py`` 的 ``for it in stage.items`` 循环 0 次，
+    渲染出的 task.md ``## 任务清单`` 段为空 — coder 拿不到具体任务指令。
+    """
     return [StageEntry(
         number=it["number"], title=it.get("title", ""),
         writes=list(it.get("writes") or []), reads=list(it.get("reads") or []),
         requirements=list(it.get("requirements") or []),
+        items=[it],
     ) for it in gs.items]
 
 

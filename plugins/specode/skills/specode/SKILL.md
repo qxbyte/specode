@@ -61,10 +61,10 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
 1. **specsRoot**: `get-root` (first-time setup if missing) → obtain `<specsRoot>` → `mkdir -p <specsRoot>/<slug>/` (the host agent derives the kebab-case slug from the request).
 2. **requirements (clarify + requirements)** — three sub-steps, always in this order:
    1. **`project_root` confirmation (required)**: get the default via `resolve_root.py resolve-project-root` (it returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and gets persisted to frontmatter at sub-step 3 **via `resolve_root.py write-project-root`** (the single writer — do not hand-write the frontmatter field).
-   2. **context-recall (P3-1 + P3-2 content injection, recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 --with-content -o yaml` to pull the top-K most relevant prior knowledge **with their core fields** (requires `codemap-aimemory>=0.4.0`; older versions silently skip `--with-content` and fall back to the wikilink-only injection below). Parse the yml output and inject each hit into the requirements draft's `## 已知约束 / 历史坑` section as a **content subsection** (not just a wikilink) — this is what makes the design phase actually see the constraints. Template per hit:
+   2. **context-recall (P3-1 + P3-2 content injection, recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 --with-content --include-shared -o yaml` to pull the top-K most relevant prior knowledge **with their core fields** (requires `codemap-aimemory>=0.4.0`; older versions silently skip `--with-content` and fall back to the wikilink-only injection below). `--include-shared` (added in 0.4.4) opts the recall into any team-wide `shared_roots` configured in `~/.config/codemap/recall.yaml`; when none are configured the flag is a no-op so passing it is always safe. Parse the yml output and inject each hit into the requirements draft's `## 已知约束 / 历史坑` section as a **content subsection** (not just a wikilink) — this is what makes the design phase actually see the constraints. Template per hit:
 
       ```markdown
-      ### [[<knowledge_id>]] (<type>, ranked_score=<n>{, ⚠️ stale if `stale:true`})
+      ### [[<knowledge_id>]] (<type>, ranked_score=<n>{, ⚠️ stale if `stale:true`}{, 🌐 shared if `source: shared`})
 
       **<title>**
 
@@ -73,6 +73,8 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
       | <field_1> | <value_1> |
       | <field_2> | <value_2> |
       ```
+
+      Hits flagged `source: shared` (FIX-3d, cross-project team knowledge) get a 🌐 prefix so the reviewer can tell at a glance which constraints come from this project vs the team library; project-local hits (`source: local`) carry no badge.
 
       Field set depends on `category`:
       - **rules**: statement / why / trigger_conditions / exceptions / enforcement

@@ -280,6 +280,11 @@ class StateMachine:
     task_groups: list["GroupState"] = field(default_factory=list)
     serial_validation: bool = False
 
+    # v0.8.0 M3: pipeline.yml 的 run.pipeline_end_validator 字段持久化到此。
+    # 当前 schema 保留；plan/advance 不消费（v0.8.1 实现 cross-group end
+    # validator phase 时启用）。
+    pipeline_end_validator: bool = False
+
     # run 级状态
     started_at: str = ""
     last_activity_at: str = ""
@@ -322,6 +327,7 @@ class StateMachine:
             pipeline_path=data.get("pipeline_path"),
             task_groups=task_groups,
             serial_validation=data.get("serial_validation", False),
+            pipeline_end_validator=data.get("pipeline_end_validator", False),
             started_at=data.get("started_at", ""),
             last_activity_at=data.get("last_activity_at", ""),
             completed_at=data.get("completed_at"),
@@ -345,6 +351,7 @@ class StateMachine:
             "pipeline_path": self.pipeline_path,
             "task_groups": [g.to_dict() for g in self.task_groups],
             "serial_validation": self.serial_validation,
+            "pipeline_end_validator": self.pipeline_end_validator,
             "started_at": self.started_at,
             "last_activity_at": self.last_activity_at,
             "completed_at": self.completed_at,

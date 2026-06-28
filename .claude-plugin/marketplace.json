@@ -19,8 +19,8 @@
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.7.4",
-      "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops. v0.5 added auto ingest_lessons; v0.6 added knowledge-base/*.md dual write; v0.7 rewires ingest to codemap knowledge write (FIX-2) + frontmatter-first project_root (FIX-1); 0.7.3 adds AI-EDS v0.9 痛点 #14 方案 D path injection; 0.7.4 强化方案 D（M5+M6+M10）— task.md 段头加 subdir 规则说明 + 硬约束语言 + inbox 自动 drop _PROJECT_AGENT_DOCS.md sentinel（同时 redundant 信号 + 修 inbox 空目录 name-vs-fact）。",
+      "version": "0.8.0",
+      "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops. v0.5–0.7 progressively land FIX-1/2 + 方案 D (path injection); 0.7.4 强化方案 D（M5+M6+M10）— task.md 段头加 subdir 规则说明 + 硬约束语言 + inbox 自动 drop _PROJECT_AGENT_DOCS.md sentinel; 0.8.0 lands v0.9 lifecycle group — M7 init dedupe（spec_id 已有活跃 run 时按 --on-existing 策略处理）+ M3 pipeline.yml schema 字段 run.pipeline_end_validator 持久化（advance logic 留 0.8.1）。",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",

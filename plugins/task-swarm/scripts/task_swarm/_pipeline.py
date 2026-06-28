@@ -8,6 +8,17 @@ def validate(data) -> list:
         return ["top level must be a map"]
     if data.get("version") != 1:
         errors.append("version must be 1")
+    # v0.8.0 M3: run.pipeline_end_validator field — optional bool.
+    # Schema reservation only; plan/advance logic to implement an extra
+    # cross-group validator phase after all groups done lands in v0.8.1.
+    # Today: parsed + persisted to state.json, ignored by orchestrator.
+    run_meta = data.get("run") or {}
+    if not isinstance(run_meta, dict):
+        errors.append("run must be a map")
+    else:
+        pev = run_meta.get("pipeline_end_validator")
+        if pev is not None and not isinstance(pev, bool):
+            errors.append("run.pipeline_end_validator must be true/false (bool)")
     groups = data.get("task_groups")
     if not isinstance(groups, list) or not groups:
         errors.append("task_groups must be a non-empty list")

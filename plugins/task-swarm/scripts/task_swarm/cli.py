@@ -170,6 +170,77 @@ def _find_run_dir(run_id: str) -> Path:
 # init
 # -------------------------------------------------------------------------
 
+_ACTIVE_STATUSES = {"running", "in_progress", "init", None, ""}
+
+
+def _find_active_runs_for_spec(spec_id: str) -> list[tuple[str, Path, str]]:
+    """Scan registry for runs sharing this spec_id that are still active.
+
+    Returns ``[(run_id, run_dir, status), ...]``. A run is *active* when its
+    ``state.json`` has ``failed_status`` either missing or not in
+    ``{"done", "failed", "aborted"}``. Stale registry entries (run_dir
+    deleted / state.json malformed) are silently skipped so a fresh init
+    after a manual ``rm -rf`` doesn't trip the dedupe.
+
+    v0.8.0 (M7): used by ``cmd_init`` to detect "已经有同 spec_id 的活跃
+    run" before silently creating another, fixing the試跑场景"忘了已经
+    init 过一次，又调 init → 出现 2 个互不知道的 run，registry 累积 stale"。
+    """
+    if not spec_id:
+        return []
+    found: list[tuple[str, Path, str]] = []
+    for rid, entry in _registry_read().items():
+        run_dir_str = (entry or {}).get("run_dir") if isinstance(entry, dict) else None
+        if not run_dir_str:
+            continue
+        run_dir = Path(run_dir_str)
+        state_path = run_dir / "state.json"
+        if not state_path.is_file():
+            continue  # stale registry entry
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue
+        if state.get("spec_id") != spec_id:
+            continue
+        status = state.get("failed_status") or state.get("status") or "running"
+        if status in {"done", "failed", "aborted"}:
+            continue  # not active
+        found.append((rid, run_dir, status))
+    return found
+
+
+def _mark_run_aborted(run_dir: Path, reason: str) -> None:
+    """Mark a state.json as aborted in place (atomic; v0.8.0 dedupe support)."""
+    state_path = run_dir / "state.json"
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        state["failed_status"] = "aborted"
+        events = state.get("events") or []
+        events.append({"type": "abort", "reason": reason, "at": _now_iso()})
+        state["events"] = events
+        # Atomic write (same pattern as registry).
+        import tempfile as _tempfile
+        fd, tmp = _tempfile.mkstemp(dir=str(state_path.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                fd = -1
+                json.dump(state, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, state_path)
+        finally:
+            if fd >= 0:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            if os.path.exists(tmp):
+                os.remove(tmp)
+    except (ValueError, OSError) as exc:
+        sys.stderr.write(f"task-swarm: failed to abort stale run {run_dir}: {exc}\n")
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     if not getattr(args, "pipeline", None):
         sys.stderr.write("必须给 --pipeline <yml>（markdown --tasks 路径已在 M3 移除）\n")
@@ -195,11 +266,62 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     workdir = Path(args.workdir).resolve() if args.workdir else Path.cwd()
     spec_id = args.spec_id or run_meta.get("spec_id") or None
+
+    # v0.8.0 M7: dedupe — block silent duplicate init when an active run for
+    # the same spec_id already exists (else registry quickly fills with
+    # stale entries the user never realised were created).
+    on_existing = getattr(args, "on_existing", "error") or "error"
+    if spec_id:
+        existing = _find_active_runs_for_spec(spec_id)
+        if existing:
+            if on_existing == "error":
+                lines = [
+                    f"task-swarm init: spec_id={spec_id!r} 已有 {len(existing)} 个活跃 run；",
+                    "重复 init 会产生 stale registry 项 + 浪费 .task-swarm/runs/ 空间。",
+                    "已有活跃 run:",
+                ]
+                for rid, rdir, status in existing:
+                    lines.append(f"  - {rid} status={status} dir={rdir}")
+                lines.append("")
+                lines.append("处理方式（选一加到 init 命令）：")
+                lines.append("  --on-existing resume       → 不新建，返回最新 active run 信息")
+                lines.append("  --on-existing abort-old    → 旧 run 标 aborted 后新建")
+                lines.append("  --on-existing force-new    → 忽略，新建（旧 run 继续占空间，不推荐）")
+                sys.stderr.write("\n".join(lines) + "\n")
+                return 1
+            elif on_existing == "resume":
+                # Pick the most recent active run (registry is dict, no order;
+                # use the run_id which embeds the timestamp).
+                rid, rdir, status = sorted(existing, key=lambda x: x[0])[-1]
+                _emit({
+                    "run_id": rid,
+                    "run_dir": str(rdir),
+                    "spec_id": spec_id,
+                    "status": status,
+                    "resumed": True,
+                    "message": f"resumed existing active run for spec_id={spec_id!r}",
+                })
+                return 0
+            elif on_existing == "abort-old":
+                for rid, rdir, _ in existing:
+                    _mark_run_aborted(rdir, f"superseded by re-init of spec_id={spec_id}")
+                # fall through to fresh init
+            elif on_existing == "force-new":
+                pass  # explicit override; just init alongside
+            else:
+                sys.stderr.write(
+                    f"未知 --on-existing 值：{on_existing}（支持：error / resume / abort-old / force-new）\n"
+                )
+                return 1
     spec_dir = getattr(args, "spec_dir_arg", None) or None
     project_root = str(Path(args.project_root).resolve()) if args.project_root else str(workdir)
     max_parallel = args.max_parallel if args.max_parallel else int(run_meta.get("max_parallel") or 4)
     max_rounds = args.max_rounds if args.max_rounds else int(run_meta.get("max_rounds") or 6)
     serial_validation = bool(getattr(args, "serial_validation", False)) or bool(run_meta.get("serial_validation"))
+    # v0.8.0 M3: persist pipeline_end_validator flag from run-meta to state.json.
+    # Schema reservation — plan/advance does not yet honor this; logic lands in
+    # v0.8.1. Today it just lives on the StateMachine and is emitted by report.
+    pipeline_end_validator = bool(run_meta.get("pipeline_end_validator", False))
 
     run_id = _gen_run_id()
     runs_root = _runs_root_for(workdir)
@@ -226,6 +348,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         pipeline_path=pipeline_path,
         task_groups=task_groups,
         serial_validation=serial_validation,
+        pipeline_end_validator=pipeline_end_validator,
         started_at=_now_iso(),
         last_activity_at=_now_iso(),
         skip_validator=bool(getattr(args, "skip_validator", False)),
@@ -1109,6 +1232,13 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="可选:spec 文档目录(*.md 所在);specode 委托模式用,独立模式可省")
     pi.add_argument("--skip-validator", action="store_true",
                     help="人工验收模式：review/p0-fix 完成后直接 writeback，跳过 validation/v-fix")
+    pi.add_argument(
+        "--on-existing", dest="on_existing", default="error",
+        choices=["error", "resume", "abort-old", "force-new"],
+        help=("v0.8.0 M7：spec_id 已有活跃 run 时的处理 — error（默认，"
+              "exit 1 + 提示）/ resume（返回 existing 不新建）/ abort-old"
+              "（旧 run 标 aborted + 新建）/ force-new（忽略并新建）"),
+    )
 
     ps = sub.add_parser("status")
     ps.add_argument("--run", required=True)

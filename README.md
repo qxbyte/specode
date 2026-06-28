@@ -3,12 +3,12 @@
 # pluginhub
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.md#license)
-[![specode](https://img.shields.io/badge/specode-3.3.1-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.7.3-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![specode](https://img.shields.io/badge/specode-3.4.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.8.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-152%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-209%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte's plugin marketplace for CLI coding agents
 > (Claude Code / CodeBuddy).
@@ -20,8 +20,8 @@ any plugin it hosts. More plugins will land here over time.
 
 | Plugin | Version | What it does |
 | --- | --- | --- |
-| **specode** | 3.3.1 | A lightweight spec-driven **workflow** — an orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (with a first-class native fallback) and lands 3 fixed docs per spec. 3.x adds AI-EDS knowledge integration: step 2.2 injects `codemap recall` hits (rules / pitfalls / cases / code maps) into `requirements.md`, and v3.3.1 (痛点 #14 方案 D) also lists scanned `CLAUDE.md / AGENT.md / AGENTS.md / CODEBUDDY.md` paths as a `## 项目级约束` section so design / downstream subagents inherit project-level constraints. Documented below. |
-| **task-swarm** | 0.7.3 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. 0.7.x lands AI-EDS feedback loop (P2-1 `ingest_lessons` writes `case-*` / `pit-*` to `.ai-memory/knowledge/` + `knowledge-base/*.md` via `codemap knowledge write`), frontmatter-first `project_root`, registry-based run lookup that survives cwd drift, and v0.7.3 (痛点 #14 方案 D) inserts a `## 项目级约束（必读）` section listing scanned `CLAUDE.md / AGENT.md` paths into every coder / reviewer / validator `task.md` so independent subagent processes don't silently miss them. See [`plugins/task-swarm/`](./plugins/task-swarm). |
+| **specode** | 3.4.0 | A lightweight spec-driven **workflow** — orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (first-class native fallback) and lands 3 fixed docs per spec. 3.x integrates AI-EDS knowledge: step 2.2 injects `codemap recall` hits (rules / pitfalls / cases / code maps) into `requirements.md`; v3.3.1 (痛点 #14 方案 D) lists scanned `CLAUDE.md / AGENT.md` paths in a `## 项目级约束` section so design / subagents inherit project-level constraints; v3.3.2 (M8) adds SessionStart cache-vs-marketplace drift hint; **v3.4.0 (M1+M9) adds autonomous-mode defaults** — 5 schema keys + 5 `SPECODE_*` env vars + `read-defaults` / `write-default` / `reset-default` verbs; SKILL.md rewires every `AskUserQuestion` to check non-interactive first (zero behaviour change at default). Documented below. |
+| **task-swarm** | 0.8.0 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. 0.7.x lands AI-EDS feedback loop + frontmatter-first `project_root` + registry-based run lookup; 0.7.3 + 0.7.4 (痛点 #14 方案 D + M5/M6/M10) inserts a `## 项目级约束（必读）` section + `_PROJECT_AGENT_DOCS.md` inbox sentinel; **v0.8.0 (M3+M7) lands lifecycle group** — `init` dedupe with `--on-existing {error/resume/abort-old/force-new}` flag + `run.pipeline_end_validator` schema field (logic in 0.8.1). See [`plugins/task-swarm/`](./plugins/task-swarm). |
 | **obsidian-wiki** | 2.0.0 | Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / READMEs / partition pages), SpecIn → knowledge-base distillation + MEMORY, content curation (lint / ingest / curate), unified orchestrator. Generic + per-vault `.wiki/config.json`. See [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki). |
 
 `## Installation` covers the whole marketplace; the other sections
@@ -67,9 +67,19 @@ plugin. For **task-swarm**, see its sources and `CHANGELOG` under
   directory, and any subdir touched by `@writes`, and surface the
   matched **absolute paths** (not content) into both `requirements.md`
   (`## 项目级约束`) and every coder / reviewer / validator `task.md`
-  (`## 项目级约束（必读）`). Fixes the silent drop where independent
-  subagent processes never see the host agent's auto-loaded
-  instruction files.
+  (`## 项目级约束（必读）`). v0.7.4 strengthens with hard-constraint
+  wording + `_PROJECT_AGENT_DOCS.md` inbox sentinel. Fixes the silent
+  drop where independent subagent processes never see the host
+  agent's auto-loaded instruction files.
+- **Autonomous mode / CI friendly (v3.4.0, opt-in).** Set
+  `SPECODE_INTERACTIVE=false` plus relevant `SPECODE_PROJECT_ROOT` /
+  `SPECODE_EXECUTION_MODE` / `SPECODE_AUTO_DISTILL` /
+  `SPECODE_SPECS_ROOT_DEFAULT` env vars (or persist via
+  `resolve_root.py write-default --key X --value Y`), and every
+  `AskUserQuestion` gate that would normally block in CI / long-running
+  sessions skips silently with the configured default. Schema default
+  is `interactive=true` so existing installs see **zero behaviour
+  change** — only opt-in users get the autonomous path.
 
 ## Installation
 

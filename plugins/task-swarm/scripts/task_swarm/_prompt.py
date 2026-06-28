@@ -22,6 +22,109 @@ from task_swarm._state import _atomic_write_text  # noqa: E402
 
 
 # -------------------------------------------------------------------------
+# 项目级约束扫描（v0.9 痛点 #14 方案 D）
+# -------------------------------------------------------------------------
+
+_AGENT_DOC_FILENAMES = ("CLAUDE.md", "AGENTS.md", "AGENT.md", "CODEBUDDY.md")
+
+
+def _agent_docs_paths(project_root: Optional[str],
+                      task_writes: Optional[list[str]] = None) -> list[Path]:
+    """Discover project-level agent instruction docs subagents must respect.
+
+    The subagent's process loads neither the host CLAUDE.md/AGENTS.md
+    automatically nor any per-subdir variant. So task.md must surface the
+    absolute paths and tell the subagent to read them before coding.
+
+    Scan order (deduped, only files that actually exist returned):
+      1. <project_root>/<fn>          — repo root
+      2. <project_root>/../<fn>       — immediate parent (monorepo workspace)
+      3. for each entry in task_writes: walk from its directory up to (but
+         not including) project_root, scanning <dir>/<fn> at every level.
+         Catches monorepo sub-packages that own their own CLAUDE.md.
+    """
+    if not project_root:
+        return []
+    root = Path(project_root)
+    try:
+        if not root.is_dir():
+            return []
+    except OSError:
+        return []
+    root_resolved = root.resolve()
+
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    def _scan(dir_: Path) -> None:
+        for fn in _AGENT_DOC_FILENAMES:
+            p = dir_ / fn
+            try:
+                rp = p.resolve()
+            except OSError:
+                continue
+            if rp in seen:
+                continue
+            try:
+                if rp.is_file():
+                    found.append(rp)
+                    seen.add(rp)
+            except OSError:
+                continue
+
+    _scan(root_resolved)
+    parent = root_resolved.parent
+    if parent != root_resolved:
+        _scan(parent)
+
+    for w in (task_writes or []):
+        if not w:
+            continue
+        wpath = Path(w)
+        if wpath.is_absolute():
+            continue
+        write_dir = wpath.parent
+        if str(write_dir) in ("", "."):
+            continue
+        try:
+            target = (root_resolved / write_dir).resolve()
+        except OSError:
+            continue
+        try:
+            target.relative_to(root_resolved)
+        except ValueError:
+            continue
+        cur = target
+        # walk up to (but not including) project_root itself (already scanned)
+        while cur != root_resolved:
+            _scan(cur)
+            nxt = cur.parent
+            if nxt == cur:
+                break
+            cur = nxt
+
+    return found
+
+
+def _agent_docs_block(project_root: Optional[str],
+                      writes: Optional[list[str]] = None) -> str:
+    """Render the '## 项目级约束（必读）' section, or empty string if no docs."""
+    docs = _agent_docs_paths(project_root, writes)
+    if not docs:
+        return ""
+    lines = [
+        "## 项目级约束（必读）",
+        "",
+        ("以下文件是项目/工作区根目录下的 agent 指南，**优先于本任务指令**；"
+         "subagent 进程不会自动加载它们，开工前请逐一 Read 一遍再动手"
+         "（这里仅列路径，避免内容重复占用 token）："),
+    ]
+    for p in docs:
+        lines.append(f"- `{p}`")
+    return "\n".join(lines) + "\n\n"
+
+
+# -------------------------------------------------------------------------
 # 通用上下文段
 # -------------------------------------------------------------------------
 
@@ -153,6 +256,12 @@ def render_coder_prompt(
                      "set-project-root CLI 显式指定代码根目录。")
     lines.append("")
 
+    # v0.9 痛点 #14：subagent 不会自动加载项目级 CLAUDE.md/AGENT.md
+    agent_docs = _agent_docs_block(project_root, _stage_writes(stage))
+    if agent_docs:
+        lines.append(agent_docs.rstrip("\n"))
+        lines.append("")
+
     if mode == "initial":
         lines.append("## 任务清单（按顺序逐条完成）")
         items = getattr(stage, "items", []) or []
@@ -247,6 +356,14 @@ def render_reviewer_prompt(
     lines.append(_context_block(spec_id, spec_dir, run_id, group, round_,
                                  project_root=project_root))
     lines.append("")
+    # v0.9 痛点 #14：subagent 不会自动加载项目级 CLAUDE.md/AGENT.md
+    all_writes: list[str] = []
+    for s in group_stages:
+        all_writes.extend(_stage_writes(s))
+    agent_docs = _agent_docs_block(project_root, all_writes)
+    if agent_docs:
+        lines.append(agent_docs.rstrip("\n"))
+        lines.append("")
     lines.append("## 评审范围")
     for s in group_stages:
         st_writes = _stage_writes(s)
@@ -321,6 +438,14 @@ def render_validator_prompt(
             lines.append("（所有 `@writes` 路径相对 `project_root`，不是 `spec_dir`）")
         else:
             lines.append("（所有 `@writes` 路径相对 `project_root`）")
+        lines.append("")
+    # v0.9 痛点 #14：subagent 不会自动加载项目级 CLAUDE.md/AGENT.md
+    all_writes: list[str] = []
+    for s in group_stages:
+        all_writes.extend(_stage_writes(s))
+    agent_docs = _agent_docs_block(project_root, all_writes)
+    if agent_docs:
+        lines.append(agent_docs.rstrip("\n"))
         lines.append("")
     lines.append("## 验证范围")
     for s in group_stages:

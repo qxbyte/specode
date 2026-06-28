@@ -1,7 +1,7 @@
 {
   "name": "task-swarm",
-  "version": "0.7.2",
-  "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops. v0.5 added P2-1 feedback loop. v0.6 added twin md output under knowledge-base/. v0.7 lands FIX-1 (frontmatter-first project_root resolution; workdir fallback) + FIX-2 (ingest_lessons aggregates one case per spec and delegates yml/md writes to `codemap knowledge write` — kills the dead supersede path where stems never collided). Requires codemap-aimemory 0.4.3+ (codemap knowledge CLI).",
+  "version": "0.7.3",
+  "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops. v0.5 added P2-1 feedback loop. v0.6 added twin md output under knowledge-base/. v0.7 lands FIX-1 (frontmatter-first project_root resolution; workdir fallback) + FIX-2 (ingest_lessons aggregates one case per spec and delegates yml/md writes to `codemap knowledge write` — kills the dead supersede path where stems never collided). 0.7.3 adds AI-EDS v0.9 痛点 #14 方案 D: task.md 渲染时扫 project_root + 父目录 + @writes 子目录里的 CLAUDE.md/AGENTS.md/AGENT.md/CODEBUDDY.md，把命中的绝对路径以「## 项目级约束（必读）」段插入 coder/reviewer/validator prompt（subagent 进程不会自动加载这些文件，必须在 task.md 中告知）。Requires codemap-aimemory 0.4.3+ (codemap knowledge CLI).",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

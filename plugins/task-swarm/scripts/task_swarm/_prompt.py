@@ -147,6 +147,70 @@ def _agent_docs_block(project_root: Optional[str],
     return "\n".join(lines) + "\n\n"
 
 
+# -------------------------------------------------------------------------
+# v0.9.0：superpowers 集成（方案 A+B；A 改 agents/*.md persona，B 是这里）
+# -------------------------------------------------------------------------
+
+#: Default superpowers skill recommendations per (role, mode).
+#: Keep lists short to avoid prompt bloat; soft-dep — superpowers absent
+#: silently degrades to native.
+_DEFAULT_SUBAGENT_SKILLS: dict[tuple[str, str], list[tuple[str, str]]] = {
+    # (role, mode) → [(skill_name, one-line rationale), ...]
+    ("coder", "initial"): [
+        ("test-driven-development",
+         "先写失败 test → 跑 red → 写实现 → 跑 green; 避免直接写实现没补测试"),
+    ],
+    ("coder", "v-fix"): [
+        ("systematic-debugging",
+         "validator fail 后用 4 步法 (现场 / 假设 / 最小复现 / 修后验证) 避免凭直觉乱改"),
+        ("test-driven-development",
+         "若 v-fix 涉及新行为, 仍按 TDD 先写 fail test 再修"),
+    ],
+    ("coder", "p0-fix"): [
+        ("systematic-debugging",
+         "P0 是 reviewer 抓出的 evidence-tagged 问题; 先精确复现 evidence 描述的场景再修"),
+    ],
+    ("reviewer", "any"): [
+        ("requesting-code-review",
+         "review 范式 (severity 分级 / evidence tag / 修复指引格式)"),
+    ],
+    ("validator", "any"): [
+        ("verification-before-completion",
+         "验证范式 (哪些信号必须 prove with executable command vs '看起来对')"),
+    ],
+}
+
+
+def _subagent_skills_block(role: str, mode: str = "any") -> str:
+    """Render the '## 开发纪律 (推荐 superpowers skill)' section for
+    a subagent's task.md (v0.9.0 方案 B).
+
+    role ∈ {coder, reviewer, validator}
+    mode ∈ {initial, p0-fix, v-fix, any}; for reviewer/validator pass "any"
+    """
+    skills = _DEFAULT_SUBAGENT_SKILLS.get((role, mode))
+    if skills is None and mode != "any":
+        skills = _DEFAULT_SUBAGENT_SKILLS.get((role, "any"))
+    if not skills:
+        return ""
+    lines = [
+        "## 开发纪律 (推荐 superpowers skill)",
+        "",
+        ("以下 skill 是本 role 的「开发纪律」推荐. **superpowers 已安装时**, "
+         "用 `Skill` tool 调用它们走范式; **未装时** silently degrade to "
+         "native — 仍按本 task.md 的输出协议 / schema 硬纪律执行 (与 skill "
+         "是否在场无关). skill 是加速器, 不是 task.md 边界的替代品."),
+        "",
+    ]
+    for skill_name, rationale in skills:
+        lines.append(f"- `superpowers:{skill_name}` — {rationale}")
+    lines.append("")
+    lines.append("> 调用模式: `Skill('superpowers:<name>')` → 若 unavailable 走 except "
+                 "分支, 绝不让 skill 缺席阻塞任务 (task.md 是 single source of "
+                 "truth; superpowers 是 first-class but soft dep).")
+    return "\n".join(lines) + "\n\n"
+
+
 def _drop_agent_docs_sentinel(inbox: Path, project_root: Optional[str],
                                writes: Optional[list[str]] = None) -> None:
     """Write ``inbox/_PROJECT_AGENT_DOCS.md`` sentinel as a redundant signal
@@ -329,6 +393,12 @@ def render_coder_prompt(
         # 0.7.4 (M6+M10): redundant signal sentinel in inbox
         _drop_agent_docs_sentinel(inbox, project_root, coder_writes)
 
+    # v0.9.0 (方案 B): superpowers skill 推荐段；soft dep, 未装 silently degrade
+    coder_skills = _subagent_skills_block("coder", mode)
+    if coder_skills:
+        lines.append(coder_skills.rstrip("\n"))
+        lines.append("")
+
     if mode == "initial":
         lines.append("## 任务清单（按顺序逐条完成）")
         items = getattr(stage, "items", []) or []
@@ -433,6 +503,11 @@ def render_reviewer_prompt(
         lines.append("")
         # 0.7.4 (M6+M10): redundant signal sentinel in inbox
         _drop_agent_docs_sentinel(inbox, project_root, all_writes)
+    # v0.9.0 (方案 B): superpowers skill 推荐段
+    rev_skills = _subagent_skills_block("reviewer")
+    if rev_skills:
+        lines.append(rev_skills.rstrip("\n"))
+        lines.append("")
     lines.append("## 评审范围")
     for s in group_stages:
         st_writes = _stage_writes(s)
@@ -518,6 +593,11 @@ def render_validator_prompt(
         lines.append("")
         # 0.7.4 (M6+M10): redundant signal sentinel in inbox
         _drop_agent_docs_sentinel(inbox, project_root, all_writes)
+    # v0.9.0 (方案 B): superpowers skill 推荐段
+    val_skills = _subagent_skills_block("validator")
+    if val_skills:
+        lines.append(val_skills.rstrip("\n"))
+        lines.append("")
     lines.append("## 验证范围")
     for s in group_stages:
         lines.append(f"- 阶段 {s.number}: {s.title}")

@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "3.3.2",
-  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log). v3.0 added specode-distill; v3.1 closes AI-EDS P3-2; v3.2 lands FIX-1/2/3 consumer; v3.3.1 adds AI-EDS v0.9 痛点 #14 方案 D. 3.3.2 adds M8 cache vs marketplace drift hint：SessionStart hook 静默 check（解析 __file__ 取 cache 装载版本 + 找本地 pluginhub git checkout 的 marketplace.json 对照），diff 时在 additionalContext 末尾加中文 reload 提示。Requires codemap-aimemory 0.4.3+ for FIX-2 / 0.4.4+ for FIX-3d/3e.",
+  "version": "3.4.0",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log). v3.0 added specode-distill; v3.1 closes AI-EDS P3-2; v3.2 lands FIX-1/2/3 consumer; v3.3.1 adds AI-EDS v0.9 痛点 #14 方案 D; v3.3.2 adds M8 cache vs marketplace drift hint. 3.4.0 lands v0.9 M1+M9 autonomous-mode defaults：resolve_root.py 新增 read-defaults / write-default / reset-default verbs + ~/.config/specode/defaults.json + 5 个 schema-validated keys（interactive / project_root_default / execution_mode_default / auto_distill / specs_root_default）+ 5 个 SPECODE_* env var override + SKILL.md 改约：每个 AskUserQuestion 调用前 read-defaults，interactive=false 时跳过用 default。Default schema interactive=true 保持向后兼容（零行为变化）。Requires codemap-aimemory 0.4.3+ for FIX-2 / 0.4.4+ for FIX-3d/3e.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

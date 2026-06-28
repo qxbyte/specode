@@ -288,6 +288,186 @@ def cmd_read_project_root(args) -> int:
     return 0
 
 
+_DEFAULTS_SCHEMA = {
+    # key: (type, default, env_var_name)
+    "interactive": (bool, True, "SPECODE_INTERACTIVE"),
+    "project_root_default": (str, None, "SPECODE_PROJECT_ROOT"),
+    "execution_mode_default": (str, "ask", "SPECODE_EXECUTION_MODE"),
+    "auto_distill": (bool, True, "SPECODE_AUTO_DISTILL"),
+    "specs_root_default": (str, None, "SPECODE_SPECS_ROOT_DEFAULT"),
+}
+
+_VALID_EXECUTION_MODES = {
+    "ask", "task-swarm", "superpowers-subagent",
+    "superpowers-executing", "specode-self",
+}
+
+
+def _defaults_path() -> Path:
+    """Per-user defaults file. Separate from config.json so specsRoot
+    setup (one-time, persistent across all sessions) stays untangled
+    from the per-flow autonomous-mode defaults (rarely changed but
+    sometimes set per CI run via env var)."""
+    return _config_dir() / "defaults.json"
+
+
+def _read_defaults() -> dict:
+    p = _defaults_path()
+    if not p.exists():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (ValueError, OSError):
+        return {}
+
+
+def _coerce_value(raw, expected_type):
+    """Convert raw env var / CLI string to typed value. Raises ValueError
+    on invalid input — caller decides whether to err out or silently skip."""
+    if expected_type is bool:
+        if isinstance(raw, bool):
+            return raw
+        if not isinstance(raw, str):
+            raise ValueError(f"bool expected, got {type(raw).__name__}: {raw!r}")
+        low = raw.strip().lower()
+        if low in ("true", "1", "yes", "on"):
+            return True
+        if low in ("false", "0", "no", "off"):
+            return False
+        raise ValueError(f"bool expected, got: {raw!r}")
+    if expected_type is str:
+        return str(raw) if raw is not None else None
+    raise ValueError(f"unsupported type: {expected_type}")
+
+
+def _effective_default(key: str) -> tuple[object, str]:
+    """Resolve effective value for a defaults key.
+
+    Priority: env var > defaults.json > schema default.
+    Returns (value, source) — source ∈ {"env", "file", "default"}.
+    Invalid env value silently falls through to file/default (advisory:
+    user should re-export with valid value if they care).
+    """
+    if key not in _DEFAULTS_SCHEMA:
+        raise KeyError(f"unknown defaults key: {key!r}")
+    expected_type, schema_default, env_name = _DEFAULTS_SCHEMA[key]
+
+    env_raw = os.environ.get(env_name)
+    if env_raw is not None and env_raw != "":
+        try:
+            return _coerce_value(env_raw, expected_type), "env"
+        except ValueError:
+            pass  # fall through to file/default
+
+    file_data = _read_defaults()
+    if key in file_data:
+        try:
+            return _coerce_value(file_data[key], expected_type), "file"
+        except ValueError:
+            pass
+
+    return schema_default, "default"
+
+
+def cmd_read_defaults(args) -> int:
+    """v0.9 M1/M9 (3.4.0): read autonomous-mode defaults.
+
+    --key <name>  Single key, print value (with --json prints {value, source}).
+    (no --key)    All keys as JSON map.
+
+    Resolution: env var > defaults.json > schema default.
+    Unknown key → exit 1.
+    """
+    if getattr(args, "key", None):
+        if args.key not in _DEFAULTS_SCHEMA:
+            sys.stderr.write(
+                f"specode: unknown defaults key {args.key!r}. "
+                f"Valid keys: {', '.join(sorted(_DEFAULTS_SCHEMA))}\n"
+            )
+            return 1
+        value, source = _effective_default(args.key)
+        if getattr(args, "json", False):
+            sys.stdout.write(json.dumps({"key": args.key, "value": value,
+                                          "source": source}) + "\n")
+        else:
+            # Plain text — bool as "true"/"false", None as empty line.
+            if value is None:
+                sys.stdout.write("\n")
+            elif isinstance(value, bool):
+                sys.stdout.write("true\n" if value else "false\n")
+            else:
+                sys.stdout.write(str(value) + "\n")
+        return 0
+
+    # All keys
+    out = {}
+    for key in _DEFAULTS_SCHEMA:
+        value, source = _effective_default(key)
+        out[key] = {"value": value, "source": source}
+    sys.stdout.write(json.dumps(out, ensure_ascii=False, indent=2) + "\n")
+    return 0
+
+
+def cmd_write_default(args) -> int:
+    """v0.9 M1/M9 (3.4.0): persist a defaults key to ~/.config/specode/defaults.json.
+
+    Validates against the schema (key name + value type). Doesn't touch
+    env vars — env always wins.
+    """
+    key = args.key
+    if key not in _DEFAULTS_SCHEMA:
+        sys.stderr.write(
+            f"specode: unknown defaults key {key!r}. "
+            f"Valid keys: {', '.join(sorted(_DEFAULTS_SCHEMA))}\n"
+        )
+        return 1
+    expected_type, _, _ = _DEFAULTS_SCHEMA[key]
+    try:
+        value = _coerce_value(args.value, expected_type)
+    except ValueError as exc:
+        sys.stderr.write(f"specode: invalid value for {key!r}: {exc}\n")
+        return 1
+    # execution_mode_default whitelist
+    if key == "execution_mode_default" and value not in _VALID_EXECUTION_MODES:
+        sys.stderr.write(
+            f"specode: execution_mode_default must be one of: "
+            f"{', '.join(sorted(_VALID_EXECUTION_MODES))}; got {value!r}\n"
+        )
+        return 1
+    data = _read_defaults()
+    data[key] = value
+    _atomic_write_json(_defaults_path(), data)
+    sys.stdout.write(f"specode: defaults.{key} = {json.dumps(value)}\n")
+    return 0
+
+
+def cmd_reset_default(args) -> int:
+    """v0.9 M1/M9 (3.4.0): remove a defaults key (or all when --all)."""
+    if getattr(args, "all", False):
+        path = _defaults_path()
+        if path.exists():
+            try:
+                path.unlink()
+            except OSError as exc:
+                sys.stderr.write(f"specode: failed to remove {path}: {exc}\n")
+                return 1
+        sys.stdout.write("specode: all defaults reset (file removed)\n")
+        return 0
+    if not getattr(args, "key", None):
+        sys.stderr.write("specode: pass --key <name> or --all\n")
+        return 1
+    if args.key not in _DEFAULTS_SCHEMA:
+        sys.stderr.write(f"specode: unknown defaults key {args.key!r}\n")
+        return 1
+    data = _read_defaults()
+    if args.key in data:
+        del data[args.key]
+        _atomic_write_json(_defaults_path(), data)
+    sys.stdout.write(f"specode: defaults.{args.key} reset\n")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     """v0.9 痛点 #9: surface config drift early.
 
@@ -364,6 +544,27 @@ def main(argv=None) -> int:
     rdp = sub.add_parser("read-project-root")
     rdp.add_argument("--spec", required=True)
     rdp.set_defaults(func=cmd_read_project_root)
+
+    # v0.9 M1/M9 (3.4.0): autonomous-mode defaults
+    rd = sub.add_parser("read-defaults",
+                        help="read autonomous-mode defaults (env > file > schema)")
+    rd.add_argument("--key", default=None,
+                    help="key name; omit to dump all as JSON")
+    rd.add_argument("--json", action="store_true",
+                    help="emit JSON {value, source} even for single key")
+    rd.set_defaults(func=cmd_read_defaults)
+
+    wd = sub.add_parser("write-default",
+                        help="persist a defaults key to ~/.config/specode/defaults.json")
+    wd.add_argument("--key", required=True)
+    wd.add_argument("--value", required=True)
+    wd.set_defaults(func=cmd_write_default)
+
+    xd = sub.add_parser("reset-default",
+                        help="remove a defaults key (or --all to wipe)")
+    xd.add_argument("--key", default=None)
+    xd.add_argument("--all", action="store_true")
+    xd.set_defaults(func=cmd_reset_default)
 
     args = parser.parse_args(argv)
     return args.func(args)

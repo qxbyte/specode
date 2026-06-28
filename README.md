@@ -62,6 +62,9 @@ plugin. For **task-swarm**, see its sources and `CHANGELOG` under
 
 ## Installation
 
+> 📌 **Marketplace name is `pluginhub` (the repo name), not `qxbyte` (the owner name).**
+> All install / uninstall commands use `<plugin>@pluginhub`, e.g. `specode@pluginhub` and `task-swarm@pluginhub`. Using `@qxbyte` will fail with `Marketplace "qxbyte" not found`. Cached plugins are also stored under `~/.claude/plugins/cache/pluginhub/<plugin>/<version>/` — useful when troubleshooting which version is actually loaded.
+
 ### From GitHub (recommended)
 
 Works with either CLI; the plugin manifest is shared.

@@ -9,7 +9,7 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "3.2.0",
+      "version": "3.3.0",
       "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v3.0 added specode-distill sub-skill; v3.1 closes AI-EDS P3-2 (step 2.2 injection renders knowledge content + step 3 design post-check); v3.2 lands FIX-1 (project_root single-source-of-truth via resolve_root verbs) + FIX-2 (knowledge writer rewire via codemap knowledge write) + FIX-3d/3e consumer updates (--include-shared + 🌐 badge).",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",

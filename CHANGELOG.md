@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+## 3.4.0 (2026-06-28) — specode
+
+### Added — Autonomous-mode defaults（v0.9 M1+M9 — autonomous mode / CI 全打通）
+
+第二轮试跑 wework-ops-assistant 暴露 P0 摩擦：用户出门后 `AskUserQuestion` 在 autonomous mode 完全不可用——specode SKILL 中 4 处 user gate（specsRoot 首次设 / project_root 确认 / 执行方式 selector / distill 末尾 prompt）任一阻塞，整个 flow 走不通；本试跑只能手动模拟用户决策才跑下去。
+
+**根因组**：M1（AskUserQuestion 强依赖）+ M9（specode-native 也依赖 AskUser 向导）是同源问题——SKILL 把 user gate hardcode 在散文里，无 unified non-interactive mode。
+
+**架构修法（cross-component unified）**：
+
+1. **`resolve_root.py` 增 3 个 verb + schema**：
+   - `read-defaults [--key K] [--json]` — 读 effective default。优先级 **env var > `~/.config/specode/defaults.json` > schema default**。返回 `{key, value, source}` 让 caller branch
+   - `write-default --key K --value V` — 持久化（type + execution_mode whitelist 校验）
+   - `reset-default --key K | --all` — 移除单 key 或整文件 wipe
+
+2. **5 个 schema-validated key**（每个有对应 SPECODE_* env var override）：
+
+   | key | type | default | env var | 用途 |
+   |---|---|---|---|---|
+   | `interactive` | bool | `true` | `SPECODE_INTERACTIVE` | Master switch — `false` 触发 autonomous |
+   | `project_root_default` | str | `null` | `SPECODE_PROJECT_ROOT` | project_root 确认 gate |
+   | `execution_mode_default` | str | `ask` | `SPECODE_EXECUTION_MODE` | 执行方式 selector（`ask` / `task-swarm` / `superpowers-subagent` / `superpowers-executing` / `specode-self`） |
+   | `auto_distill` | bool | `true` | `SPECODE_AUTO_DISTILL` | distill 末尾 prompt |
+   | `specs_root_default` | str | `null` | `SPECODE_SPECS_ROOT_DEFAULT` | 首次 specsRoot 设置 |
+
+3. **SKILL.md 改约**：每个 `AskUserQuestion` 调用前先 `read-defaults --key X --json`，当 `interactive == false` 且该 key 的 `source ∈ {env, file}`（有效值非 schema default）时**直接跳过用 default**——autonomous / CI 路径。`interactive == true`（schema default）时所有 gate 原样保留，**default 行为零变化**。
+
+**架构决策记录**：
+
+- Why `defaults.json` 与 `config.json` 分开：specsRoot setup（一次性 + 跨所有 session 持久）与 per-flow autonomous defaults（偶尔 set + 常按 CI run 切换）属于不同寿命的状态，不该耦合到同一 JSON。
+- Why env var 优先级最高：CI 路径需要 per-run override 无需改文件；本地交互可手动 unset env 回退到 file/default。
+- Why **invalid env value silently 回退**而非报错：env 是 advisory，不该破坏 default fallback；用户该自己确保 env value valid。
+- Why master switch `interactive` 独立于其他 default：让 default 值持久化（如 `project_root_default=/some/path`）但仍走 interactive 模式 verify 是合理 use case；分开两 key 让用户精细控制。
+
+**Tests**：`tests/test_non_interactive_defaults.py` 15 case，覆盖 read（schema/file/env 优先级、unknown key、invalid env 静默 fallback、单 key 与 all-keys）/ write（持久化 / execution_mode whitelist / unknown key / 非 bool 拒绝）/ reset（单 key / `--all` / 缺参数）/ 全 schema env override 完备性。specode 测试 33 → 48 → 63 全过（W1.3 加 11 + W2.2 加 15 累积）。
+
+**v0.9 第二轮试跑 12 摩擦点闭环（按根因组聚类，5 PR）**：
+- M4: codemap-aimemory #36 / 0.4.7
+- M5+M6+M10+M11: task-swarm pluginhub #58 / 0.7.4
+- M8: specode pluginhub #59 / 3.3.2
+- M3+M7: task-swarm pluginhub #60 / 0.8.0（M2 单独 v0.8.1 PR）
+- M1+M9: specode（本 PR）/ 3.4.0
+- M12: distill 已沉淀为 pit knowledge，不需要工具改动
+
 ## 3.3.2 (2026-06-28) — specode
 
 ### Added — SessionStart hook cache vs marketplace drift hint（v0.9 试跑 M8）

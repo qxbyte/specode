@@ -49,6 +49,36 @@ The resolver tries the env var first (works wherever the host exports it), verif
 | `resolve-project-root [--cwd P]` | Compute the project_root default (`git rev-parse --show-toplevel` of cwd, else cwd) for the user to confirm | 0 |
 | `write-project-root --spec <dir\|file> --root <abs>` | **Single writer** of project_root → spec's requirements.md frontmatter (validates absolute / dir exists / `/Volumes` mounted) | 0 / 1 invalid |
 | `read-project-root --spec <dir\|file>` | **Single reader** of project_root from requirements.md frontmatter — all downstream skills use this | 0 / 3 missing field / 4 invalid value |
+| `read-defaults [--key K] [--json]` | **v3.4.0 M1/M9**：读 autonomous-mode defaults（优先级 env > `~/.config/specode/defaults.json` > schema）。单 key 返回纯值；`--json` 或不传 `--key` 返 `{value, source}` JSON | 0 / 1 unknown key |
+| `write-default --key K --value V` | **v3.4.0 M1/M9**：持久化某个 defaults key。5 个合法 key：`interactive`/`project_root_default`/`execution_mode_default`/`auto_distill`/`specs_root_default`；type + execution_mode whitelist 校验 | 0 / 1 invalid |
+| `reset-default --key K \| --all` | **v3.4.0 M1/M9**：删除单 key 或 `--all` 整文件 wipe | 0 / 1 invalid |
+
+**Autonomous-mode defaults rule（v3.4.0 / v0.9 M1/M9）🔒**：每个下面调用 `AskUserQuestion` 的地方，**必须**先 `read-defaults --key <relevant> --json` 拿 effective value + source；当 `interactive == false` 且该 key 的 `source ∈ {env, file}`（即有效值非 schema default）时，**跳过 AskUserQuestion 直接用 default**——这是 autonomous mode / CI 路径。`interactive == true`（schema default）时所有 gate 原样保留 — 默认行为零变化。Mapping：
+
+| SKILL gate | defaults key | env var |
+|---|---|---|
+| 首次 specsRoot 设置 | `specs_root_default` | `SPECODE_SPECS_ROOT_DEFAULT` |
+| project_root 确认（sub-step 2.1） | `project_root_default` | `SPECODE_PROJECT_ROOT` |
+| 执行方式 selector（design 后） | `execution_mode_default` | `SPECODE_EXECUTION_MODE`（值：`ask` / `task-swarm` / `superpowers-subagent` / `superpowers-executing` / `specode-self`） |
+| distill 末尾 prompt | `auto_distill` | `SPECODE_AUTO_DISTILL` |
+| Master switch | `interactive` | `SPECODE_INTERACTIVE` |
+
+调用模式（每个 AskUserQuestion 调用站点适用，伪代码）：
+
+```bash
+# 1) Read both keys via resolve_root.py
+INTERACTIVE=$(... read-defaults --key interactive --json | jq -r '.value')
+DEFAULT_INFO=$(... read-defaults --key <relevant-key> --json)
+DEFAULT_VALUE=$(echo "$DEFAULT_INFO" | jq -r '.value')
+DEFAULT_SOURCE=$(echo "$DEFAULT_INFO" | jq -r '.source')
+
+# 2) Decide: skip AskUserQuestion if non-interactive + has effective default
+if [ "$INTERACTIVE" = "false" ] && [ "$DEFAULT_SOURCE" != "default" ] && [ -n "$DEFAULT_VALUE" ]; then
+  use "$DEFAULT_VALUE"  # silent path — autonomous / CI
+else
+  ask via AskUserQuestion  # original interactive path
+fi
+```
 
 **project_root single-source-of-truth rule 🔒**: project_root lives in exactly one place — the spec's `requirements.md` frontmatter. specode writes it once (via `write-project-root`); every later phase and downstream skill (specode-distill, task-swarm, codemap recall `--project`) obtains it via `read-project-root`. No component re-derives it from cwd / workdir / guessing.
 

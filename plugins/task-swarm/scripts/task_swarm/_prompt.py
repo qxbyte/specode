@@ -182,8 +182,14 @@ _DEFAULT_SUBAGENT_SKILLS: dict[tuple[str, str], list[tuple[str, str]]] = {
 
 
 def _subagent_skills_block(role: str, mode: str = "any") -> str:
-    """Render the '## 开发纪律 (推荐 superpowers skill)' section for
-    a subagent's task.md (v0.9.0 方案 B).
+    """Render the '## 开发纪律 (范式参考)' section for a subagent's task.md.
+
+    Originated as 方案 B of the v0.9.0 superpowers integration. v0.9.2 round 6
+    confirmed Claude Code subagents have no `Skill` tool in their runtime
+    schema (`tools:` field in persona md is ignored for host-level tools like
+    Skill). So this section no longer instructs subagents to *invoke* the
+    skill — it lists each skill **by name as a paradigm reference**, and the
+    subagent applies the paradigm via native Bash/Read/Edit/Write.
 
     role ∈ {coder, reviewer, validator}
     mode ∈ {initial, p0-fix, v-fix, any}; for reviewer/validator pass "any"
@@ -194,20 +200,18 @@ def _subagent_skills_block(role: str, mode: str = "any") -> str:
     if not skills:
         return ""
     lines = [
-        "## 开发纪律 (推荐 superpowers skill)",
+        "## 开发纪律 (范式参考)",
         "",
-        ("以下 skill 是本 role 的「开发纪律」推荐. **superpowers 已安装时**, "
-         "用 `Skill` tool 调用它们走范式; **未装时** silently degrade to "
-         "native — 仍按本 task.md 的输出协议 / schema 硬纪律执行 (与 skill "
-         "是否在场无关). skill 是加速器, 不是 task.md 边界的替代品."),
+        ("以下 skill 名对应 superpowers 插件里同名 SKILL.md 的开发范式. "
+         "**不要尝试 `Skill(...)` 调用** — Claude Code subagent 在当前架构下 "
+         "无 Skill tool 权限, 调用必返回 unavailable. 把下面的 skill 名当作 "
+         "**范式标识**, 按其要求直接用 Bash/Read/Edit/Write 跑流程即可. "
+         "task.md 的输出协议 / schema / 文件边界是本任务的 single source of "
+         "truth — 范式参考为辅, 不替代 task.md 硬约束."),
         "",
     ]
     for skill_name, rationale in skills:
-        lines.append(f"- `superpowers:{skill_name}` — {rationale}")
-    lines.append("")
-    lines.append("> 调用模式: `Skill('superpowers:<name>')` → 若 unavailable 走 except "
-                 "分支, 绝不让 skill 缺席阻塞任务 (task.md 是 single source of "
-                 "truth; superpowers 是 first-class but soft dep).")
+        lines.append(f"- **{skill_name}** — {rationale}")
     return "\n".join(lines) + "\n\n"
 
 

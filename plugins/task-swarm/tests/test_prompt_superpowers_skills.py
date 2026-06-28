@@ -1,8 +1,7 @@
-"""Regression tests for v0.9.0 superpowers 集成（方案 B — _subagent_skills_block）.
-
-方案 A 改 agents/*.md persona md 顶部加 "superpowers 集成" 段（非代码无 unit test）；
-方案 B 在 _prompt.py 渲染 task.md 时插入 "## 开发纪律（推荐 superpowers skill）" 段，
-按 role × mode 选默认 skill 集（soft dep — superpowers 未装 silently degrade）。
+"""Regression tests for the «开发纪律 (范式参考)» section in task.md
+(originated as v0.9.0 方案 B; v0.9.2 dropped 方案 A and reframed this section
+as a paradigm reference — Claude Code subagent has no Skill tool, so the
+section now lists skill names as paradigm identifiers, not invoke targets).
 """
 
 from __future__ import annotations
@@ -34,39 +33,49 @@ def _stage(writes: list[str] | None = None, number: str = "1.1") -> StageEntry:
 def test_coder_initial_recommends_tdd() -> None:
     block = _subagent_skills_block("coder", "initial")
     assert "## 开发纪律" in block
-    assert "superpowers:test-driven-development" in block
-    assert "superpowers:systematic-debugging" not in block
+    assert "test-driven-development" in block
+    assert "systematic-debugging" not in block
 
 
 def test_coder_vfix_recommends_systematic_debug_and_tdd() -> None:
     block = _subagent_skills_block("coder", "v-fix")
-    assert "superpowers:systematic-debugging" in block
-    assert "superpowers:test-driven-development" in block
+    assert "systematic-debugging" in block
+    assert "test-driven-development" in block
 
 
 def test_coder_p0fix_recommends_systematic_debug() -> None:
     block = _subagent_skills_block("coder", "p0-fix")
-    assert "superpowers:systematic-debugging" in block
+    assert "systematic-debugging" in block
 
 
 def test_reviewer_any_recommends_code_review() -> None:
     block = _subagent_skills_block("reviewer", "any")
-    assert "superpowers:requesting-code-review" in block
+    assert "requesting-code-review" in block
 
 
 def test_validator_any_recommends_verification() -> None:
     block = _subagent_skills_block("validator", "any")
-    assert "superpowers:verification-before-completion" in block
+    assert "verification-before-completion" in block
 
 
 def test_unknown_role_returns_empty_block() -> None:
     assert _subagent_skills_block("notarole", "any") == ""
 
 
-def test_block_carries_soft_dep_disclaimer() -> None:
+def test_block_warns_against_skill_invoke() -> None:
+    """0.9.2: section must explicitly tell the subagent NOT to call Skill(...)
+    and must affirm task.md as single source of truth."""
     block = _subagent_skills_block("coder", "initial")
-    assert "silently degrade" in block or "未装" in block
+    assert "不要尝试" in block or "无 Skill tool" in block
     assert "task.md" in block
+
+
+def test_block_drops_skill_invoke_pseudo_code() -> None:
+    """0.9.2: the old «调用模式: Skill('superpowers:<name>')» line must be gone
+    so subagents don't waste a roundtrip on a guaranteed-unavailable call."""
+    block = _subagent_skills_block("coder", "initial")
+    assert "Skill('superpowers:" not in block
+    assert "调用模式" not in block
 
 
 def test_render_coder_prompt_includes_skills_block(tmp_path: Path) -> None:
@@ -78,7 +87,7 @@ def test_render_coder_prompt_includes_skills_block(tmp_path: Path) -> None:
         project_root=str(tmp_path),
     )
     assert "## 开发纪律" in text
-    assert "superpowers:test-driven-development" in text
+    assert "test-driven-development" in text
 
 
 def test_render_coder_prompt_vfix_includes_systematic_debug(tmp_path: Path) -> None:
@@ -90,7 +99,7 @@ def test_render_coder_prompt_vfix_includes_systematic_debug(tmp_path: Path) -> N
         fix_targets=[{"file_path": "src/a.py", "problem": "x"}],
         project_root=str(tmp_path),
     )
-    assert "superpowers:systematic-debugging" in text
+    assert "systematic-debugging" in text
 
 
 def test_render_reviewer_prompt_includes_skills_block(tmp_path: Path) -> None:
@@ -104,7 +113,7 @@ def test_render_reviewer_prompt_includes_skills_block(tmp_path: Path) -> None:
         project_root=str(tmp_path),
     )
     assert "## 开发纪律" in text
-    assert "superpowers:requesting-code-review" in text
+    assert "requesting-code-review" in text
 
 
 def test_render_validator_prompt_includes_skills_block(tmp_path: Path) -> None:
@@ -116,4 +125,4 @@ def test_render_validator_prompt_includes_skills_block(tmp_path: Path) -> None:
         project_root=str(tmp_path),
     )
     assert "## 开发纪律" in text
-    assert "superpowers:verification-before-completion" in text
+    assert "verification-before-completion" in text

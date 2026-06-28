@@ -1,0 +1,34 @@
+name: check-marketplace-versions
+
+# Verify `.claude-plugin/marketplace.json` versions match each plugin's own
+# `plugin.json`. AI-EDS v0.9 痛点 #4 — without this gate, the
+# outward-facing catalog can silently drift from the actual plugin tree,
+# making code changes invisible to Claude Code users (real incident
+# 2026-06-28 — see scripts/check_marketplace_versions.py docstring).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude-plugin/marketplace.json'
+      - 'plugins/**/.claude-plugin/plugin.json'
+      - 'scripts/check_marketplace_versions.py'
+      - '.github/workflows/check-marketplace-versions.yml'
+  pull_request:
+    paths:
+      - '.claude-plugin/marketplace.json'
+      - 'plugins/**/.claude-plugin/plugin.json'
+      - 'scripts/check_marketplace_versions.py'
+      - '.github/workflows/check-marketplace-versions.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run version-sync check
+        run: python3 scripts/check_marketplace_versions.py

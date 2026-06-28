@@ -101,6 +101,12 @@ def cmd_set_root(args) -> int:
         return 1
     cfg = _read_config()
     cfg["specsRoot"] = p
+    # v0.9 痛点 #8: drop the legacy `obsidianRoot` key so downstream plugins
+    # that still read it (obsidian-wiki etc.) don't see a stale path after
+    # the user moves their vault. The read-side already falls back from
+    # specsRoot to obsidianRoot, so leaving both in the JSON silently created
+    # split-brain in real use (incident 2026-06-28).
+    cfg.pop("obsidianRoot", None)
     _atomic_write_json(_config_path(), cfg)
     sys.stdout.write(f"specode: 已设 specsRoot = {p}\n")
     return 0
@@ -282,6 +288,51 @@ def cmd_read_project_root(args) -> int:
     return 0
 
 
+def cmd_doctor(args) -> int:
+    """v0.9 痛点 #9: surface config drift early.
+
+    Exit codes mirror the read-project-root convention so scripts can
+    branch deterministically:
+      0 — specsRoot configured + directory exists (may print warnings)
+      3 — specsRoot not configured at all
+      4 — specsRoot configured but directory missing (e.g. user renamed /
+          unmounted external drive)
+    """
+    cfg = _read_config()
+    legacy = cfg.get("obsidianRoot")
+    specs_root = cfg.get("specsRoot") or legacy
+    config_file = _config_path()
+
+    if not specs_root:
+        sys.stderr.write(
+            "specode doctor: specsRoot 未配置。\n"
+            "  Fix: resolve_root.py set-root --root <abs-path-to-specs-dir>\n"
+        )
+        return 3
+
+    if not os.path.isdir(specs_root):
+        sys.stderr.write(
+            f"specode doctor: specsRoot 指向的目录不存在或不可访问\n"
+            f"  current value: {specs_root}\n"
+            f"  config file:   {config_file}\n"
+            f"  Fix: resolve_root.py set-root --root <new-abs-path>\n"
+            f"       (常见原因：vault 被重命名 / 外置盘未挂载 / 路径大小写变了)\n"
+        )
+        return 4
+
+    sys.stdout.write(f"✓ specode doctor: specsRoot ok — {specs_root}\n")
+    if legacy and "specsRoot" in cfg:
+        # Both keys present — legacy is stale baggage.
+        sys.stdout.write(
+            f"⚠ legacy `obsidianRoot` key still in {config_file}\n"
+            f"  value: {legacy}\n"
+            f"  Suggest re-run `set-root --root {specs_root}` to clean it up\n"
+            f"  (other plugins that still read obsidianRoot may follow this\n"
+            f"  stale path → split-brain risk).\n"
+        )
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="resolve_root.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -293,6 +344,9 @@ def main(argv=None) -> int:
     s = sub.add_parser("set-root")
     s.add_argument("--root", required=True)
     s.set_defaults(func=cmd_set_root)
+
+    d = sub.add_parser("doctor")
+    d.set_defaults(func=cmd_doctor)
 
     lp = sub.add_parser("list-specs")
     lp.add_argument("--root")

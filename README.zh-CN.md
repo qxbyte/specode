@@ -35,6 +35,9 @@
 
 ## 安装
 
+> 📌 **marketplace 的名字是 `pluginhub`（仓库名），不是 `qxbyte`（owner 名）。**
+> 所有安装 / 卸载命令都用 `<plugin>@pluginhub`（如 `specode@pluginhub` / `task-swarm@pluginhub`）。写成 `@qxbyte` 会报 `Marketplace "qxbyte" not found`。本地 cache 路径也按 marketplace 名挂在 `~/.claude/plugins/cache/pluginhub/<plugin>/<version>/`——排查"装了哪个版本"时常用到。
+
 ### GitHub（推荐）
 
 两个 CLI 均支持，插件清单通用。CodeBuddy 已在 2.97.1 上验证。

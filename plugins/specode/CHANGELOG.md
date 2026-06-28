@@ -4,6 +4,29 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 3.3.0 (2026-06-28)
+
+### Added — `doctor` verb in resolve_root.py (AI-EDS v0.9 痛点 #9)
+
+新增 `resolve_root.py doctor` 子命令，检测 specode config drift：
+
+| exit | 含义 |
+|---|---|
+| 0 | specsRoot 已配 + 目录存在（可能带 legacy `obsidianRoot` 警告）|
+| 3 | specsRoot 未配（提示先跑 `set-root`） |
+| 4 | specsRoot 配了但目录不存在（vault 被重命名 / 外置盘未挂载 / 大小写漂移 → 给出 `set-root --root <new-abs>` 可直接复制粘贴的修法）|
+
+发现于真实试跑 2026-06-28：用户把外置盘 vault 从 `spec-in/` 重命名为 `SpecIn/`（case-sensitive 文件系统下成了两个目录），但 specode config 还指 `spec-in/`，所有下游静默走错路径。doctor 让这类漂移可一眼诊断。
+
+### Fixed — set-root 清理 legacy obsidianRoot key (AI-EDS v0.9 痛点 #8)
+
+`cmd_set_root` 之前只写 `specsRoot`，不删 `obsidianRoot`（specode <1.0.0 的旧 key）。读端 fallback 同时认两个键时不显问题，但其他 plugin（如 obsidian-wiki）仍直接读 `obsidianRoot` → 静默走 stale 路径，split-brain 风险（2026-06-28 真实试跑事故场景）。
+
+修法：set-root 持久化时 `cfg.pop("obsidianRoot", None)`。doctor 在两键都存在时给 warning + 建议 re-run set-root 一次清理。
+
+6 个 regression tests 新增 (`tests/test_set_root_cleanup_and_doctor.py`)。
+specode 测试总数 27 → 33，全部通过。
+
 ## 3.2.0 (2026-06-27)
 
 ### Added — FIX-1 project_root single source of truth

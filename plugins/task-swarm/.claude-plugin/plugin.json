@@ -1,6 +1,6 @@
 {
   "name": "task-swarm",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Multi-agent orchestration driven by a pipeline.yml: semantic task groups with cross-group concurrency, fork coders, and per-group reviewer + validator loops. v0.5–0.7 lands FIX-1/2 + 方案 D (path injection). 0.7.4 强化方案 D + inbox sentinel. 0.8.0 加 M7 init dedupe + M3 schema 字段. **0.8.1 完成 v0.9 lifecycle gap 修法**：M2 新增 `run-loop` 子命令 — auto-drive 全部 mechanical 步骤（advance / writeback / pipeline-end advance / resolve），host agent 只管 fork subagent，省掉「12+ 次手动 advance」的烦；M3 logic 接入 — 所有 group done + `pipeline_end_validator=true` 时 plan emit 跨组 `validator-pipeline-end-r1` fork action，新 `advance --phase pipeline-end-validation` verb 标 passed/failed，resolve gate 拒绝 pending/failed。Requires codemap-aimemory 0.4.3+ (codemap knowledge CLI).",
   "author": {
     "name": "xueqiang",

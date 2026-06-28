@@ -364,6 +364,85 @@ def test_run_loop_returns_fork_action_when_outbox_not_ready(tmp_path: Path) -> N
     assert g1b.phase == "coding"
 
 
+def test_writeback_does_not_finalize_when_pipeline_end_pending(tmp_path: Path) -> None:
+    """v0.8.2 fix: writeback last group must NOT set failed_status=done when
+    pipeline_end_status is still pending. Otherwise run-loop break path
+    sees failed_status=done and skips cmd_resolve → ingest_lessons doesn't
+    run (round-3 试跑实测 bug)."""
+    run_id, run_dir, workdir = _init_and_get_run_id(tmp_path, pipeline_end_validator=True)
+    sm = StateMachine.load(run_dir)
+    # Mark both groups in writeback phase (simulating end-of-flow state)
+    for g in sm.task_groups:
+        g.begin_coding()
+        g.phase = "writeback"
+        g.status = "writeback"
+    sm.save()
+
+    # Writeback first group
+    r1 = _run("writeback", "--run", run_id, "--group", "g1",
+              workdir_env=str(workdir), fake_home=tmp_path / "home")
+    assert r1.returncode == 0
+    sm_after_g1 = StateMachine.load(run_dir)
+    assert sm_after_g1.failed_status is None, (
+        "writeback g1 should NOT prematurely set failed_status while "
+        "pipeline_end_status is pending"
+    )
+
+    # Writeback second (last) group
+    r2 = _run("writeback", "--run", run_id, "--group", "g2",
+              workdir_env=str(workdir), fake_home=tmp_path / "home")
+    assert r2.returncode == 0
+    sm_after_g2 = StateMachine.load(run_dir)
+    # KEY assertion: even though all groups now terminal, failed_status is None
+    # because pipeline_end_status is still pending → cmd_resolve will handle it
+    assert sm_after_g2.failed_status is None, (
+        "even all groups terminal, failed_status must stay None when "
+        "pipeline_end_status=pending; otherwise run-loop skips cmd_resolve "
+        "and ingest_lessons never runs (v0.8.2 fix)"
+    )
+    assert sm_after_g2.pipeline_end_status == "pending"
+
+
+def test_writeback_does_finalize_when_pipeline_end_not_required(tmp_path: Path) -> None:
+    """Back-compat: when pipeline_end_validator=false (not-required), the
+    writeback prematurely-done behaviour is correct (no pipeline-end phase
+    to wait for)."""
+    run_id, run_dir, workdir = _init_and_get_run_id(tmp_path, pipeline_end_validator=False)
+    sm = StateMachine.load(run_dir)
+    for g in sm.task_groups:
+        g.begin_coding()
+        g.phase = "writeback"
+        g.status = "writeback"
+    sm.save()
+
+    _run("writeback", "--run", run_id, "--group", "g1",
+         workdir_env=str(workdir), fake_home=tmp_path / "home")
+    _run("writeback", "--run", run_id, "--group", "g2",
+         workdir_env=str(workdir), fake_home=tmp_path / "home")
+    sm_final = StateMachine.load(run_dir)
+    # not-required → writeback CAN finalize (same as pre-0.8.2 behaviour)
+    assert sm_final.failed_status == "done"
+
+
+def test_writeback_finalizes_when_pipeline_end_passed(tmp_path: Path) -> None:
+    """When pipeline_end_status=passed, last writeback can finalize."""
+    run_id, run_dir, workdir = _init_and_get_run_id(tmp_path, pipeline_end_validator=True)
+    sm = StateMachine.load(run_dir)
+    for g in sm.task_groups:
+        g.begin_coding()
+        g.phase = "writeback"
+        g.status = "writeback"
+    sm.pipeline_end_status = "passed"
+    sm.save()
+
+    _run("writeback", "--run", run_id, "--group", "g1",
+         workdir_env=str(workdir), fake_home=tmp_path / "home")
+    _run("writeback", "--run", run_id, "--group", "g2",
+         workdir_env=str(workdir), fake_home=tmp_path / "home")
+    sm_final = StateMachine.load(run_dir)
+    assert sm_final.failed_status == "done"
+
+
 def test_run_loop_max_iterations_safety(tmp_path: Path) -> None:
     """--max-iterations=1 hits limit if there's >1 auto-action available."""
     run_id, run_dir, workdir = _init_and_get_run_id(tmp_path)

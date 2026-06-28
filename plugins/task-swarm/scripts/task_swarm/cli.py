@@ -1214,12 +1214,20 @@ def cmd_writeback(args: argparse.Namespace) -> int:
     sm.events_append({"type": "writeback", "group": gs.id, "pipeline": True,
                       "verdict": final_verdict})
     # 所有组终态 → run 收尾
+    # v0.8.2 fix: 当 pipeline_end_validator=true 且 pipeline_end_status 还在 pending /
+    # failed 时，**不要** prematurely 设 failed_status="done"。否则 run-loop break 路径
+    # 检查 failed_status 已经 done 就跳过 cmd_resolve → ingest_lessons 不跑 → case
+    # 不写盘（v0.9 round 3 试跑实测 bug）。让 cmd_resolve 在 pipeline-end 也终态后
+    # 才设 failed_status，事件流和 ingest 一起触发。
     if all(g.status in ("done", "failed", "failed-deadloop") for g in sm.task_groups):
-        sm.completed_at = sm.completed_at or _now_iso()
-        if not sm.failed_status:
-            sm.failed_status = ("done" if all(g.status == "done" for g in sm.task_groups)
-                                else "failed")
-        sm.events_append({"type": "run-done", "status": sm.failed_status})
+        if sm.pipeline_end_status in ("not-required", "passed"):
+            sm.completed_at = sm.completed_at or _now_iso()
+            if not sm.failed_status:
+                sm.failed_status = ("done" if all(g.status == "done" for g in sm.task_groups)
+                                    else "failed")
+            sm.events_append({"type": "run-done", "status": sm.failed_status})
+        # else (pipeline_end_status in {"pending", "failed"}): wait for cmd_resolve
+        # to finalize after pipeline-end-validation completes.
     sm.save()
     sched = compute_schedule([g.sched_view() for g in sm.task_groups])
     _emit({"ok": True, "group": gs.id, "finalized": True, "verdict": final_verdict,

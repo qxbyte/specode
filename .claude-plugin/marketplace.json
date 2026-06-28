@@ -19,7 +19,7 @@
     {
       "name": "task-swarm",
       "source": "./plugins/task-swarm",
-      "version": "0.7.1",
+      "version": "0.7.2",
       "description": "Multi-agent task orchestration: split a task document into task groups, fork coders, and run per-group reviewer + validator loops. v0.5 added auto ingest_lessons; v0.6 added knowledge-base/*.md dual write; v0.7 rewires ingest to codemap knowledge write (FIX-2) + frontmatter-first project_root (FIX-1).",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",

@@ -71,21 +71,97 @@ def _runs_root_for(workdir: Path) -> Path:
     return workdir / ".task-swarm" / "runs"
 
 
+# -------------------------------------------------------------------------
+# Registry — v0.9 痛点 #12: cwd 漂移让 plan/advance/writeback/resolve fail.
+# User-wide ~/.task-swarm/registry.json maps run_id → run_dir, populated
+# by init, consulted by every other subcommand. Lets the user `cd` anywhere
+# after init and still reach the run by its id alone.
+# -------------------------------------------------------------------------
+
+
+def _registry_path() -> Path:
+    home = Path(os.environ.get("HOME") or Path.home())
+    return home / ".task-swarm" / "registry.json"
+
+
+def _registry_read() -> dict:
+    p = _registry_path()
+    if not p.is_file():
+        return {}
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (ValueError, OSError):
+        return {}
+
+
+def _registry_register(run_id: str, run_dir: Path) -> None:
+    """Atomic write: load → mutate → atomic replace, so concurrent inits
+    in different workdirs don't lose each other's entries."""
+    p = _registry_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = _registry_read()
+    data[run_id] = {"run_dir": str(Path(run_dir).resolve())}
+    # tempfile then os.replace = atomic on POSIX
+    import tempfile as _tempfile
+
+    fd, tmp = _tempfile.mkstemp(dir=str(p.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            fd = -1
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def _find_run_dir(run_id: str) -> Path:
     """定位 run 目录,不依赖任何 specode session。
 
-    顺序:
+    Resolution order (v0.9 痛点 #12 — cwd drift fix):
       1. run_id 本身是已存在的绝对/相对路径(含 state.json) → 直接用
-      2. <cwd>/.task-swarm/runs/<run_id>/
-      3. 向上递归 cwd 的父目录,找 .task-swarm/runs/<run_id>/
+      2. $TASK_SWARM_WORKDIR env override → <env>/.task-swarm/runs/<run_id>/
+      3. ~/.task-swarm/registry.json lookup (populated by init)
+      4. <cwd>/.task-swarm/runs/<run_id>/
+      5. 向上递归 cwd 的父目录,找 .task-swarm/runs/<run_id>/
+
+    Step 3 entries are validated — a stale entry (run_dir was deleted) falls
+    through to step 4/5 so a re-created run under a moved workdir wins.
     """
     p = Path(run_id)
     if p.exists() and (p / "state.json").exists():
         return p.resolve()
+
+    # (2) $TASK_SWARM_WORKDIR env override
+    env_wd = os.environ.get("TASK_SWARM_WORKDIR")
+    if env_wd:
+        cand = Path(env_wd) / ".task-swarm" / "runs" / run_id
+        if (cand / "state.json").is_file():
+            return cand.resolve()
+
+    # (3) registry lookup, validated
+    entry = _registry_read().get(run_id)
+    if isinstance(entry, dict):
+        run_dir = entry.get("run_dir")
+        if isinstance(run_dir, str):
+            cand = Path(run_dir)
+            if (cand / "state.json").is_file():
+                return cand.resolve()
+            # stale — fall through
+
+    # (4) + (5) cwd-scan fallback (legacy back-compat)
     cwd = Path.cwd()
     for base in [cwd, *cwd.parents]:
         cand = base / ".task-swarm" / "runs" / run_id
-        if (cand / "state.json").exists():
+        if (cand / "state.json").is_file():
             return cand.resolve()
     return cwd / ".task-swarm" / "runs" / run_id
 
@@ -162,6 +238,13 @@ def cmd_init(args: argparse.Namespace) -> int:
         "skip_validator": sm.skip_validator,
     })
     sm.save()
+    # v0.9 痛点 #12: register so later plan/advance/writeback/resolve can
+    # find the run by id alone, even from a different cwd.
+    try:
+        _registry_register(run_id, run_dir)
+    except OSError as exc:
+        # registry write failure is non-fatal — fall back to cwd scan path.
+        sys.stderr.write(f"task-swarm: registry write failed: {exc}\n")
 
     _emit({
         "run_id": run_id,

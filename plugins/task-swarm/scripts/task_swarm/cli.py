@@ -319,9 +319,12 @@ def cmd_init(args: argparse.Namespace) -> int:
     max_rounds = args.max_rounds if args.max_rounds else int(run_meta.get("max_rounds") or 6)
     serial_validation = bool(getattr(args, "serial_validation", False)) or bool(run_meta.get("serial_validation"))
     # v0.8.0 M3: persist pipeline_end_validator flag from run-meta to state.json.
-    # Schema reservation — plan/advance does not yet honor this; logic lands in
-    # v0.8.1. Today it just lives on the StateMachine and is emitted by report.
+    # v0.8.1: plan/advance/resolve now consume this — when true, after all
+    # groups reach done, a single cross-group `validator-pipeline-end-r1`
+    # subagent runs over the union of all groups' writes; resolve blocks
+    # until pipeline_end_status ∈ {passed, not-required}.
     pipeline_end_validator = bool(run_meta.get("pipeline_end_validator", False))
+    pipeline_end_status = "pending" if pipeline_end_validator else "not-required"
 
     run_id = _gen_run_id()
     runs_root = _runs_root_for(workdir)
@@ -349,6 +352,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         task_groups=task_groups,
         serial_validation=serial_validation,
         pipeline_end_validator=pipeline_end_validator,
+        pipeline_end_status=pipeline_end_status,
         started_at=_now_iso(),
         last_activity_at=_now_iso(),
         skip_validator=bool(getattr(args, "skip_validator", False)),
@@ -652,12 +656,53 @@ def cmd_plan(args: argparse.Namespace) -> int:
         if gs.status not in ("done", "failed", "failed-deadloop"):
             _materialize_next_prompt(sm, gs)
 
-    # 全部组终态 → all-done
+    # 全部组终态 → 看 pipeline-end-validator 是否还有事要做（v0.8.1 M3）
     active = [g for g in sm.task_groups if g.status not in ("done", "failed", "failed-deadloop")]
     if not active:
+        # 所有 group 已完成 — 决定是 pipeline-end-validation 还是 all-done
+        if sm.pipeline_end_status == "pending":
+            # 触发 cross-group end validator（一次性 fork，没有 v-fix loop）
+            _materialize_prompt_pipeline_end_validator(sm)
+            agent_key = "validator-pipeline-end-r1"
+            _emit({
+                "action": "pipeline-end-validation-fork",
+                "message": ("所有 group 已 done。pipeline.yml 配了 "
+                            "pipeline_end_validator=true，请 fork 1 个 "
+                            "`task-swarm-validator` 跑跨组整体验证；fork 后"
+                            "调 `task_swarm.py advance --run <id> "
+                            "--phase pipeline-end-validation`（不需要 --group）。"),
+                "fork": [{
+                    "agent": "task-swarm-validator",
+                    "agent_key": agent_key,
+                    "task_md": str(Path(sm.run_dir) / "agents" / agent_key / "task.md"),
+                    "scope": "pipeline-end",
+                }],
+                "schedule": sched,
+                "serial_validation": sm.serial_validation,
+                "max_parallel": sm.max_parallel,
+                "pipeline_end_status": sm.pipeline_end_status,
+                "actions": [],
+            })
+            return 0
+        if sm.pipeline_end_status == "failed":
+            _emit({
+                "action": "pipeline-end-failed",
+                "message": ("pipeline-end validator 验证 fail。所有 group 内部"
+                            "validator 都 pass，但跨组整体验证未通过。决定下一步："
+                            "调 `resolve --abort`，或人工修复后再次 fork "
+                            "`validator-pipeline-end-r2`（手工跑 advance"
+                            "推进，无 auto v-fix loop）。"),
+                "fork": [],
+                "schedule": sched,
+                "pipeline_end_status": sm.pipeline_end_status,
+                "actions": [],
+            })
+            return 0
+        # not-required 或 passed → 真正 all-done
         _emit({"action": "all-done", "message": PLAN_TEMPLATES["all-done"],
                "schedule": sched, "serial_validation": sm.serial_validation,
-               "max_parallel": sm.max_parallel, "actions": []})
+               "max_parallel": sm.max_parallel,
+               "pipeline_end_status": sm.pipeline_end_status, "actions": []})
         return 0
 
     # 为 runnable + running 组各生成下一步 action
@@ -808,6 +853,29 @@ def _materialize_prompts_v_fix(sm: StateMachine, gs: "GroupState") -> None:
         )
 
 
+def _materialize_prompt_pipeline_end_validator(sm: StateMachine) -> None:
+    """v0.8.1 M3: render cross-group pipeline-end validator's task.md.
+
+    Uses the standard ``render_validator_prompt`` with a synthetic group
+    id ``pipeline-end`` and the union of every actual group's stages /
+    writes, so the validator sees the whole pipeline scope at once.
+    """
+    all_stages: list[StageEntry] = []
+    for gs in sm.task_groups:
+        all_stages.extend(_items_as_stages(gs))
+    render_validator_prompt(
+        group_stages=all_stages,
+        run_dir=Path(sm.run_dir),
+        run_id=sm.run_id,
+        spec_id=sm.spec_id or "",
+        spec_dir=sm.spec_dir or "",
+        group="pipeline-end",
+        round_=1,
+        prev_validation=None,
+        project_root=_resolve_project_root(sm),
+    )
+
+
 def _materialize_prompt_validator(sm: StateMachine, gs: "GroupState") -> None:
     if gs.phase == "v-fix":
         next_round = gs.round + 1
@@ -847,6 +915,58 @@ def _coder_outbox_paths(sm: StateMachine, keys: list[str]) -> list[Path]:
     return out
 
 
+def _advance_pipeline_end(sm: StateMachine) -> int:
+    """v0.8.1 M3: advance after pipeline-end validator returned.
+
+    Parses ``validator-pipeline-end-r1/outbox/validation.md`` and flips
+    ``sm.pipeline_end_status`` to passed / failed. Doesn't touch any
+    task_group (this phase is cross-group by definition).
+    """
+    if not sm.pipeline_end_validator:
+        sys.stderr.write(
+            "advance --phase pipeline-end-validation: 该 run 未配 "
+            "pipeline_end_validator=true，无此 phase\n"
+        )
+        return 1
+    if sm.pipeline_end_status not in ("pending", "failed"):
+        sys.stderr.write(
+            f"advance --phase pipeline-end-validation: 当前 pipeline_end_status="
+            f"{sm.pipeline_end_status!r}，无可 advance 状态\n"
+        )
+        return 1
+    path = Path(sm.run_dir) / "agents" / "validator-pipeline-end-r1" / "outbox" / "validation.md"
+    try:
+        val = parse_validator_validation(path)
+    except ParseError as e:
+        sys.stderr.write(f"pipeline-end validator outbox 解析失败: {e}\n")
+        return 1
+    if val.verdict == "pass":
+        sm.pipeline_end_status = "passed"
+        sm.events_append({"type": "advance", "phase": "pipeline-end-validation",
+                          "verdict": "pass"})
+        msg = ("pipeline-end validator pass。下一步：调 "
+               f"`task_swarm.py resolve --run {sm.run_id}` 完成整个 run。")
+        fail_sig = None
+    else:
+        sm.pipeline_end_status = "failed"
+        fail_sig = val.fail_signature()  # method, not property — must invoke
+        sm.events_append({"type": "advance", "phase": "pipeline-end-validation",
+                          "verdict": "fail", "fail_signature": fail_sig})
+        msg = ("pipeline-end validator fail（无 auto v-fix loop；scope 太大）。"
+               "选项：① 调 `resolve --abort` 终止 run；② 人工修复后 fork "
+               "`validator-pipeline-end-r2` 再调本 advance。")
+    sm.save()
+    _emit({
+        "ok": True,
+        "phase": "pipeline-end-validation",
+        "verdict": val.verdict,
+        "pipeline_end_status": sm.pipeline_end_status,
+        "fail_signature": fail_sig,
+        "next": msg,
+    })
+    return 0
+
+
 def cmd_advance(args: argparse.Namespace) -> int:
     try:
         run_dir = _find_run_dir(args.run)
@@ -854,6 +974,10 @@ def cmd_advance(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{e}\n")
         return 1
     sm = StateMachine.load(run_dir)
+    phase = args.phase
+    # v0.8.1 M3: pipeline-end-validation 是 cross-group phase，不归任何 group
+    if phase == "pipeline-end-validation":
+        return _advance_pipeline_end(sm)
     gid = getattr(args, "group", None)
     if not gid:
         sys.stderr.write("advance 需要 --group <gid>\n")
@@ -862,7 +986,6 @@ def cmd_advance(args: argparse.Namespace) -> int:
     if gs is None:
         sys.stderr.write(f"--group {gid} 不存在；可选：{[g.id for g in sm.task_groups]}\n")
         return 1
-    phase = args.phase
     errors: list[str] = []
     next_msg = ""
 
@@ -1104,6 +1227,183 @@ def cmd_writeback(args: argparse.Namespace) -> int:
     return 0
 
 
+def _outbox_ready_for_advance(sm: StateMachine, gs: "GroupState") -> bool:
+    """Return True iff every subagent the group is currently waiting on
+    has written its outbox — i.e. ``advance --phase <gs.phase>`` will
+    succeed without "outbox not found" parse errors.
+
+    Used by ``cmd_run_loop`` to decide between auto-advance and "still
+    in flight, return to host so it knows to keep waiting".
+    """
+    run_dir = Path(sm.run_dir)
+    if gs.phase == "coding":
+        keys = list(gs.coder_in_flight)
+        return bool(keys) and all(
+            (run_dir / "agents" / k / "outbox" / "result.md").is_file() for k in keys
+        )
+    if gs.phase == "review":
+        return (run_dir / "agents" / f"reviewer-{gs.id}-r1"
+                / "outbox" / "review.md").is_file()
+    if gs.phase == "p0-fix":
+        keys = list(gs.p0_in_flight)
+        return bool(keys) and all(
+            (run_dir / "agents" / k / "outbox" / "result.md").is_file() for k in keys
+        )
+    if gs.phase == "validation":
+        if not gs.validator_in_flight:
+            return False
+        target_round = gs.round if gs.round > 0 else 1
+        return (run_dir / "agents" / f"validator-{gs.id}-r{target_round}"
+                / "outbox" / "validation.md").is_file()
+    if gs.phase == "v-fix":
+        keys = list(gs.vfix_in_flight)
+        return bool(keys) and all(
+            (run_dir / "agents" / k / "outbox" / "result.md").is_file() for k in keys
+        )
+    return False
+
+
+def _pipeline_end_outbox_ready(sm: StateMachine) -> bool:
+    """v0.8.1 M3 + M2: True iff pipeline-end validator's outbox is written."""
+    return (Path(sm.run_dir) / "agents" / "validator-pipeline-end-r1"
+            / "outbox" / "validation.md").is_file()
+
+
+def cmd_run_loop(args: argparse.Namespace) -> int:
+    """v0.8.1 M2: auto-drive mechanical phases (advance / writeback /
+    pipeline-end advance / resolve) until a host-fork action remains
+    or all work is done.
+
+    Solves the "12+ manual advance calls per run" pain from v0.9 round-2
+    试跑. host agent calls ``run-loop`` after forking + waiting for any
+    in-flight subagent to ✓ complete; the loop:
+
+      1. plan
+      2. for each emitted action:
+         - ``*-waiting`` and outbox ready → auto-advance the matching phase
+         - ``writeback`` → auto-call writeback
+         - ``pipeline-end-validation-fork`` and outbox ready → auto-advance
+         - ``all-done`` → auto-resolve
+         - ``*-fork`` (outbox NOT ready or fresh fork needed) → keep in result
+           so host knows to fork
+      3. re-plan if any auto-action ran; loop bounded by --max-iterations
+         (default 20).
+      4. emit the final plan + a log of auto-actions taken.
+
+    host agent's contract: after every fork wave + once all in-flight
+    subagents return ✓, call ``run-loop`` instead of manually调
+    advance/writeback/resolve in sequence. host still owns the fork
+    decision; mechanical state-machine plumbing now belongs to task-swarm.
+    """
+    try:
+        run_dir = _find_run_dir(args.run)
+    except FileNotFoundError as e:
+        sys.stderr.write(f"{e}\n")
+        return 1
+
+    max_iterations = max(1, int(getattr(args, "max_iterations", 20) or 20))
+    actions_log: list[dict] = []
+    iterations = 0
+    final_plan: dict = {}
+    success_exit = False  # set True when loop naturally completes (all done / no auto)
+
+    while iterations < max_iterations:
+        iterations += 1
+        sm = StateMachine.load(run_dir)
+
+        # All groups + pipeline-end terminal → auto-resolve if allowed
+        all_groups_terminal = all(
+            g.status in ("done", "failed", "failed-deadloop") for g in sm.task_groups
+        )
+        if all_groups_terminal and sm.pipeline_end_status in ("not-required", "passed"):
+            if sm.failed_status not in ("done", "failed", "failed-deadloop", "aborted"):
+                # Synthesize a minimal args for cmd_resolve
+                resolve_args = argparse.Namespace(
+                    run=args.run, abort=False,
+                    no_ingest=bool(getattr(args, "no_ingest", False)),
+                )
+                actions_log.append({"action": "resolve", "iteration": iterations})
+                cmd_resolve(resolve_args)
+            final_plan = {"action": "all-done",
+                          "message": "all groups + pipeline-end done; run resolved.",
+                          "pipeline_end_status": sm.pipeline_end_status}
+            success_exit = True
+            break
+
+        # Auto-handle pipeline-end-validation if outbox ready
+        if (all_groups_terminal and sm.pipeline_end_status == "pending"
+                and _pipeline_end_outbox_ready(sm)):
+            adv_args = argparse.Namespace(
+                run=args.run, group=None, phase="pipeline-end-validation", round=1,
+            )
+            actions_log.append({
+                "action": "advance", "phase": "pipeline-end-validation",
+                "iteration": iterations,
+            })
+            cmd_advance(adv_args)
+            continue  # re-plan
+
+        any_auto = False
+        # Walk active groups; auto-advance / writeback what we can
+        for gs in sm.task_groups:
+            if gs.status in ("done", "failed", "failed-deadloop"):
+                continue
+            if gs.phase == "writeback":
+                wb_args = argparse.Namespace(run=args.run, group=gs.id)
+                actions_log.append({"action": "writeback", "group": gs.id,
+                                    "iteration": iterations})
+                cmd_writeback(wb_args)
+                any_auto = True
+                break  # state mutated; re-plan
+            if gs.phase in ("coding", "review", "p0-fix", "validation", "v-fix"):
+                if _outbox_ready_for_advance(sm, gs):
+                    adv_args = argparse.Namespace(
+                        run=args.run, group=gs.id, phase=gs.phase, round=1,
+                    )
+                    actions_log.append({
+                        "action": "advance", "phase": gs.phase,
+                        "group": gs.id, "iteration": iterations,
+                    })
+                    cmd_advance(adv_args)
+                    any_auto = True
+                    break
+
+        if any_auto:
+            continue
+
+        # Nothing left to auto-do — emit the current plan for host to act on
+        plan_args = argparse.Namespace(run=args.run)
+        _emit({
+            "ok": True,
+            "iterations": iterations,
+            "auto_actions": actions_log,
+            "next": "plan emitted below for host to act on (see actions field)",
+            "max_iterations_reached": False,
+        })
+        return cmd_plan(plan_args)
+
+    if success_exit:
+        _emit({
+            "ok": True,
+            "iterations": iterations,
+            "auto_actions": actions_log,
+            "final_plan": final_plan,
+            "max_iterations_reached": False,
+        })
+        return 0
+
+    # max_iterations exhausted without natural completion
+    _emit({
+        "ok": False,
+        "iterations": iterations,
+        "auto_actions": actions_log,
+        "error": (f"run-loop hit --max-iterations={max_iterations}; some auto-action "
+                  f"loop suspected. Inspect state.json + run plan manually."),
+        "max_iterations_reached": True,
+    })
+    return 1
+
+
 def cmd_heartbeat(args: argparse.Namespace) -> int:
     """刷新 state.json.last_activity_at（长流程保活，状态层）。
 
@@ -1144,9 +1444,25 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sm.completed_at = _now_iso()
         sm.events_append({"type": "resolve", "status": "aborted"})
     else:
+        # v0.8.1 M3: pipeline-end validator gate — block resolve if pending/failed.
+        if sm.pipeline_end_status == "pending":
+            sys.stderr.write(
+                "resolve: pipeline_end_validator 已配但 pipeline-end-validation 还没跑完。"
+                "先 fork validator-pipeline-end-r1 + advance --phase pipeline-end-validation，"
+                "或调 `resolve --abort` 强终止。\n"
+            )
+            return 1
+        if sm.pipeline_end_status == "failed":
+            sys.stderr.write(
+                "resolve: pipeline-end-validation 标记 failed。"
+                "选项：① 人工修复 + fork validator-pipeline-end-r2 + 再 advance；"
+                "② 调 `resolve --abort` 终止。\n"
+            )
+            return 1
         sm.completed_at = sm.completed_at or _now_iso()
         sm.failed_status = sm.failed_status or "done"
-        sm.events_append({"type": "resolve", "status": sm.failed_status})
+        sm.events_append({"type": "resolve", "status": sm.failed_status,
+                          "pipeline_end_status": sm.pipeline_end_status})
 
     # P2-1: ingest lessons into <project_root>/.ai-memory/knowledge/
     # only on successful runs; never bubble up — ingest failures must not
@@ -1248,9 +1564,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pa = sub.add_parser("advance")
     pa.add_argument("--run", required=True)
-    pa.add_argument("--group", required=True, help="语义任务组 id（如 g1）")
+    pa.add_argument("--group", required=False, default=None,
+                    help="语义任务组 id（如 g1）；pipeline-end-validation phase 时省略")
     pa.add_argument("--phase", required=True,
-                    choices=["coding", "review", "p0-fix", "validation", "v-fix"])
+                    choices=["coding", "review", "p0-fix", "validation", "v-fix",
+                             "pipeline-end-validation"])
     pa.add_argument("--round", type=int, default=1)
 
     pw = sub.add_parser("writeback")
@@ -1259,6 +1577,19 @@ def _build_parser() -> argparse.ArgumentParser:
 
     ph = sub.add_parser("heartbeat")
     ph.add_argument("--run", required=True)
+
+    # v0.8.1 M2: auto-drive mechanical advance / writeback / resolve
+    prl = sub.add_parser(
+        "run-loop",
+        help=("auto-drive mechanical phases (advance / writeback / resolve) "
+              "until a host-fork action remains; max-iterations防死循环"),
+    )
+    prl.add_argument("--run", required=True)
+    prl.add_argument("--max-iterations", type=int, default=20,
+                     help="auto-action 循环上限（默认 20）")
+    prl.add_argument("--no-ingest", action="store_true",
+                     help="auto-resolve 时 skip 写 case/pitfall yml")
+    prl.set_defaults(func=cmd_run_loop)
 
     pr = sub.add_parser("resolve")
     pr.add_argument("--run", required=True)
@@ -1287,6 +1618,7 @@ COMMANDS = {
     "heartbeat": cmd_heartbeat,
     "resolve": cmd_resolve,
     "report": cmd_report,
+    "run-loop": cmd_run_loop,
 }
 
 

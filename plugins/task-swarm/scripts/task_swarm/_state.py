@@ -281,9 +281,16 @@ class StateMachine:
     serial_validation: bool = False
 
     # v0.8.0 M3: pipeline.yml 的 run.pipeline_end_validator 字段持久化到此。
-    # 当前 schema 保留；plan/advance 不消费（v0.8.1 实现 cross-group end
-    # validator phase 时启用）。
+    # v0.8.1 接入 plan/advance/resolve 消费（cross-group end validator phase）。
     pipeline_end_validator: bool = False
+
+    # v0.8.1 M3 logic: pipeline-end validator 生命周期。
+    # 四态：
+    #   "not-required" — pipeline.yml 没开 pipeline_end_validator（init 默认）
+    #   "pending"      — 已开但还没所有 group done / validator 没跑完
+    #   "passed"       — pipeline-end validator pass
+    #   "failed"       — pipeline-end validator fail（host 决定 abort / 人工修）
+    pipeline_end_status: str = "not-required"
 
     # run 级状态
     started_at: str = ""
@@ -328,6 +335,7 @@ class StateMachine:
             task_groups=task_groups,
             serial_validation=data.get("serial_validation", False),
             pipeline_end_validator=data.get("pipeline_end_validator", False),
+            pipeline_end_status=data.get("pipeline_end_status", "not-required"),
             started_at=data.get("started_at", ""),
             last_activity_at=data.get("last_activity_at", ""),
             completed_at=data.get("completed_at"),
@@ -352,6 +360,7 @@ class StateMachine:
             "task_groups": [g.to_dict() for g in self.task_groups],
             "serial_validation": self.serial_validation,
             "pipeline_end_validator": self.pipeline_end_validator,
+            "pipeline_end_status": self.pipeline_end_status,
             "started_at": self.started_at,
             "last_activity_at": self.last_activity_at,
             "completed_at": self.completed_at,

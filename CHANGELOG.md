@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 3.3.1 (2026-06-28) — specode
+
+### Added — step 2.2 注入要求渲染「## 项目级约束」段（AI-EDS v0.9 痛点 #14 方案 D）
+
+试跑 `wework-ops-assistant` 反复发现 design / 执行阶段错过 project root 下的 `CLAUDE.md` / `AGENT.md` 里的约束（dayjs import 顺序、commit message 规则等）。根因不是 specode 漏调约束，而是这些 agent-instruction 文件只被主 agent system prompt 自动加载——一旦下游 design phase 是新一轮上下文 / task-swarm subagent 是独立进程，整条链路就断了。
+
+修法（与 task-swarm 0.7.3 方案 D 上下游对齐）：
+
+`skills/specode/SKILL.md` step 2.2 「context-recall」 注入模板新增 **Project-level agent docs** 段：扫 project_root 根 + 直接父目录（覆盖 monorepo workspace 场景）的 4 个固定文件名 `CLAUDE.md / AGENTS.md / AGENT.md / CODEBUDDY.md`，命中的绝对路径以「## 项目级约束（CLAUDE.md / AGENT.md）」段插入 requirements.md（放在「## 已知约束 / 历史坑」之前）。
+
+仅写路径不复制内容——主 agent 上下文里已有副本，复制只会让 requirements.md 冗余 + 内容陈旧。disclaimer 明确说明优先级高于本 spec 描述，让 design phase / 下游执行阶段都能看见这条约束链路。
+
+下游 task-swarm 0.7.3 渲染 task.md 时按同样规则把这些路径塞进 coder/reviewer/validator prompt（subagent 进程不自动加载），specode + task-swarm 联合保证整条链路无信息丢失。
+
+纯文档 / 模板改动；无 .py 代码改动；无 regression test（指令变更，效果靠下次试跑验证）。
+
 ## 2.0.0 (2026-06-19)
 
 ### Changed (BREAKING) — 命令面拆分:`/spec` 子命令 → 三个扁平独立命令（→ 2.0.0）

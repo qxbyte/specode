@@ -1,7 +1,7 @@
 {
   "name": "specode",
-  "version": "3.3.0",
-  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v3.0 added specode-distill sub-skill. v3.1 closes AI-EDS P3-2 (step 2.2 injection renders knowledge content + step 3 design post-check). v3.2 lands FIX-1 (project_root single-source-of-truth via resolve_root verbs) + FIX-2 (knowledge writer rewire — specode-distill delegates yml/md writes to `codemap knowledge write`) + FIX-3d/3e consumer (`--include-shared` flag + 🌐 badge for cross-project shared knowledge). Requires codemap-aimemory 0.4.3+ for FIX-2 / 0.4.4+ for FIX-3d/3e.",
+  "version": "3.3.1",
+  "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log) in your specs dir. v3.0 added specode-distill sub-skill. v3.1 closes AI-EDS P3-2 (step 2.2 injection renders knowledge content + step 3 design post-check). v3.2 lands FIX-1 (project_root single-source-of-truth via resolve_root verbs) + FIX-2 (knowledge writer rewire — specode-distill delegates yml/md writes to `codemap knowledge write`) + FIX-3d/3e consumer (`--include-shared` flag + 🌐 badge for cross-project shared knowledge). 3.3.1 adds AI-EDS v0.9 痛点 #14 方案 D 模板: step 2.2 注入要求把扫到的 CLAUDE.md / AGENTS.md / AGENT.md / CODEBUDDY.md 绝对路径写入 requirements.md 的「## 项目级约束」段（path-only，不复制内容）。Requires codemap-aimemory 0.4.3+ for FIX-2 / 0.4.4+ for FIX-3d/3e.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"

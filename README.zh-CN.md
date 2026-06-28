@@ -3,12 +3,12 @@
 # pluginhub
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.zh-CN.md#许可证)
-[![specode](https://img.shields.io/badge/specode-3.3.1-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.7.3-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![specode](https://img.shields.io/badge/specode-3.4.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.8.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-152%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-209%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte 面向 CLI 编码代理（Claude Code / CodeBuddy）的插件 marketplace。
 
@@ -18,8 +18,8 @@
 
 | 插件 | 版本 | 做什么 |
 | --- | --- | --- |
-| **specode** | 3.3.1 | 轻量**规格驱动工作流**——编排外壳，每个阶段委托给 [superpowers](https://github.com/obra/superpowers) 技能（自带一等公民原生降级），每条规格固定产出 3 份文档。3.x 集成 AI-EDS 知识体系：step 2.2 把 `codemap recall` 命中的规则 / 历史坑 / 案例 / 代码地图注入 `requirements.md`；v3.3.1（痛点 #14 方案 D）再额外列出扫到的 `CLAUDE.md / AGENT.md / AGENTS.md / CODEBUDDY.md` 路径成「## 项目级约束」段，让 design / 下游 subagent 都继承项目级约束。详见下文。 |
-| **task-swarm** | 0.7.3 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。0.7.x 落地 AI-EDS 知识反馈闭环（P2-1 `ingest_lessons` 经 `codemap knowledge write` 把 `case-*` / `pit-*` 写入 `.ai-memory/knowledge/` + `knowledge-base/*.md`）、frontmatter-first `project_root`、cwd 漂移容错的 registry-based run 查找；v0.7.3（痛点 #14 方案 D）在所有 coder / reviewer / validator `task.md` 中插入「## 项目级约束（必读）」段，列出扫到的 `CLAUDE.md / AGENT.md` 路径，让独立的 subagent 进程不再悄悄漏看。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
+| **specode** | 3.4.0 | 轻量**规格驱动工作流**——编排外壳，每个阶段委托给 [superpowers](https://github.com/obra/superpowers) 技能（一等公民原生降级），每条规格固定产出 3 份文档。3.x 集成 AI-EDS 知识体系：step 2.2 把 `codemap recall` 命中的规则 / 历史坑 / 案例 / 代码地图注入 `requirements.md`；v3.3.1（痛点 #14 方案 D）再列出扫到的 `CLAUDE.md / AGENT.md` 路径成「## 项目级约束」段；v3.3.2（M8）加 SessionStart cache 与 marketplace drift 提示；**v3.4.0（M1+M9）加 autonomous-mode defaults** — 5 schema key + 5 个 `SPECODE_*` env var + `read-defaults` / `write-default` / `reset-default` verb；SKILL.md 改约每个 `AskUserQuestion` 调用前 check non-interactive（默认 schema interactive=true，零行为变化）。详见下文。 |
+| **task-swarm** | 0.8.0 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。0.7.x 落地 AI-EDS 知识反馈闭环 + frontmatter-first `project_root` + cwd 漂移容错的 registry-based run 查找；v0.7.3 + 0.7.4（痛点 #14 方案 D + M5/M6/M10）在所有 coder/reviewer/validator `task.md` 中插入「## 项目级约束（必读）」段 + `_PROJECT_AGENT_DOCS.md` inbox sentinel；**v0.8.0（M3+M7）加 lifecycle group** — `init` dedupe 加 `--on-existing {error/resume/abort-old/force-new}` flag + `run.pipeline_end_validator` schema 字段（logic 留 0.8.1）。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
 | **obsidian-wiki** | 2.0.0 | 维护 Obsidian LLM-Wiki：确定性结构层（Home 树 / README / 分区页）、SpecIn → knowledge-base 蒸馏 + MEMORY、内容养护（lint / ingest / curate）、统一编排器。通用代码 + 按 vault 配 `.wiki/config.json`。详见 [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki)。 |
 
 `## 安装` 覆盖整个 marketplace；其余章节（能力亮点、使用、项目结构）记录的是 **specode**（旗舰插件）。**task-swarm** 的文档见 [`plugins/task-swarm/`](./plugins/task-swarm) 下的源码与 `CHANGELOG`。
@@ -34,7 +34,8 @@
 - **首次使用问一次目录。** 第一次使用时，specode 询问你的文档管理目录，将其**原样**作为规格根目录持久化到 `~/.config/specode/config.json.specsRoot`，之后不再询问。
 - **单个轻量 hook。** 仅一个 `SessionStart` 提醒式 hook，告知代理 specode 可用，不阻断，无逐轮机制。
 - **并发执行是独立插件。** 选"委托 task-swarm"后，specode 读取 `design.md` 派生 `pipeline.yml`，零 import 衔接独立的 **task-swarm** 插件。
-- **项目级约束沿链路传递。** v3.3.1 + task-swarm 0.7.3（AI-EDS v0.9 痛点 #14 方案 D）扫 `<project_root>` 根 / 直接父目录 / 任何被 `@writes` 触达的子目录里的 `CLAUDE.md` / `AGENT.md` / `AGENTS.md` / `CODEBUDDY.md`，把命中的**绝对路径**（不复制内容）同步注入 `requirements.md` 的「## 项目级约束」段 + 每个 coder / reviewer / validator `task.md` 的「## 项目级约束（必读）」段。修掉「独立 subagent 进程看不到主 agent 自动加载的指南文件」这个静默漏点。
+- **项目级约束沿链路传递。** v3.3.1 + task-swarm 0.7.3（AI-EDS v0.9 痛点 #14 方案 D）扫 `<project_root>` 根 / 直接父目录 / 任何被 `@writes` 触达的子目录里的 `CLAUDE.md` / `AGENT.md` / `AGENTS.md` / `CODEBUDDY.md`，把命中的**绝对路径**（不复制内容）同步注入 `requirements.md` 的「## 项目级约束」段 + 每个 coder / reviewer / validator `task.md` 的「## 项目级约束（必读）」段。v0.7.4 强化硬约束文字 + `_PROJECT_AGENT_DOCS.md` inbox sentinel。修掉「独立 subagent 进程看不到主 agent 自动加载的指南文件」这个静默漏点。
+- **autonomous mode / CI 友好（v3.4.0，opt-in）。** 设 `SPECODE_INTERACTIVE=false` + 相关 `SPECODE_PROJECT_ROOT` / `SPECODE_EXECUTION_MODE` / `SPECODE_AUTO_DISTILL` / `SPECODE_SPECS_ROOT_DEFAULT` env var（或 `resolve_root.py write-default --key X --value Y` 持久化），原本会在 CI / 长跑场景阻塞的每个 `AskUserQuestion` 都会 silently 跳过用 default。schema default 是 `interactive=true`，**默认行为零变化**——只 opt-in 用户走 autonomous 路径。
 
 ## 安装
 

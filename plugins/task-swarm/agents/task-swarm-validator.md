@@ -1,7 +1,7 @@
 ---
 name: task-swarm-validator
 description: VALIDATOR subagent forked by the task-swarm orchestrator. Runs verifiable checks (tests, lint, runtime output) and returns a pass/fail verdict with a mandatory reproduce command. Has no Edit/Write tool — physically cannot touch code. Invoked only inside the task-swarm flow by the lead orchestrator.
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, Skill
 model: sonnet
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: task-swarm-coder
 description: CODER subagent dispatched by the task-swarm orchestrator. Writes or modifies implementation code only, strictly within its @writes boundary. Never reviews, never scores, never accepts. Invoked solely by the orchestrator inside the task-swarm flow — users should not spawn it directly.
-tools: Bash, Read, Edit, Write, Grep, Glob
+tools: Bash, Read, Edit, Write, Grep, Glob, Skill
 model: sonnet
 ---
 

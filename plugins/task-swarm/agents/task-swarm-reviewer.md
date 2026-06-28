@@ -1,7 +1,7 @@
 ---
 name: task-swarm-reviewer
 description: REVIEWER subagent dispatched by the task-swarm orchestrator (advisory mode). Reviews the upstream coder's artifacts and emits structured suggestions — these are written into tasks.md as `> ⚠️` comments for the user to review. **Does not participate in the fix loop** — the reviewer never fails a stage and never re-dispatches a coder; the validator is the only blocking gate. Has no Edit/Write tools — code changes are forbidden at the tool level. Invoked only by the orchestrator within the task-swarm flow.
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, Skill
 model: sonnet
 ---
 

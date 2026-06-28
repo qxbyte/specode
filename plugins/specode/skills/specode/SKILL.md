@@ -97,6 +97,19 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
       - 关联表: <related_tables joined>
       - 关联知识: <knowledge_refs as [[..]] wikilinks>
       ```
+
+      **Project-level agent docs (AI-EDS v0.9 痛点 #14 方案 D)**: in addition to the recall hits above, scan the filesystem for project-level agent-instruction docs and inject them as a separate `## 项目级约束（CLAUDE.md / AGENT.md）` section into the requirements draft (placed **before** `## 已知约束 / 历史坑`). Scan order (deduped, only existing files): (1) `<project_root>/CLAUDE.md|AGENTS.md|AGENT.md|CODEBUDDY.md`; (2) `<project_root>` 直接父目录下同 4 个文件（覆盖 monorepo workspace 根，如 `wework-ops-assistant/CLAUDE.md` 而下挂子 git repo 自身没有）;(3) 任何已经在用户描述中点名的子目录（如「ops-web 模块」）。Template — **paths only, do not copy content**:
+
+      ```markdown
+      ## 项目级约束（CLAUDE.md / AGENT.md）
+
+      > 主 agent 的 system prompt 已自动加载下列文件；这里列出来是为了 design / 执行阶段 / 下游 task-swarm subagent 都能看见这条约束链路。**优先级高于本 spec 的其他描述**：发生冲突时以下列文件为准。
+
+      - `<abs/path/to/CLAUDE.md>`
+      - `<abs/path/to/parent/AGENTS.md>`
+      ```
+
+      为何 path-only 而非内容拷贝：主 agent 的上下文里已经有完整内容，requirements.md 复制一遍只是冗余 + 内容陈旧风险。task-swarm 0.7.3+ 渲染 task.md 时会按同样的扫描规则把这些路径塞进 coder/reviewer/validator prompt（subagent 进程不自动加载这些文件，必须用路径告知），所以 specode + task-swarm 联合保证从 requirements → design → 执行 → subagent 整条链路都看得见项目级约束。若一个文件都没扫到（典型的 fresh 项目），**整段省略**（不要写「无」之类占位）。
    3. **draft requirements**:
       - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate). Pre-instruct it with the recall hits from sub-step 2 so brainstorming weaves them in.
       - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template — including the recall hits in the `## 已知约束 / 历史坑` section.

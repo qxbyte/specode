@@ -9,8 +9,8 @@
     {
       "name": "specode",
       "source": "./plugins/specode",
-      "version": "5.0.0",
-      "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log). **v5.0.0 BREAKING**: 命令去 `specode-` 前缀 — `/specode:spec` / `/specode:continue` / `/specode:list` / `/specode:distill`(原 `/specode:specode-*`);内核 skill 加 `user-invocable:false` 隐藏裸 `/specode`。**v4.0.0 BREAKING**: 彻底拔出记忆注入工程 — 砍 P3-1 codemap recall / P3-2 rule-check / acceptance auto-distill prompt。保留 project-level CLAUDE.md scan。distill v4 完全重写为手动 md-only Obsidian wiki organizer, 默认写 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`。如需 v3 行为 checkout `backup/specode-v3.4.0-task-swarm-v0.9.2`。",
+      "version": "5.0.1",
+      "description": "Lightweight spec-driven workflow: orchestrates superpowers skills per phase, lands 3 fixed docs (requirements/design/implementation-log). **v5.0.1**: distill skill 加 `user-invocable:false`(隐藏裸 `/distill` + 消除 `/specode:distill` 重复);distill 收敛为纯 md-only(移除 `--format yml|both` + codemap 死路径);清理全部 `.ai-memory`/codemap 文档残留 + requirements 模板删 recall 段。**v5.0.0 BREAKING**: 命令去 `specode-` 前缀 — `/specode:spec` / `/specode:continue` / `/specode:list` / `/specode:distill`(原 `/specode:specode-*`);内核 skill 加 `user-invocable:false` 隐藏裸 `/specode`。**v4.0.0 BREAKING**: 彻底拔出记忆注入工程 — 砍 P3-1 codemap recall / P3-2 rule-check / acceptance auto-distill prompt。保留 project-level CLAUDE.md scan。distill v4 完全重写为手动 md-only Obsidian wiki organizer, 默认写 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`。如需 v3 行为 checkout `backup/specode-v3.4.0-task-swarm-v0.9.2`。",
       "homepage": "https://github.com/qxbyte/pluginhub",
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",

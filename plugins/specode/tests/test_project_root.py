@@ -1,7 +1,7 @@
 """Tests for project_root verbs in resolve_root.py (FIX-1: single source of truth).
 
 project_root is the join key between a spec (under specsRoot) and the project
-whose .ai-memory/knowledge it feeds. It lives in exactly one place — the spec's
+it targets. It lives in exactly one place — the spec's
 requirements.md YAML frontmatter — and every consumer reads it through the same
 ``read-project-root`` entry. ``write-project-root`` is the single validated
 writer. ``resolve-project-root`` computes the default for the host agent to

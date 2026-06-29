@@ -1,26 +1,26 @@
-# 知识点拆分启发式（spec-distill v2）
+# 知识点拆分启发式（distill）
 
-> 供 `spec-distill sync` 流程第 4 步 LLM 提议知识点拆分时参考。
+> 供 `/specode:distill` 流程第 3 步 LLM 提议知识点拆分时参考。
 > 拆分方案由 LLM 提议、用户在 `AskUserQuestion` 中最终拍板。
 >
-> **v2 重要变化**：5 维启发式映射到 `.ai-memory/knowledge/` 下的 **5 类目录**；
-> 每个候选知识点必须明确 `category`（`knowledge_id` 由写入器派生，可选）。
-> 落盘经 `codemap knowledge write`（content payload），写入器同时产 yml + md 双产；
-> 字段集见 `references/doc-template.md`。
+> distill 是 **md-only** 整理器：5 维启发式映射到 **5 类目录**，每个候选必须明确
+> `category`；host agent 据 category + 标题派生 `knowledge_id = <prefix>-<kebab(title)>`，
+> 直接撰写 Obsidian markdown（无 yml、无 `codemap knowledge write` 写入器、不碰
+> `.ai-memory/`）。每类 md 的 frontmatter + 正文结构见 `references/doc-template.md`。
 
 ## 五维 → 五类目录映射表
 
-| 启发式维度 | 目录 | ID 前缀 | type 字段 |
-|---|---|---|---|
-| 1. 按业务流程 | `business/` | `biz-` | `business_process` |
-| 2. 按表 / 字段 | `modules/` | `mod-` | `module_map` |
-| 3. 按功能页 / 特性 | `business/` | `biz-` | `business_process` |
-| 4. 按调用链 | `modules/` | `mod-` | `module_map` |
-| 5. 按机制 / 规则 | `rules/` | `rule-` | `business_rule` |
-| **额外**：本 spec 实现案例 | `cases/` | `case-` | `case` |
-| **额外**：可复用坑点 | `pitfalls/` | `pit-` | `pitfall` |
+| 启发式维度 | 目录 | ID 前缀 |
+|---|---|---|
+| 1. 按业务流程 | `business/` | `biz-` |
+| 2. 按表 / 字段 | `modules/` | `mod-` |
+| 3. 按功能页 / 特性 | `business/` | `biz-` |
+| 4. 按调用链 | `modules/` | `mod-` |
+| 5. 按机制 / 规则 | `rules/` | `rule-` |
+| **额外**：本 spec 实现案例 | `cases/` | `case-` |
+| **额外**：可复用坑点 | `pitfalls/` | `pit-` |
 
-> 每个 spec 至少产 1 篇 `case-*.yml`（必有 — 来自 `implementation-log.md`），其他类按需。`implementation-log` / `bugfix` 中"有复用价值的坑"单独拎出 `pit-*.yml`，不要塞到 case 内。
+> 每个 spec 至少产 1 篇 `case-<slug>.md`（必有 — 来自 `implementation-log.md`），其他类按需。`implementation-log` / `bugfix` 中"有复用价值的坑"单独拎出 `pit-*.md`，不要塞到 case 内。
 
 ---
 
@@ -126,11 +126,11 @@
 
 ## 拆分流程
 
-1. LLM 读完全 spec 文档后，按上述五种维度各提一批候选；**每个候选标注** `category` + 拟标题 + 一句摘要 + 拟 tags（`knowledge_id` 可选——写入器据 category + spec_id/title/signature 自动派生）。
-2. 至少强制一篇 `cases` 候选（记录本次实现，来源 `implementation-log.md` / `bugfix.md` / `acceptance-checklist.md`）；写入器据 `spec_id` 派生为 `case-<spec_id>`，与 task-swarm 自动 case 同 id 以触发 supersede。
+1. LLM 读完全 spec 文档后，按上述五种维度各提一批候选；**每个候选标注** `category` + 拟标题 + 一句摘要 + 拟 tags（`knowledge_id = <prefix>-<kebab(title)>`）。
+2. 至少强制一篇 `cases` 候选（记录本次实现，来源 `implementation-log.md` / `bugfix.md` / `acceptance-checklist.md`）；id 固定为 `case-<slug>`，重跑 distill 默认整篇 overwrite。
 3. 用 `AskUserQuestion` 呈现给用户，让用户**增删/合并/改名/改归属**。
 4. 用户确认后才开始落盘，**不自动跳过此步**。
-5. 对每个候选构造 content payload（`category` + `fields` + `md_body`）→ 调 `codemap knowledge write`（见 `SKILL.md` Step 5）；字段集见 `references/doc-template.md`。**不手写 yml**（写入器不可用时才回退手写）。
+5. 对每个确认候选，host agent **直接撰写 Obsidian markdown**（frontmatter + 正文，见 `references/doc-template.md` 与 `SKILL.md` Step 4），写到 `<target-dir>/<slug>/<category>/<knowledge_id>.md`。无外部写入器、无 yml。
 
 ---
 

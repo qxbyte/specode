@@ -1,121 +1,61 @@
-# distill — 字段参考（payload `fields` + md 正文）
+# distill — Obsidian markdown 模板参考（5 类）
 
-> **重要（FIX-2）**：distill **不再手写 yml**。它构造 *content payload*
-> 交给单一写入器 `codemap knowledge write`（见 `SKILL.md` Step 5）。本文件因此
-> 是**字段参考**：每类 payload 的 `fields` 应包含哪些语义字段、md 正文长什么样。
+> distill 是 **md-only** 的 Obsidian 知识整理器（5.0.1+）：host agent **直接撰写
+> markdown**，没有 yml、没有 `codemap knowledge write` 写入器、不碰 `.ai-memory/`。
+> 本文件给出 5 个类别各自的 **md frontmatter + 正文结构**模板。流程见 `SKILL.md`。
 >
-> 由**写入器**自动盖章、**不要**放进 `fields` 的字段：
-> `schema_version` / `knowledge_id` / `type` / `version` / `created_at` /
-> `updated_at`（写入器据 category + spec_id/title/signature 推导 id、盖日期、
-> 按同 id 合并规则升 version）。
->
-> 由 **LLM 提供**：
-> - `fields`：下面各类列出的语义字段（`statement` / `why` / `steps` /
->   `implementation_summary` / `symptom` / ... ）。
-> - `md_body`：人读叙事正文（散文 / ascii 调用链 / `[[wikilink]]`），写入器逐字
->   写进孪生 md 的机器渲染 frontmatter 之下（方案A）。
->
-> 下面每类的 "yml schema" 段落即该类 `fields` 的字段集；"md 模板" 段即 `md_body`
-> 的推荐结构。**fallback**（写入器不可用）时才需按完整 yml schema 手写双产。
-
+> 旧的 yml schema / `.ai-memory/knowledge/` 双产物路径 / codemap 写入器已在 5.0.1
+> 移除（其唯一消费者 `codemap recall` 早在 v4.0.0 删除，yml 输出无人读取）。
 
 ---
 
 ## 类别 → 目录 → 前缀 总览
 
-| category | yml 目录 | md 目录 | id 前缀 | type |
-|---|---|---|---|---|
-| `rules` | `.ai-memory/knowledge/rules/` | `knowledge-base/rules/` | `rule-` | `business_rule` |
-| `business` | `.ai-memory/knowledge/business/` | `knowledge-base/business/` | `biz-` | `business_process` |
-| `modules` | `.ai-memory/knowledge/modules/` | `knowledge-base/modules/` | `mod-` | `module_map` |
-| `cases` | `.ai-memory/knowledge/cases/` | `knowledge-base/cases/` | `case-` | `case` |
-| `pitfalls` | `.ai-memory/knowledge/pitfalls/` | `knowledge-base/pitfalls/` | `pit-` | `pitfall` |
+所有产物都落在 `--target-dir`（默认 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/`）下的 `<slug>/<category>/`：
+
+| category | 目录 | id 前缀 | 含义 |
+|---|---|---|---|
+| `rules` | `<target-dir>/<slug>/rules/` | `rule-` | 业务规则 / 全局机制 |
+| `business` | `<target-dir>/<slug>/business/` | `biz-` | 业务流程 / 功能页 |
+| `modules` | `<target-dir>/<slug>/modules/` | `mod-` | 表 / 字段 / 调用链 / 模块地图 |
+| `cases` | `<target-dir>/<slug>/cases/` | `case-` | 历史案例（每 spec 必产 1 篇，id = `<slug>`） |
+| `pitfalls` | `<target-dir>/<slug>/pitfalls/` | `pit-` | 可复用的失败 / 修复经验 |
+
+文件名 = `<knowledge_id>.md`，`knowledge_id = <prefix>-<kebab(title)>`（cases 为 `case-<slug>`）。
 
 ---
 
-## 公共字段（5 类 yml 通用）
+## 公共 Obsidian frontmatter
 
-```yaml
-schema_version: "1.0"
-knowledge_id: <prefix>-<kebab-slug>           # 与文件名 stem 一致
-type: <见上表>                                # 与目录一一对应
-version: 1                                    # 同 id 升级 +1
-created_at: YYYY-MM-DD
-updated_at: YYYY-MM-DD
-status: active                                # active / deprecated / draft
-confidence: high                              # high / medium / low
-source_spec: <specsRoot>/<slug>               # 相对或绝对都行，按 host agent 习惯
-source_files:
-  - requirements.md
-  - design.md
-  - implementation-log.md
-related_requirements:                         # spec_id / 需求号 列表
-  - REQ-2024-0078
-related_knowledge:                            # 同 .ai-memory/knowledge/ 内其它 .yml 的 knowledge_id
-  - mod-order-pricing
-  - rule-coupon-points-mutex
-related_code:                                 # codemap entity_id 或 file/entity 对
-  - file: src/modules/order/pricing.js
-    entity: calculateOrderPrice
-    line_range: [120, 180]
-tags:
-  - coupon
-  - pricing
-```
-
-公共 md frontmatter（最小，避免和正文叙事冗余）：
+每篇 md 顶部用统一的 Obsidian 友好 frontmatter（与 `SKILL.md` Step 4 一致）：
 
 ```markdown
 ---
-knowledge_id: <prefix>-<kebab-slug>
-type: <同 yml>
-version: 1
-updated_at: YYYY-MM-DD
-tags: [coupon, pricing]
-related_requirements: [REQ-2024-0078]
-related_knowledge: [mod-order-pricing]
-related_code:
-  - file: src/modules/order/pricing.js
-    entity: calculateOrderPrice
+title: <中文标题>
+category: <rules|business|modules|cases|pitfalls>
+spec_id: <slug>
+created_at: <YYYY-MM-DD>
+tags: [tag1, tag2]
+related: [[id1]], [[id2]]     # 可选：同 wiki 内其它知识点的 [[wikilink]]
 ---
 ```
 
-> md 不重复 yml 中可派生的字段（source_files / status / confidence / created_at）；如需查阅打开同名 yml 即可。
+> 可按需追加任何 Obsidian 兼容字段（如 `related_requirements: [121659]`、`related_code:` 路径列表），但保持上面 6 个为基础集。正文用散文 / 表格 / ascii / `[[wikilink]]`，面向人读。
 
 ---
 
 ## 1. `rules/` — 业务规则 / 全局机制
 
-### 1.1 yml schema
-
-公共字段之外加：
-
-```yaml
-statement: "优惠券和积分抵扣不能同时使用"
-why: "避免用户双重优惠导致亏损"
-trigger_conditions:
-  - "下单时同时勾选优惠券和使用积分"
-exceptions:
-  - "VIP 等级 ≥ 8 的用户例外，见 rule-vip-privilege"
-enforcement:
-  - "service 层 validateCouponAndPoints() 抛异常"
-  - "前端 OrderPricing.vue 互斥禁用"
-```
-
-### 1.2 md 模板
+正文段：`一句话规则` / `为什么有这条规则` / `触发条件` / `例外` / `在代码哪些层强制` / `关联`。
 
 ```markdown
 ---
-knowledge_id: rule-coupon-points-mutex
-type: business_rule
-version: 1
-updated_at: 2026-06-26
+title: 优惠券与积分抵扣互斥规则
+category: rules
+spec_id: REQ-2024-0078
+created_at: 2026-06-26
 tags: [coupon, points, mutex]
-related_requirements: [REQ-2024-0078]
-related_knowledge: [biz-order-checkout]
-related_code:
-  - file: src/modules/order/validators.js
-    entity: validateCouponAndPoints
+related: [[biz-order-checkout]], [[pit-coupon-null-amount]]
 ---
 
 # 优惠券与积分抵扣互斥规则
@@ -158,47 +98,16 @@ related_code:
 
 ## 2. `business/` — 业务流程 / 功能页
 
-### 2.1 yml schema
-
-```yaml
-title: "Q01 承保送收付入库流程"
-trigger: "承保系统下单完成"
-end_state: "SfCreditMain + SfBusinessCredit 双表落库 + 推 ATP"
-steps:
-  - n: 1
-    actor: "承保系统"
-    action: "调用 Q01 接口"
-    inputs: [policyNo, paymentComCode, codInd]
-  - n: 2
-    actor: "收付系统"
-    action: "判断 paymentComCode 是否需要覆盖赋值"
-    branches:
-      - condition: "paymentComCode != centerCode"
-        next: "覆盖为 centerCode"
-      - condition: "paymentComCode == centerCode"
-        next: "保留原值"
-data_flow:
-  - "Q01 → SfCreditMain.PAYSTATUS = 0"
-  - "Q17 / Q01 入库顺序约束：Q17 先于 Q01"
-ui_constraints:                                # 功能页特有；非功能页可空
-  - element: "保存按钮"
-    rule: "未选优惠券时灰禁用"
-```
-
-### 2.2 md 模板
+正文段：`概述` / `触发与终止` / `步骤`（ascii 流程图）/ `数据流约束` / `关键 UI 约束（如这是功能页）` / `关联`。
 
 ```markdown
 ---
-knowledge_id: biz-q01-underwrite-to-payment
-type: business_process
-version: 1
-updated_at: 2026-06-26
+title: Q01 承保送收付入库流程
+category: business
+spec_id: 121659
+created_at: 2026-06-26
 tags: [Q01, underwrite, payment, SfCreditMain]
-related_requirements: [121659, 123000]
-related_knowledge: [mod-sf-credit-main, rule-paymentcomcode-fallback]
-related_code:
-  - file: src/main/java/com/pointwise/.../payment/biz/SfCreditMainBizImpl.java
-    entity: handleQ01Input
+related: [[mod-sf-credit-main]], [[rule-paymentcomcode-fallback]]
 ---
 
 # Q01 承保送收付入库流程
@@ -243,58 +152,23 @@ related_code:
 
 - 数据模型：[[mod-sf-credit-main]]
 - 关联规则：[[rule-paymentcomcode-fallback]]
-- 历史案例：[[case-121659-implementation]]
+- 历史案例：[[case-121659]]
 ```
 
 ---
 
 ## 3. `modules/` — 表 / 字段 / 调用链 / 模块地图
 
-### 3.1 yml schema
-
-```yaml
-title: "SfCreditMain 字段说明"
-scope: table                                  # table / call_chain / module / api
-entity_kind: table
-primary_entity: tbl-sf_credit_main
-columns:                                      # 仅 scope=table 时
-  - name: PAYSTATUS
-    type: TINYINT
-    enum:
-      - value: 0
-        meaning: 未处理
-      - value: 1
-        meaning: 已确认
-      - value: 3
-        meaning: 部分确认（已作废，保留兼容）
-  - name: CNY_PAY_AMOUNT
-    type: DECIMAL(18,2)
-    note: "实际归属 SfBusinessCredit，非 SfCreditMain 字段"
-shard:                                        # 分库分表
-  key: underwriteEndDate
-  routing: SfRouter
-  database: 主库
-call_chain:                                   # 仅 scope=call_chain 时
-  - step: "前端 SfPlanAuthority.vue:142"
-    next: "POST /api/payment/authorityQuery"
-  - step: "Controller PaymentController.authorityQuery"
-    next: "Service authorityQueryByPaymentNo"
-```
-
-### 3.2 md 模板
+正文段：`概述` / `表结构（关键字段）`（枚举全列，含已作废值并标注）/ `分库分表 / 路由` / `关联表 ascii` / `调用链`（如 scope=call_chain）/ `关联`。
 
 ```markdown
 ---
-knowledge_id: mod-sf-credit-main
-type: module_map
-version: 1
-updated_at: 2026-06-26
+title: SfCreditMain 字段说明
+category: modules
+spec_id: 121659
+created_at: 2026-06-26
 tags: [SfCreditMain, table, fields, sharding]
-related_requirements: [121659, 123000]
-related_knowledge: [biz-q01-underwrite-to-payment]
-related_code:
-  - file: src/main/resources/mapper/SfCreditMainMapper.xml
-  - entity: tbl-sf_credit_main
+related: [[biz-q01-underwrite-to-payment]], [[pit-cny-pay-amount-misplace]]
 ---
 
 # SfCreditMain 字段说明
@@ -349,48 +223,16 @@ SfCreditMain.creditingNo (1) ─────► (N) SfBusinessCredit.creditingNo
 
 ## 4. `cases/` — 历史案例（每个 spec 必产 1 篇）
 
-### 4.1 yml schema
-
-```yaml
-case_id: case-REQ-2024-0078
-spec_id: REQ-2024-0078                        # 与 spec 目录名对齐
-title: "订单列表增加按金额区间筛选"
-implementation_summary: |
-  在 OrderQueryService 增加 amountMin / amountMax 参数；
-  前端 admin/order-list.vue 加范围输入框；使用 BigDecimal。
-changed_files:
-  - src/modules/order/query.js
-  - src/modules/admin/order-list.vue
-key_decisions:
-  - decision: "使用 BigDecimal 避免浮点精度问题"
-    reason: "金额查询历史踩过浮点 0.1+0.2=0.30000000000004 的坑"
-  - decision: "复用已有权限校验中间件"
-    reason: "保持鉴权一致；不另起 middleware"
-bugs_encountered:
-  - "初始实现未处理金额为 null 的情况，validation 直接 NPE"
-lessons:
-  - "涉及金额查询时，必须考虑 null 和 0 的边界"
-review_findings:
-  - finding: "重复的金额校验逻辑"
-    severity: minor
-    action: "已抽到 amountValidator 工具方法"
-acceptance_status: passed                     # passed / failed / partial
-```
-
-### 4.2 md 模板
+正文段：`实现摘要` / `改动文件` / `关键决策`（配理由）/ `实施中遇到的 bug` / `教训（lessons learned）` / `Review 反馈` / `验收`。id 固定为 `case-<slug>`，重跑 distill 默认整篇 overwrite（case 描述的就是"这次实现"）。
 
 ```markdown
 ---
-knowledge_id: case-REQ-2024-0078
-type: case
-version: 1
-updated_at: 2026-06-26
+title: 订单列表增加按金额区间筛选
+category: cases
+spec_id: REQ-2024-0078
+created_at: 2026-06-26
 tags: [order, query, amount-range]
-related_requirements: [REQ-2024-0078]
-related_knowledge: [pit-amount-null-validation]
-related_code:
-  - file: src/modules/order/query.js
-  - file: src/modules/admin/order-list.vue
+related: [[pit-amount-null-validation]]
 ---
 
 # case REQ-2024-0078 — 订单列表增加按金额区间筛选
@@ -436,46 +278,16 @@ related_code:
 
 ## 5. `pitfalls/` — 坑点（可复用的失败 / 修复经验）
 
-### 5.1 yml schema
-
-```yaml
-pit_id: pit-amount-null-validation
-title: "金额参数为 null 时未做兜底校验导致 NPE"
-context: "电商订单计算价格、查询订单列表等所有涉及金额的接口"
-symptom: |
-  调用方未传 amount 字段时，BigDecimal.add 抛 NullPointerException；
-  前端表现为接口 500，无明确错误码。
-root_cause: |
-  validator 假设 amount 必非 null，未走前置 Objects.requireNonNullElse；
-  schema 未把 amount 标记为 required 也未给 default。
-fix:
-  - "validator 内 amountMin = Optional.ofNullable(amountMin).orElse(BigDecimal.ZERO)"
-  - "OpenAPI schema 把 amountMin / amountMax 显式标 nullable=true + default=0"
-prevention:
-  - "新接口涉及金额查询时，必须 review null/0 兜底逻辑"
-  - "PR 模板加一条 checklist: '金额参数是否处理 null'"
-affects:                                      # 文件路径或 entity_id
-  - src/modules/order/query.js
-  - src/modules/order/calculator.js
-first_seen_in: REQ-2024-0078
-seen_again_in:                                # 后续重复踩到时追加
-  - REQ-2024-0092
-```
-
-### 5.2 md 模板
+正文段四件套必填：`适用范围` / `症状` / `根因` / `修复` / `怎么避免再犯` / `影响范围` / `历史`。写不全不算合格。
 
 ```markdown
 ---
-knowledge_id: pit-amount-null-validation
-type: pitfall
-version: 2
-updated_at: 2026-06-26
+title: 金额参数 null 未兜底导致 NPE
+category: pitfalls
+spec_id: REQ-2024-0078
+created_at: 2026-06-26
 tags: [amount, null-safety, npe, validation]
-related_requirements: [REQ-2024-0078, REQ-2024-0092]
-related_knowledge: [case-REQ-2024-0078]
-related_code:
-  - file: src/modules/order/query.js
-  - file: src/modules/order/calculator.js
+related: [[case-REQ-2024-0078]]
 ---
 
 # pit — 金额参数 null 未兜底导致 NPE
@@ -527,39 +339,35 @@ BigDecimal max = Optional.ofNullable(amountMax).orElse(BigDecimal.valueOf(Long.M
 
 ---
 
-## 各 yml 段 / md 段的内容来源对照
+## 各 md 段的内容来源对照
 
 | 段 | 主要 source | 备注 |
 |---|---|---|
-| 公共：`source_spec` / `source_files` / `related_requirements` | spec 目录 + frontmatter | 机器可写无需 LLM 判断 |
-| 公共：`related_code` | `design.md` + `implementation-log.md` | 抽 Java 类全名 / Vue 文件路径 / Mapper id |
+| frontmatter：`spec_id` / `tags` / `related` | spec 目录 + frontmatter | spec_id = slug；related 由 host agent 据本批候选互链 |
 | `rules.*` | `requirements.md` 业务约束 / `design.md` 校验设计 | 抽"X 时不能 Y"型句子 |
-| `business.*` | `design.md` 时序图 / 流程图 / `requirements.md` 场景 | 步骤化为 `steps[]` |
+| `business.*` | `design.md` 时序图 / 流程图 / `requirements.md` 场景 | 步骤化为 ascii 流程 |
 | `modules.*` | `design.md` 数据模型 / 接口设计 | 字段枚举 / 调用链 / 分库分表键 |
-| `cases.*` | `implementation-log.md` + `bugfix.md` + `tests` + `acceptance-checklist` | **每 spec 必产 1 篇** |
-| `pitfalls.*` | `implementation-log.md` + `bugfix.md` | 仅"有复用价值的坑"独立成篇；临时调试不纳入 |
+| `cases.*` | `implementation-log.md` + `bugfix` + `tests` + `acceptance` | **每 spec 必产 1 篇** |
+| `pitfalls.*` | `implementation-log.md` + `bugfix` | 仅"有复用价值的坑"独立成篇；临时调试不纳入 |
 
 ---
 
-## 同 id 升级规则（yml + md 同时升级）
+## 同名升级规则（md）
 
-如目标目录已有同 `knowledge_id`：
+如目标目录已有同 `knowledge_id` 的 md：
 
-1. `Read` 两份原文件（yml + md）。
-2. **不重写**：`title` / `statement` / `key_decisions` 等结构性字段保留。
-3. **追加**：`related_requirements` 追加本次 spec；`source_files` 追加；`seen_again_in`（pit 专有）追加新条目。
-4. **更新**：`updated_at: today`；`version +1`（yml + md frontmatter 同步）。
-5. **冲突时**：若本次新信息与原文相悖，`AskUserQuestion` 让用户选"覆盖 / 新建 `-v2` 后缀文件 / 跳过"。
-6. **cases/case-* 特例**：同一 spec 重新跑 distill 默认 supersede（直接 overwrite），不走 append 流程——因为 case 描述的就是"这次实现"，重跑意味着重写实现。
+1. `Read` 原文件。
+2. **不重写**结构性内容（`title` / 一句话规则 / 关键决策 等）。
+3. **追加**：本次 spec 的相关需求号、新增的关联 `[[wikilink]]`、坑点的"再次踩到"行。
+4. **冲突时**：若本次新信息与原文相悖，`AskUserQuestion` 让用户选"覆盖 / 新建 `-v2` 后缀文件 / 跳过"。
+5. **cases/case-* 特例**：同一 spec 重新跑 distill 默认整篇 overwrite（不走 append）——case 描述的就是"这次实现"，重跑意味着重写。
 
 ---
 
 ## 深度标准（写得多深算合格）
 
-参考现有 `新收付（fin）` 系统语料的人脑可读基线：
-
-- **modules 类**：字段枚举全列（含已作废值并标注）；分库分表键明确（如 `分表键 underwriteEndDate`）；调用链含完整 Java 类路径 + 方法名。
+- **modules 类**：字段枚举全列（含已作废值并标注）；分库分表键明确（如 `分表键 underwriteEndDate`）；调用链含完整类路径 + 方法名。
 - **rules 类**：触发条件精确到字段比较；列出反例 / 边界条件；标注在代码哪一层强制。
-- **business 类**：每步标注 actor + action + branches；功能页含 UI 约束表。
-- **cases 类**：`key_decisions` 配 `reason`；`bugs_encountered` 含表面症状；`lessons` 是一句结论。
-- **pitfalls 类**：`symptom` + `root_cause` + `fix` + `prevention` 四件套必填，写不完不算合格。
+- **business 类**：每步标注 actor + action + 分支；功能页含 UI 约束表。
+- **cases 类**：关键决策配理由；遇到的 bug 含表面症状；教训是一句结论。
+- **pitfalls 类**：`症状` + `根因` + `修复` + `预防` 四件套必填，写不完不算合格。

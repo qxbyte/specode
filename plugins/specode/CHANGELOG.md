@@ -4,6 +4,25 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 5.0.1 (2026-06-30) — distill 收敛 md-only + 隐藏 + 全量清理 .ai-memory/codemap 残留
+
+承接 5.0.0,把 distill 彻底收敛为「纯 md-only Obsidian 整理器」,并清掉全仓最后的记忆注入文档残留。
+
+### Changed
+
+- **`skills/distill/SKILL.md`**:加 `user-invocable: false` —— 斜杠菜单不再出现裸 `/distill`,也消除了「命令 + 同名可见 skill」造成的 `/specode:distill` 重复项(现只剩命令一条干净入口;Claude 仍可自动调用该 skill)。
+- **distill 收敛为纯 md-only**:移除 `--format md|yml|both` flag 与 `codemap knowledge write` 写入器路径。yml 输出的唯一消费者(`codemap recall`)早在 v4.0.0 删除,yml 已无人读取,故彻底移除。
+
+### Removed / cleaned(文档与模板里的死引用)
+
+- **`assets/templates/requirements.md`**:删除已废弃的「## 已知约束 / 历史坑」段 —— 该段是 v4.0.0 已移除的 P3-1 codemap-recall 注入占位,SKILL 早已声明 requirements.md 不再含此段,模板未同步(会盖进每个新 spec)。
+- **`skills/distill/references/doc-template.md`**:重写为 v5 md-only 模板参考 —— 删除 yml schema / `.ai-memory/knowledge/` 路径表 / codemap 写入器框架,frontmatter 对齐 SKILL 的 Obsidian 风格,保留 5 类 md 模板正文与深度标准。
+- **`skills/distill/references/breakdown-heuristics.md`**:剥掉 `.ai-memory`/`codemap knowledge write`/yml 双产/supersede 框架,保留 5 维拆分方法论。
+- **`commands/spec.md` / `skills/specode/references/obsidian.md` / `tests/test_project_root.py`**:`project_root` 描述去掉过时的 ".ai-memory/knowledge feeds" + "codemap recall" 消费者措辞。
+- **`commands/distill.md`**:移除 `--format` flag。
+
+全量复核:除 CHANGELOG 历史条目与「已移除 X」迁移说明外,仓库不再有把 `.ai-memory`/`codemap knowledge write`/yml-pipeline 描述成现行行为的文档。测试 233 passed。
+
 ## 5.0.0 (2026-06-30) — BREAKING: 命令去 `specode-` 前缀 + 内核 skill 隐藏
 
 命令名 = specode 的 semver API surface。本版把命令去掉冗余的 `specode-` 前缀（插件命名空间已提供 `specode:`），并把不该被直接点的编排内核 skill 从斜杠菜单隐藏 —— 对齐 superpowers 的命名形态（无裸 `/superpowers`）。

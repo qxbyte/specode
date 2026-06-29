@@ -8,7 +8,7 @@ description: 手动把一个已完成（或进行中）的 spec 整理成 Obsidi
 
 - `/specode:distill <slug>` — 显式给 slug；`<slug>` 必须能在 `<specsRoot>/` 下找到对应目录
 - `/specode:distill` — 不带参数时，host agent 默认沉淀**当前会话刚处理的 spec**（specode 主流程刚走完 acceptance 的那个）；如果当前会话不在 spec 上下文里，host agent 应先建议 `/specode:list`
-- 可选 flag：`--target-dir <abs-path>`（覆盖默认输出目录）、`--format md|yml|both`（默认 `md`）
+- 可选 flag：`--target-dir <abs-path>`（覆盖默认输出目录）
 
 行为：调用 `distill` skill，**纯粹从 spec 文档**提炼，按 5 维启发式拆分 → 生成分类别 markdown 笔记 → 落盘。完整流程与字段模板以 `skills/distill/SKILL.md`（v4+ 权威）为准。
 

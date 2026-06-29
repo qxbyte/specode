@@ -1,5 +1,6 @@
 ---
 name: distill
+user-invocable: false
 description: >
   Manually distill a single specode-managed spec into Obsidian-friendly
   markdown knowledge files. Default output: md-only, written to
@@ -21,24 +22,27 @@ showed the memory-injection round-trip did not net save token (recall
 段 in task.md was extra context cost ≥ saving in most cases). v4.0.0
 deletes that pipeline.
 
-**v4 positioning**: a **manual, on-demand** organizer that converts a
-finished spec into clean Obsidian markdown for the user's wiki. No
-machine-readable yml (unless explicitly asked). No silent injection
-elsewhere.
+**positioning**: a **manual, on-demand** organizer that converts a
+finished spec into clean Obsidian markdown for the user's wiki.
+**md-only** — no yml, no `codemap knowledge write`, no `.ai-memory`, no
+silent injection elsewhere. (The yml/codemap path was removed in 5.0.1:
+its only consumer, `codemap recall`, was already deleted in v4.0.0, so
+yml output had nothing left to feed.)
 
 ---
 
 ## Trigger
 
 ```
-/specode:distill <slug> [--target-dir <abs-path>] [--format md|yml|both]
+/specode:distill <slug> [--target-dir <abs-path>]
 ```
 
 | Arg | Default | Meaning |
 |---|---|---|
 | `<slug>` | (required) | spec slug under `<specsRoot>/` |
 | `--target-dir` | `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/` | output root (must be absolute; will be `mkdir -p` 'd) |
-| `--format` | `md` | `md` = obsidian markdown only; `yml` = machine yml only (writes to `<target-dir>/yml/<category>/<id>.yml`); `both` = pair |
+
+Output is **always Obsidian markdown** — there is no `--format` flag.
 
 **Manual only**: there is no auto-trigger. specode v4.0.0 main flow's acceptance phase **does not prompt** the user to distill. The user runs this command whenever they want to update their Obsidian wiki from a finished spec.
 
@@ -96,8 +100,6 @@ related: [[biz-checkout-flow]], [[pit-coupon-stack]]
 ## 反例 / 中招经验
 ...
 ```
-
-For `--format yml` or `--format both`: also writes `<target-dir>/<slug>/yml/<category>/<id>.yml` via `codemap knowledge write` (requires `codemap-aimemory` independent install). If `codemap` CLI not found and user picked `yml` / `both`, **abort with error** (do not silently degrade — user explicitly asked for yml).
 
 ---
 
@@ -163,9 +165,7 @@ Category-specific section sets (see `references/doc-template.md` for full templa
 - **cases**: `实施摘要` / `关键决策` / `踩过的坑 / fix` / `验收结果` / `变更文件`
 - **pitfalls**: `现象` / `根因` / `修复方法` / `预防措施` / `影响范围`
 
-Write each `.md` to `<target-dir>/<slug>/<category>/<knowledge_id>.md`. Existing file → `Read` then ask user `overwrite / skip / merge`.
-
-For `--format yml` or `both`: also pipe to `codemap knowledge write` (independent install required). Writer's `--project` flag points to `<target-dir>/<slug>/yml-store` (a tmp dir; distill v4 does NOT use the spec's `project_root` here).
+Write each `.md` to `<target-dir>/<slug>/<category>/<knowledge_id>.md`. Existing file → `Read` then ask user `overwrite / skip / merge`. The host agent authors the markdown directly — there is no external writer CLI.
 
 ---
 
@@ -176,8 +176,8 @@ For `--format yml` or `both`: also pipe to `codemap knowledge write` (independen
 | Spec dir is read-only | Never modify anything under `<specsRoot>/<slug>/` |
 | `--target-dir` is the SOLE write scope | Distill writes only under `<target-dir>/<slug>/`. Never writes to spec dir or to `<project_root>/.ai-memory/` |
 | External-drive precheck | If `--target-dir` is under `/Volumes/`, verify mounted; refuse if not |
-| No codemap recall | v4 explicitly does NOT call `codemap recall`. Distill is purely spec-content driven |
-| No silent yml | yml only written if user `--format yml` or `--format both`; default is md-only |
+| No codemap recall | Distill explicitly does NOT call `codemap recall`. It is purely spec-content driven |
+| Md-only output | Distill produces Obsidian markdown only — no yml, no `codemap knowledge write`, no `.ai-memory` (yml/codemap path removed in 5.0.1) |
 | No injection elsewhere | Distill output is for the user's Obsidian wiki — it does NOT feed any future spec's `requirements.md`, does NOT feed any `task.md` to subagents |
 | Read-before-overwrite | If target md exists, `Read` then ask user before overwriting |
 
@@ -188,11 +188,11 @@ For `--format yml` or `both`: also pipe to `codemap knowledge write` (independen
 | Removed | Why |
 |---|---|
 | Auto-trigger from acceptance phase | v4 specode main flow has no distill prompt; user runs manually only |
-| Pre-step P2-2 codemap recall reverse-check | v4 doesn't read `.ai-memory/` at all |
-| Default dual yml + md write | Default is md-only; yml requires explicit `--format yml` / `both` |
-| Default write to `<project_root>/.ai-memory/knowledge/` | v4 default writes to `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/` |
+| Pre-step P2-2 codemap recall reverse-check | Distill doesn't read `.ai-memory/` at all |
+| yml output (`--format yml` / `both` via `codemap knowledge write`) | Removed in 5.0.1 — md-only. yml's only consumer (`codemap recall`) was deleted in v4.0.0, so it fed nothing |
+| Default write to `<project_root>/.ai-memory/knowledge/` | Default writes to `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/` |
 | Coordination with task-swarm's ingest_lessons | task-swarm v0.10.0+ removes ingest entirely; no coordination needed |
-| Same-id merge across distill + auto-ingest | No auto-ingest exists in v4; manual `--format both` writes are user's responsibility |
+| Same-id merge across distill + auto-ingest | No auto-ingest exists; existing target md → `Read` then ask overwrite / skip / merge |
 
 If user wants the v3 behavior (auto-trigger + write to `.ai-memory/`), checkout `backup/specode-v3.4.0-task-swarm-v0.9.2` branch.
 
@@ -209,4 +209,4 @@ If user wants the v3 behavior (auto-trigger + write to `.ai-memory/`), checkout 
 ## References
 
 - `references/breakdown-heuristics.md` — 5-dimension breakdown → 5-category mapping
-- `references/doc-template.md` — md template per category (5 templates total; yml templates retained for `--format yml` mode)
+- `references/doc-template.md` — Obsidian md template per category (5 templates total)

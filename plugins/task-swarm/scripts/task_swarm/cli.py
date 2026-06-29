@@ -1325,11 +1325,8 @@ def cmd_run_loop(args: argparse.Namespace) -> int:
         )
         if all_groups_terminal and sm.pipeline_end_status in ("not-required", "passed"):
             if sm.failed_status not in ("done", "failed", "failed-deadloop", "aborted"):
-                # Synthesize a minimal args for cmd_resolve
-                resolve_args = argparse.Namespace(
-                    run=args.run, abort=False,
-                    no_ingest=bool(getattr(args, "no_ingest", False)),
-                )
+                # v0.10.0: no_ingest arg removed (ingest_lessons deleted)
+                resolve_args = argparse.Namespace(run=args.run, abort=False)
                 actions_log.append({"action": "resolve", "iteration": iterations})
                 cmd_resolve(resolve_args)
             final_plan = {"action": "all-done",
@@ -1472,28 +1469,13 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         sm.events_append({"type": "resolve", "status": sm.failed_status,
                           "pipeline_end_status": sm.pipeline_end_status})
 
-    # P2-1: ingest lessons into <project_root>/.ai-memory/knowledge/
-    # only on successful runs; never bubble up — ingest failures must not
-    # turn a successful run into a failed resolve.
-    ingest_result: dict[str, Any] = {"cases": [], "pitfalls": [], "skipped": "not-done"}
-    if sm.failed_status == "done" and not getattr(args, "no_ingest", False):
-        try:
-            from task_swarm._ingest_lessons import ingest_lessons
-
-            ingest_result = ingest_lessons(sm)
-            sm.events_append(
-                {
-                    "type": "ingest-lessons",
-                    "cases": len(ingest_result.get("cases", [])),
-                    "pitfalls": len(ingest_result.get("pitfalls", [])),
-                    "skipped": ingest_result.get("skipped"),
-                }
-            )
-        except Exception as exc:  # noqa: BLE001 — ingest must never block resolve
-            ingest_result = {"cases": [], "pitfalls": [], "skipped": f"error:{type(exc).__name__}"}
-            sm.events_append(
-                {"type": "ingest-lessons", "error": f"{type(exc).__name__}: {exc}"}
-            )
+    # v0.10.0 BREAKING: ingest_lessons removed. task-swarm no longer writes
+    # <project_root>/.ai-memory/knowledge/cases/*.yml or pitfalls/*.yml after
+    # resolve. Round 1/2 baseline experiments showed memory-injection
+    # round-trip did not net save token. If user wants per-spec md knowledge
+    # in Obsidian wiki, they run `/specode:specode-distill <slug>` (md-only,
+    # manual). See pluginhub backup/specode-v3.4.0-task-swarm-v0.9.2 branch
+    # for the v0.9.x ingest pipeline if rollback ever needed.
 
     sm.save()
     _emit({
@@ -1501,11 +1483,6 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         "run_id": sm.run_id,
         "status": sm.failed_status,
         "completed_at": sm.completed_at,
-        "ingest": {
-            "cases": len(ingest_result.get("cases", [])),
-            "pitfalls": len(ingest_result.get("pitfalls", [])),
-            "skipped": ingest_result.get("skipped"),
-        },
     })
     return 0
 
@@ -1595,19 +1572,11 @@ def _build_parser() -> argparse.ArgumentParser:
     prl.add_argument("--run", required=True)
     prl.add_argument("--max-iterations", type=int, default=20,
                      help="auto-action 循环上限（默认 20）")
-    prl.add_argument("--no-ingest", action="store_true",
-                     help="auto-resolve 时 skip 写 case/pitfall yml")
     prl.set_defaults(func=cmd_run_loop)
 
     pr = sub.add_parser("resolve")
     pr.add_argument("--run", required=True)
     pr.add_argument("--abort", action="store_true")
-    pr.add_argument(
-        "--no-ingest",
-        dest="no_ingest",
-        action="store_true",
-        help="skip writing case/pitfall yml to <project_root>/.ai-memory/knowledge/",
-    )
 
     prep = sub.add_parser("report")
     prep.add_argument("--run", required=True)

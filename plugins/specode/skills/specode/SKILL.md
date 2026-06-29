@@ -80,7 +80,7 @@ else
 fi
 ```
 
-**project_root single-source-of-truth rule 🔒**: project_root lives in exactly one place — the spec's `requirements.md` frontmatter. specode writes it once (via `write-project-root`); every later phase and downstream skill (specode-distill, task-swarm, codemap recall `--project`) obtains it via `read-project-root`. No component re-derives it from cwd / workdir / guessing.
+**project_root single-source-of-truth rule 🔒**: project_root lives in exactly one place — the spec's `requirements.md` frontmatter. specode writes it once (via `write-project-root`); every later phase and downstream skill (specode-distill, task-swarm) obtains it via `read-project-root`. No component re-derives it from cwd / workdir / guessing.
 
 **First-time setup flow**: `get-root` exits 3 → call `AskUserQuestion` to ask the user for the document directory (absolute path, used **verbatim** as the specs root; specode makes no assumptions about its structure and appends nothing) → after the user provides it, persist with `set-root --root <abs>` → never ask again. `project_root` is **inferred per-spec** (default: `git rev-parse --show-toplevel` of cwd, falling back to cwd itself) and **confirmed once via `AskUserQuestion`** before requirements is written — see §requirements phase. Path-resolution details are in `references/obsidian.md`.
 
@@ -91,44 +91,7 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
 1. **specsRoot**: `get-root` (first-time setup if missing) → obtain `<specsRoot>` → `mkdir -p <specsRoot>/<slug>/` (the host agent derives the kebab-case slug from the request).
 2. **requirements (clarify + requirements)** — three sub-steps, always in this order:
    1. **`project_root` confirmation (required)**: get the default via `resolve_root.py resolve-project-root` (it returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and gets persisted to frontmatter at sub-step 3 **via `resolve_root.py write-project-root`** (the single writer — do not hand-write the frontmatter field).
-   2. **context-recall (P3-1 + P3-2 content injection, recommended)**: if `<project_root>/.ai-memory/knowledge/` exists, call `codemap recall '<user-request>' --project <project_root> --top-k 5 --with-content --include-shared -o yaml` to pull the top-K most relevant prior knowledge **with their core fields** (requires `codemap-aimemory>=0.4.0`; older versions silently skip `--with-content` and fall back to the wikilink-only injection below). `--include-shared` (added in 0.4.4) opts the recall into any team-wide `shared_roots` configured in `~/.config/codemap/recall.yaml`; when none are configured the flag is a no-op so passing it is always safe. Parse the yml output and inject each hit into the requirements draft's `## 已知约束 / 历史坑` section as a **content subsection** (not just a wikilink) — this is what makes the design phase actually see the constraints. Template per hit:
-
-      ```markdown
-      ### [[<knowledge_id>]] (<type>, ranked_score=<n>{, ⚠️ stale if `stale:true`}{, 🌐 shared if `source: shared`})
-
-      **<title>**
-
-      | 字段 | 值 |
-      |---|---|
-      | <field_1> | <value_1> |
-      | <field_2> | <value_2> |
-      ```
-
-      Hits flagged `source: shared` (FIX-3d, cross-project team knowledge) get a 🌐 prefix so the reviewer can tell at a glance which constraints come from this project vs the team library; project-local hits (`source: local`) carry no badge.
-
-      Field set depends on `category`:
-      - **rules**: statement / why / trigger_conditions / exceptions / enforcement
-      - **pitfalls**: symptom / root_cause / fix / prevention / affects
-      - **cases**: implementation_summary / key_decisions / lessons / acceptance_status
-      - **business**: trigger / end_state / steps / ui_constraints
-      - **modules**: scope / primary_entity / columns / shard / call_chain
-
-      Hits flagged `stale: true` (freshness_score < 0.5) get a ⚠️ prefix in the heading so the user can decide whether to honor or update them.
-
-      If `codemap recall` is unavailable (codemap-aimemory not installed) or returns empty, **skip silently** — the requirements draft just omits the section. This sub-step makes the spec author see prior rules / cases / pitfalls **with content** before drafting, so the spec doesn't re-walk known mines and the design phase has the full constraints in-context (not just wikilink references it might never resolve).
-
-      **Cold-start fallback (FIX-3b)**: when `knowledge` is empty (a fresh project with no distilled knowledge yet) but the recall result carries a non-empty `code_context` array, inject a `## 相关代码地图（冷启动）` section instead, listing each entity with its signature / `called_by` / `related_tables` / `knowledge_refs`. This makes the **first** spec on a project useful (relevant code map) rather than blank — the value no longer waits for the 2nd spec. Template per entity:
-
-      ```markdown
-      ### `<id>` <signature>
-
-      - file: `<file>`
-      - 被调用: <called_by joined>
-      - 关联表: <related_tables joined>
-      - 关联知识: <knowledge_refs as [[..]] wikilinks>
-      ```
-
-      **Project-level agent docs (AI-EDS v0.9 痛点 #14 方案 D)**: in addition to the recall hits above, scan the filesystem for project-level agent-instruction docs and inject them as a separate `## 项目级约束（CLAUDE.md / AGENT.md）` section into the requirements draft (placed **before** `## 已知约束 / 历史坑`). Scan order (deduped, only existing files): (1) `<project_root>/CLAUDE.md|AGENTS.md|AGENT.md|CODEBUDDY.md`; (2) `<project_root>` 直接父目录下同 4 个文件（覆盖 monorepo workspace 根，如 `wework-ops-assistant/CLAUDE.md` 而下挂子 git repo 自身没有）;(3) 任何已经在用户描述中点名的子目录（如「ops-web 模块」）。Template — **paths only, do not copy content**:
+   2. **Project-level agent docs scan (filesystem-only, no memory recall)**: scan the filesystem for project-level agent-instruction docs and inject them as a `## 项目级约束（CLAUDE.md / AGENT.md）` section into the requirements draft. Scan order (deduped, only existing files): (1) `<project_root>/CLAUDE.md|AGENTS.md|AGENT.md|CODEBUDDY.md`; (2) `<project_root>` 直接父目录下同 4 个文件（覆盖 monorepo workspace 根，如 `wework-ops-assistant/CLAUDE.md` 而下挂子 git repo 自身没有）;(3) 任何已经在用户描述中点名的子目录（如「ops-web 模块」）。Template — **paths only, do not copy content**:
 
       ```markdown
       ## 项目级约束（CLAUDE.md / AGENT.md）
@@ -140,31 +103,19 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
       ```
 
       为何 path-only 而非内容拷贝：主 agent 的上下文里已经有完整内容，requirements.md 复制一遍只是冗余 + 内容陈旧风险。task-swarm 0.7.3+ 渲染 task.md 时会按同样的扫描规则把这些路径塞进 coder/reviewer/validator prompt（subagent 进程不自动加载这些文件，必须用路径告知），所以 specode + task-swarm 联合保证从 requirements → design → 执行 → subagent 整条链路都看得见项目级约束。若一个文件都没扫到（典型的 fresh 项目），**整段省略**（不要写「无」之类占位）。
+
+      > **v4.0.0 BREAKING**: 之前的 P3-1 codemap recall 注入 prior knowledge 段 + 冷启动 code_context 段 **已被完全移除**。requirements.md 不再含 `## 已知约束 / 历史坑` 段，不再自动从 `.ai-memory/knowledge/` 召回任何东西。如果你想手动整理 prior knowledge 到 Obsidian wiki，用 `/specode:specode-distill <slug>` (md-only, 见 §specode-distill)。
    3. **draft requirements**:
-      - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate). Pre-instruct it with the recall hits from sub-step 2 so brainstorming weaves them in.
-      - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template — including the recall hits in the `## 已知约束 / 历史坑` section.
+      - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate).
+      - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template.
       - Relocate the artifact to `<specsRoot>/<slug>/requirements.md` (see §superpowers orchestration + relocation).
-      - Write the YAML frontmatter: set `spec_id: <slug>` / `created_at: YYYY-MM-DD`, then persist `project_root` **via `resolve_root.py write-project-root --spec <specsRoot>/<slug> --root <abs from sub-step 1>`** (single validated writer; never hand-write this field). Downstream skills (e.g. `specode-distill`, task-swarm) read `project_root` back via `resolve_root.py read-project-root` — the single read entry.
+      - Write the YAML frontmatter: set `spec_id: <slug>` / `created_at: YYYY-MM-DD`, then persist `project_root` **via `resolve_root.py write-project-root --spec <specsRoot>/<slug> --root <abs from sub-step 1>`** (single validated writer; never hand-write this field).
 3. **design (executable plan)**:
-   - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review). **Pre-instruct it to honor every `[[rule-*]]` listed in the requirements `## 已知约束 / 历史坑` section** — design must either explicitly say how the rule is enforced, or note an explicit override + reason.
+   - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review).
    - not installed → **specode-native**: break down into `## Task N` + `**Files:**` + `验证: AC-N` + `- [ ]` TDD steps per the `assets/templates/design.md` template.
    - Relocate the artifact to `<specsRoot>/<slug>/design.md`.
-   - **rule-acknowledgement post-check (P3-2, after design.md is written)**: scan the requirements `## 已知约束 / 历史坑` section for every `[[rule-*]]` id. For each id, grep the freshly-written `design.md` for either:
-     - a textual reference to the id (e.g. `[[rule-coupon-mutex]]` or `rule-coupon-mutex`), **or**
-     - an explicit override statement (`override rule-coupon-mutex: <reason>`).
 
-     If any `rule-*` from requirements is **missing** from `design.md`, call `AskUserQuestion`:
-
-     > 设计未显式涉及以下规则，可能违背或遗漏：
-     > - [[rule-X]] — <title>
-     > - [[rule-Y]] — <title>
-     >
-     > 选择处理方式：
-     > - 补充 design.md 说明如何遵守 (recommended)
-     > - 显式声明覆盖（`override rule-X: <reason>`）
-     > - 跳过（认为不适用，标记到 implementation-log）
-
-     The user's pick drives the next action (write back to design.md / log skip reason). Skip the post-check entirely if no rules were recalled in step 2.2 — there's nothing to verify. This closes the AI-EDS P3-2 loop: rules don't quietly slip through the design phase.
+   > **v4.0.0 BREAKING**: 之前的 P3-2 rule-acknowledgement post-check 段 (grep `[[rule-*]]` 是否被 design.md 引用并 AskUser 处理偏离) **已被完全移除**。design 阶段不再做任何与 `.ai-memory/knowledge/rules/` 关联的检查。
 4. **「执行方式」selector**: after design completes, call `AskUserQuestion` to present it (adaptive 4 options, see §执行方式 selector), verbatim per the `references/selectors.md` example.
 5. **Execution** (branches by selector choice, all TDD):
    - Delegate to task-swarm (installed) → see §task-swarm handoff.
@@ -176,7 +127,8 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
    - superpowers installed → call `superpowers:verification-before-completion` (optionally also `superpowers:requesting-code-review`).
    - not installed → **specode-native**: the host agent verifies item by item against `design.md` test points / the `AC-N` in `requirements.md`.
    - Say "请验收" in prose and write an acceptance summary in `implementation-log.md`. **There is no formal acceptance-gate selector.**
-   - **distill prompt (sub-step, after acceptance summary is written)**: call `AskUserQuestion` once: *"是否立即沉淀本次需求知识到 <project_root>/.ai-memory/knowledge/ + knowledge-base/？"* — options: `立即沉淀（推荐）` / `稍后再说`. If the user picks "立即沉淀", invoke the `specode-distill` skill with this spec's slug (it follows the 5-step flow in `skills/specode-distill/SKILL.md`). If the user picks "稍后再说", just print: *"可后续运行 `/specode:specode-distill <slug>` 完成沉淀"* and return. **Do not block on this prompt** — refusal must not affect spec status; acceptance has already been written. Skip the prompt entirely if `specode-distill` skill is not installed (defensive: should always be present since v3.0+, but keep the check).
+
+   > **v4.0.0 BREAKING**: 之前的 acceptance 后**自动 AskUserQuestion 触发 distill** sub-step **已被完全移除**。acceptance 写完即结束，不再询问沉淀。如需手动沉淀本 spec 知识到 Obsidian wiki, 后续运行 `/specode:specode-distill <slug>` (md-only, 默认写到 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`, 详见 `skills/specode-distill/SKILL.md`)。
 
 phase ↔ skill quick map: `requirements` → brainstorming; `design` → writing-plans; execution → subagent-driven-development / executing-plans (the task-swarm path does not use superpowers); acceptance → verification-before-completion / requesting-code-review.
 

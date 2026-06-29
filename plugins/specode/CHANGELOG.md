@@ -4,6 +4,43 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 4.0.0 (2026-06-29) — BREAKING: 拔出记忆注入工程
+
+Round 1/2 baseline 实验 (`/Volumes/External HD/Obsidian/Notes/07-Ideas/AI-Enterprise-Delivery-System/基线AB对照实验/`) 证明: 记忆注入未 net 节省 token。用户决策完全拔出, specode 专注 "spec → design → execute → acceptance 编排" 本质能力。
+
+### Removed (specode 主 SKILL.md)
+
+- **P3-1 codemap recall 注入段** (line 94-130): 不再调 `codemap recall ... --with-content`, requirements.md 不再含 `## 已知约束 / 历史坑` 段, 不再含 cold-start `## 相关代码地图` 段
+- **P3-2 rule-acknowledgement post-check** (line 152-167): design.md 写完不再 grep `[[rule-*]]` 检查 + `AskUserQuestion` 处理偏离
+- **Acceptance distill prompt sub-step** (line 179): acceptance summary 写完不再 `AskUserQuestion` 询问"是否立即沉淀"
+
+### Preserved
+
+- **Project-level agent docs filesystem scan** (CLAUDE.md / AGENT.md): 仍扫描 + 注入 `## 项目级约束` 段 (不涉及 `.ai-memory/`, 是纯 filesystem 扫描)
+- specode 主流程 4 阶段不变 (requirements → design → execute → acceptance), 4 phase 调 superpowers 也不变
+- autonomous mode 5 env (`SPECODE_INTERACTIVE` 等) 不变
+- project_root frontmatter SSoT 不变
+
+### specode-distill skill 完全重写为 v4 (md-only Obsidian organizer)
+
+**Trigger**: 仅手动 `/specode:specode-distill <slug>`, 永不自动触发。
+
+**Args**:
+- `--target-dir <abs>` (默认 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`)
+- `--format md|yml|both` (默认 `md`)
+
+**Behavior**:
+- 默认仅写 `.md` 到 `<target-dir>/<slug>/<category>/<id>.md` (Obsidian-friendly frontmatter + sections + wikilinks)
+- 不调 `codemap recall` (v3 P2-2 reverse-check 已删)
+- 不调 `codemap knowledge write` 默认 (仅 `--format yml|both` 时调, 写 `<target-dir>/yml-store/` 而非 spec project_root)
+- 不写 `<project_root>/.ai-memory/knowledge/` (v4 完全独立于 spec 的 project_root)
+- 不读 `.ai-memory/` 任何路径
+
+### Migration
+
+- 如需 v3 行为 (自动 recall + 自动 distill + 写 .ai-memory): `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`
+- 历史 `.ai-memory/knowledge/` 内容保留不删, 用户可独立用 `codemap recall` 查询 (codemap-aimemory CLI 仍可独立装用)
+
 ## 3.3.0 (2026-06-28)
 
 ### Added — `doctor` verb in resolve_root.py (AI-EDS v0.9 痛点 #9)

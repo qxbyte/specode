@@ -8,7 +8,7 @@
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-174%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-233%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte 面向 CLI 编码代理（Claude Code / CodeBuddy）的插件 marketplace。
 

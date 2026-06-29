@@ -234,7 +234,7 @@ def test_resolve_allows_when_pipeline_end_status_passed(tmp_path: Path) -> None:
     sm.pipeline_end_status = "passed"
     sm.save()
 
-    r = _run("resolve", "--run", run_id, "--no-ingest",
+    r = _run("resolve", "--run", run_id,
              workdir_env=str(workdir), fake_home=tmp_path / "home")
     assert r.returncode == 0, r.stderr
 
@@ -317,7 +317,7 @@ def test_run_loop_auto_resolves_when_all_done_and_no_pipeline_end(tmp_path: Path
         g.phase = "done"
     sm.save()
 
-    r = _run("run-loop", "--run", run_id, "--no-ingest",
+    r = _run("run-loop", "--run", run_id,
              workdir_env=str(workdir), fake_home=tmp_path / "home")
     assert r.returncode == 0
 
@@ -336,7 +336,7 @@ def test_run_loop_auto_resolves_after_pipeline_end_pass(tmp_path: Path) -> None:
     sm.save()
     _write_outbox(run_dir, "validator-pipeline-end-r1", "validation", verdict="pass")
 
-    r = _run("run-loop", "--run", run_id, "--no-ingest",
+    r = _run("run-loop", "--run", run_id,
              workdir_env=str(workdir), fake_home=tmp_path / "home")
     assert r.returncode == 0
 

@@ -3,12 +3,12 @@
 # pluginhub
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./README.md#license)
-[![specode](https://img.shields.io/badge/specode-3.4.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
-[![task-swarm](https://img.shields.io/badge/task--swarm-0.8.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
+[![specode](https://img.shields.io/badge/specode-4.0.0-blue.svg)](./plugins/specode/.claude-plugin/plugin.json)
+[![task-swarm](https://img.shields.io/badge/task--swarm-0.10.0-blue.svg)](./plugins/task-swarm/.claude-plugin/plugin.json)
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-209%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-174%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte's plugin marketplace for CLI coding agents
 > (Claude Code / CodeBuddy).
@@ -20,8 +20,8 @@ any plugin it hosts. More plugins will land here over time.
 
 | Plugin | Version | What it does |
 | --- | --- | --- |
-| **specode** | 3.4.0 | A lightweight spec-driven **workflow** — orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (first-class native fallback) and lands 3 fixed docs per spec. 3.x integrates AI-EDS knowledge: step 2.2 injects `codemap recall` hits (rules / pitfalls / cases / code maps) into `requirements.md`; v3.3.1 (痛点 #14 方案 D) lists scanned `CLAUDE.md / AGENT.md` paths in a `## 项目级约束` section so design / subagents inherit project-level constraints; v3.3.2 (M8) adds SessionStart cache-vs-marketplace drift hint; **v3.4.0 (M1+M9) adds autonomous-mode defaults** — 5 schema keys + 5 `SPECODE_*` env vars + `read-defaults` / `write-default` / `reset-default` verbs; SKILL.md rewires every `AskUserQuestion` to check non-interactive first (zero behaviour change at default). Documented below. |
-| **task-swarm** | 0.8.0 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. 0.7.x lands AI-EDS feedback loop + frontmatter-first `project_root` + registry-based run lookup; 0.7.3 + 0.7.4 (痛点 #14 方案 D + M5/M6/M10) inserts a `## 项目级约束（必读）` section + `_PROJECT_AGENT_DOCS.md` inbox sentinel; **v0.8.0 (M3+M7) lands lifecycle group** — `init` dedupe with `--on-existing {error/resume/abort-old/force-new}` flag + `run.pipeline_end_validator` schema field (logic in 0.8.1). See [`plugins/task-swarm/`](./plugins/task-swarm). |
+| **specode** | 4.0.0 | A lightweight spec-driven **workflow** — orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (first-class native fallback) and lands 3 fixed docs per spec. Preserved AI-EDS-era features: project-level `CLAUDE.md` / `AGENT.md` filesystem scan injected as `## 项目级约束` section (痛点 #14 方案 D), SessionStart cache-vs-marketplace drift hint (M8), autonomous-mode defaults — 5 schema keys + 5 `SPECODE_*` env vars + `read-defaults` / `write-default` / `reset-default` verbs (M1+M9). **v4.0.0 BREAKING**: removed memory-injection pipeline — P3-1 `codemap recall` injection / P3-2 rule-acknowledgement post-check / acceptance auto-distill prompt all dropped; round 1/2 baseline showed the recall round-trip did not net save token. `specode-distill` skill v4 rewritten as a **manual-only Obsidian organizer** — `/specode:specode-distill <slug>` writes md (default) to `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`, no `.ai-memory/` writes. To restore v3 behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`. |
+| **task-swarm** | 0.10.0 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. Preserved AI-EDS-era features: frontmatter-first `project_root` + registry-based run lookup (0.7.x), `## 项目级约束（必读）` section + `_PROJECT_AGENT_DOCS.md` inbox sentinel (0.7.3 + 0.7.4), lifecycle group with `init` dedupe (`--on-existing {error/resume/abort-old/force-new}` flag) + `run.pipeline_end_validator` (0.8.0 + 0.8.1), M2 `run-loop` auto-driver (0.8.1), task.md `## 开发纪律 (范式参考)` section listing superpowers skill names as paradigm identifiers (0.9.0–0.9.2). **v0.10.0 BREAKING**: removed `_ingest_lessons.py` + `cmd_resolve` auto-ingest + `--no-ingest` flag — `cmd_resolve` no longer writes `<project_root>/.ai-memory/knowledge/cases\|pitfalls/*.yml`. To restore v0.9.x behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`. See [`plugins/task-swarm/`](./plugins/task-swarm). |
 | **obsidian-wiki** | 2.0.0 | Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / READMEs / partition pages), SpecIn → knowledge-base distillation + MEMORY, content curation (lint / ingest / curate), unified orchestrator. Generic + per-vault `.wiki/config.json`. See [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki). |
 
 `## Installation` covers the whole marketplace; the other sections
@@ -61,17 +61,17 @@ plugin. For **task-swarm**, see its sources and `CHANGELOG` under
 - **Parallel execution is a separate plugin.** Pick "委托 task-swarm" and
   specode reads `design.md`, derives a `pipeline.yml`, and hands off to
   the standalone **task-swarm** plugin (zero import).
-- **Project-level constraints follow the chain.** v3.3.1 + task-swarm
-  0.7.3 (AI-EDS v0.9 痛点 #14 方案 D) scan `CLAUDE.md` / `AGENT.md` /
-  `AGENTS.md` / `CODEBUDDY.md` at `<project_root>`, its parent
-  directory, and any subdir touched by `@writes`, and surface the
-  matched **absolute paths** (not content) into both `requirements.md`
-  (`## 项目级约束`) and every coder / reviewer / validator `task.md`
-  (`## 项目级约束（必读）`). v0.7.4 strengthens with hard-constraint
-  wording + `_PROJECT_AGENT_DOCS.md` inbox sentinel. Fixes the silent
-  drop where independent subagent processes never see the host
-  agent's auto-loaded instruction files.
-- **Autonomous mode / CI friendly (v3.4.0, opt-in).** Set
+- **Project-level constraints follow the chain.** specode + task-swarm
+  (AI-EDS v0.9 痛点 #14 方案 D, preserved into v4.0.0 / v0.10.0) scan
+  `CLAUDE.md` / `AGENT.md` / `AGENTS.md` / `CODEBUDDY.md` at
+  `<project_root>`, its parent directory, and any subdir touched by
+  `@writes`, and surface the matched **absolute paths** (not content)
+  into both `requirements.md` (`## 项目级约束`) and every coder /
+  reviewer / validator `task.md` (`## 项目级约束（必读）`).
+  `_PROJECT_AGENT_DOCS.md` inbox sentinel reinforces the hard
+  constraint. Fixes the silent drop where independent subagent
+  processes never see the host agent's auto-loaded instruction files.
+- **Autonomous mode / CI friendly (opt-in).** Set
   `SPECODE_INTERACTIVE=false` plus relevant `SPECODE_PROJECT_ROOT` /
   `SPECODE_EXECUTION_MODE` / `SPECODE_AUTO_DISTILL` /
   `SPECODE_SPECS_ROOT_DEFAULT` env vars (or persist via
@@ -80,6 +80,17 @@ plugin. For **task-swarm**, see its sources and `CHANGELOG` under
   sessions skips silently with the configured default. Schema default
   is `interactive=true` so existing installs see **zero behaviour
   change** — only opt-in users get the autonomous path.
+- **No memory injection (v4.0.0 / v0.10.0 BREAKING).** The AI-EDS
+  memory-injection pipeline (specode P3-1 `codemap recall` + P3-2
+  rule-check + acceptance auto-distill, plus task-swarm `cmd_resolve`
+  auto-ingest writing `.ai-memory/knowledge/*.yml`) was removed after
+  baseline experiments (3 cases) showed the recall round-trip did not
+  net save token. specode 4.0.0 is a pure spec-orchestration shell;
+  task-swarm 0.10.0 is a pure multi-agent executor; neither reads /
+  writes `.ai-memory/knowledge/`. If you want per-spec knowledge in
+  your Obsidian wiki, run `/specode:specode-distill <slug>` manually
+  — defaults to md-only at `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`.
+  To restore v3.4.0 / v0.9.2 behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`.
 
 ## Installation
 

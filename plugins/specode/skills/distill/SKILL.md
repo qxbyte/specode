@@ -2,32 +2,48 @@
 name: distill
 user-invocable: false
 description: >
-  Manually distill a single specode-managed spec into Obsidian-friendly
-  markdown knowledge files. Default output: md-only, written to
-  `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`. Trigger
-  ONLY via `/specode:distill <slug>` — never auto-triggered by
-  the main specode flow (v4.0.0+). No codemap recall, no .ai-memory yml,
-  no auto-injection into future specs. Pure "human-curated wiki organizer
-  for Obsidian".
+  Manually distill a single specode-managed spec into atomic, locate-oriented
+  markdown knowledge points. Default output: md-only, written to the project's
+  own `<project_root>/knowledge-base/` (cases/ + navigation/ + MEMORY.md);
+  optionally copied to an Obsidian vault. Trigger ONLY via
+  `/specode:distill <slug>` — never auto-run by the main specode flow. No
+  codemap recall, no .ai-memory yml, no auto-injection. Pure "atomic
+  locate-pointer 沉淀器 for the current project".
 ---
 
-# distill — manual Obsidian knowledge organizer
+# distill — project knowledge-base 沉淀器（原子双轨）
 
-## v4.0.0 breaking redesign
+## 顶层不变量 🔒
 
-Previous v1-v3 distill was a "knowledge ingest pipeline" that
-wrote dual yml + md to `<project_root>/.ai-memory/knowledge/` for codemap
-recall to consume in future specs. Round 1/2 baseline experiments
-showed the memory-injection round-trip did not net save token (recall
-段 in task.md was extra context cost ≥ saving in most cases). v4.0.0
-deletes that pipeline.
+**KB 是「定位用，非事实用」。** distill 写出的每个知识点是**定位指针**——
+文件路径 + 调用链 + 可复用导航经验，**不是事实结论**。检索端只用它快速
+**定位**到真实代码；真实代码始终是唯一事实来源。绝不允许仅凭 KB 内容推进
+新需求，或把历史结论当成当前代码的真相。这条不变量是整套设计存在的理由，
+所有下游行为与本条冲突时以本条为准（见设计文档 §0）。
 
-**positioning**: a **manual, on-demand** organizer that converts a
-finished spec into clean Obsidian markdown for the user's wiki.
-**md-only** — no yml, no `codemap knowledge write`, no `.ai-memory`, no
-silent injection elsewhere. (The yml/codemap path was removed in 5.0.1:
-its only consumer, `codemap recall`, was already deleted in v4.0.0, so
-yml output had nothing left to feed.)
+主产物是**项目目录** `<project_root>/knowledge-base/`（检索端读的就是这里），
+**不是** Obsidian。Obsidian 只是可选的人读副本。
+
+---
+
+## 定位与历史
+
+distill 是一个**手动、按需**触发的沉淀器：把一个完成（或进行中）的 spec +
+**当前 agent 上下文**，提炼成若干**原子知识点**（一需求扇出 N 份独立文档），
+落到该 spec 所属项目的 `knowledge-base/`，并维护一份轻量索引 `MEMORY.md`。
+
+**md-only** —— 无 yml、无 `codemap knowledge write`、无 `.ai-memory`、无任何
+静默注入。历史沿革（仍然成立的事实）：
+
+- v1-v3 的 distill 曾是「记忆 ingest 管线」，写 dual yml + md 到
+  `<project_root>/.ai-memory/knowledge/` 供 `codemap recall` 在后续 spec 自动
+  注入。Round 1/2 基线实验证明 recall 往返**并不净省 token**，4.0.0 整体拔除。
+- yml / `codemap knowledge write` 路径在 5.0.1 移除（其唯一消费者 `codemap
+  recall` 早在 4.0.0 已删，yml 无物可喂）。
+- 当前形态（本次重写）：从「Obsidian-primary 5 类组织器」改为「项目
+  `knowledge-base/` primary 的原子双轨（case + navigation）定位沉淀器 + 可选
+  Obsidian 副本」。要 v3 的自动注入行为，checkout
+  `backup/specode-v3.4.0-task-swarm-v0.9.2`。
 
 ---
 
@@ -40,11 +56,15 @@ yml output had nothing left to feed.)
 | Arg | Default | Meaning |
 |---|---|---|
 | `<slug>` | (required) | spec slug under `<specsRoot>/` |
-| `--target-dir` | `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/` | output root (must be absolute; will be `mkdir -p` 'd) |
+| `--target-dir` | (none) | **可选** Obsidian 副本目录（绝对路径；直写不拼接）。不给则 Step 5 用 `AskUserQuestion` 询问 |
 
-Output is **always Obsidian markdown** — there is no `--format` flag.
+主产物**固定**落 `<project_root>/knowledge-base/`，不可由参数改写。`project_root`
+由 `resolve_root.py read-project-root --spec <specsRoot>/<slug>` 读取（来自该
+spec `requirements.md` frontmatter 的 `project_root`），**不从 cwd 反推**。
 
-**Manual only**: there is no auto-trigger. specode v4.0.0 main flow's acceptance phase **does not prompt** the user to distill. The user runs this command whenever they want to update their Obsidian wiki from a finished spec.
+**Manual only**：没有 auto-trigger。specode 主流程验收收尾后只**提示**入口
+（「是否进入 distill 沉淀本次经验？」），不强制、不自动跑。用户想更新本项目的
+定位库时才运行本命令。
 
 ---
 
@@ -52,120 +72,116 @@ Output is **always Obsidian markdown** — there is no `--format` flag.
 
 | Source | What it provides |
 |---|---|
-| `<specsRoot>/<slug>/` | spec dir: `requirements.md` / `design.md` / `implementation-log.md` etc. |
-| `<specsRoot>/<slug>/requirements.md` YAML frontmatter | optional `project_root` (used only for relative path resolution in narrative — distill **does NOT write into** `<project_root>/.ai-memory/` v4+) |
+| `<specsRoot>/<slug>/` | spec dir（**只读**）：`requirements.md` / `design.md` / `implementation-log.md` 等结构化事实 |
+| `<specsRoot>/<slug>/requirements.md` YAML frontmatter | `project_root`（经 `read-project-root` 读出，用于定位主产物落盘目录） |
+| **当前 agent 上下文** | 超出 spec 本身的**人类导航经验**：前后端调用链、页面按钮→哪个文件、什么配置映射到后端入口等，由模型从本轮上下文提炼并落地（navigation 型知识点的主来源） |
 
 ---
 
 ## Output structure
 
 ```
-<target-dir>/<slug>/
-├── rules/
-│   ├── <kebab-title>.md
-│   └── ...
-├── business/
-│   └── <kebab-title>.md
-├── modules/
-│   └── <kebab-title>.md
-├── cases/
-│   └── <slug>.md       (always exactly 1 per spec)
-└── pitfalls/
-    └── <signature-kebab>.md
+<project_root>/knowledge-base/         # 主产物（不提交项目仓库）
+├── MEMORY.md                          # knowledge.py memory-rebuild 由各文档 frontmatter 生成
+├── cases/<topic-kebab>.md             # 一个 case 型原子点一文件
+└── navigation/<topic-kebab>.md        # 一个 navigation 型原子点一文件
+
+<obsidian-target-dir>/                 # 可选副本：cp 文档过去 + 在该目录再跑一次 memory-rebuild
+├── MEMORY.md
+├── cases/...
+└── navigation/...
 ```
 
-Each `.md` has Obsidian-friendly frontmatter + sections + `[[wikilink]]` cross-refs:
+- 文件按**主题** kebab 命名，**不按 slug**；`slug` 降级为文档 frontmatter 的
+  `来源` 溯源字段。每个文档的 frontmatter / 正文结构以 `references/doc-template.md`
+  为准（两类模板：`case` / `navigation`，frontmatter 键名固定）。
+- `MEMORY.md` **不手改** —— 永远由 `knowledge.py memory-rebuild` 从各文档
+  frontmatter 全量重建（frontmatter 是单一事实源）。
 
-```markdown
----
-title: 优惠券与积分互斥
-category: rules
-spec_id: <slug>
-created_at: 2026-06-29
-tags: [coupon, promotion]
-related: [[biz-checkout-flow]], [[pit-coupon-stack]]
 ---
 
-# 优惠券与积分互斥
+## Flow（5 步）
 
-## 规则陈述
-...
+> 所有 `resolve_root.py` / `knowledge.py` 调用**必须**走 `run.sh` 包装器，并用
+> 下面这段自包含 resolver 前缀解析 `$R`（skill 驱动的 Bash 调用里
+> `$CLAUDE_PLUGIN_ROOT` 不一定有值，必须 `find` 兜底）：
+>
+> ```bash
+> R="${CLAUDE_PLUGIN_ROOT:-$CODEBUDDY_PLUGIN_ROOT}"; [ -f "$R/scripts/run.sh" ] || R="$(find "$HOME/.claude/plugins/cache" "$HOME/.codebuddy/plugins/cache" -path '*/specode/*/scripts/run.sh' 2>/dev/null | sort -V | tail -1)"; R="${R%/scripts/run.sh}"
+> ```
 
-## 为什么
-...
+### Step 1 — 解析 slug + project_root，建目录，落 .gitignore
 
-## 适用场景
-...
+1. 先用 `resolve_root.py get-root` 取 `<specsRoot>`，确认
+   `<specsRoot>/<slug>/requirements.md` 存在（否则报错退出）。
+2. 读 `project_root`：
+   ```bash
+   sh "$R/scripts/run.sh" "$R/scripts/resolve_root.py" read-project-root --spec <specsRoot>/<slug>
+   ```
+   退出 0 → stdout 即 `project_root`；非 0（缺 frontmatter / 路径非法）→ 报错并
+   提示该 spec 需先补 `project_root` 字段。
+3. `mkdir -p <project_root>/knowledge-base/cases <project_root>/knowledge-base/navigation`
+4. 确保 `knowledge-base/` 进项目 `.gitignore`（不提交仓库）：
+   ```bash
+   sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" ensure-gitignore --project-root <project_root>
+   ```
 
-## 反例 / 中招经验
-...
+### Step 2 — 读全 spec + 回顾 agent 上下文（NO recall）
+
+`Read` `<specsRoot>/<slug>/` 下每个 `.md`（requirements / design /
+implementation-log 等），并回顾本轮 agent 上下文里反复用到的「找文件 / 调用链 /
+配置映射」导航经验，留作 Step 3。
+
+> **NO recall**：**不**读任何旧 KB（`knowledge-base/` / `MEMORY.md`）当事实
+> 输入。distill 只**产出**指针，从不把历史 KB 当真相消费。不调用任何
+> `codemap recall`，不读 `.ai-memory/`。
+
+### Step 3 — `AskUserQuestion` 提案原子拆分（不可跳过）
+
+按 `references/breakdown-heuristics.md` 把 spec + 上下文拆成若干**原子知识点**，
+每点一文档，归入两类之一：
+
+- `case` —— 本需求「改了什么 + 在哪些前后端文件 + 调用链 + 踩坑」（每个独立改动
+  一个点，不要整需求塞一个文档）。
+- `navigation` —— 超出本需求的**项目级导航经验**（页面按钮→文件、配置→后端入口、
+  某类页面的定位套路），换个需求也能复用。
+
+每个候选给 `标题 / 类型 / 来源(slug) / tags / 描述`；`tags` 取自**页面名 /
+字段名 / 功能域**三类具体名词（不引入受控词表）。`AskUserQuestion` 让用户
+confirm / add / drop / rename / recategorize，锁定后进 Step 4。
+
+### Step 4 — 写 case/navigation 文档 + 重建 MEMORY
+
+逐个把确认后的知识点按 `references/doc-template.md` 写入
+`<project_root>/knowledge-base/{cases,navigation}/<topic-kebab>.md`（host agent
+直接 author markdown，无外部 writer CLI）。
+
+- 已存在同名文件 → `Read` 后问用户 `overwrite / skip / merge`。
+- **navigation 跨 spec 去重合并**：由模型按 `tags` + `标题` 判定是否同一导航
+  点——是则 merge/更新已有文档，否则新建；不重复造。
+
+全部写完后，重建索引（由 frontmatter 全量重建，请勿手改 MEMORY.md）：
+```bash
+sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" memory-rebuild --kb <project_root>/knowledge-base
 ```
 
----
+### Step 5 — 双轨落盘（可选 Obsidian 副本）
 
-## Flow (4 steps; user controls cadence)
+`AskUserQuestion`「复制一份到 Obsidian 库？」：
 
-### Step 1 — parse args + resolve target dir
+- **不需要** → 结束。
+- **需要** → 让用户**输入绝对路径**（明确提示：这是直接写入的目录，distill
+  **不做任何拼接**）。若路径在 `/Volumes/` 下，先校验挂载
+  （`ls "/Volumes/<name>"` 成功，否则拒绝并提示）。然后：
+  ```bash
+  cp -R <project_root>/knowledge-base/cases  <obsidian-target-dir>/
+  cp -R <project_root>/knowledge-base/navigation <obsidian-target-dir>/
+  sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" memory-rebuild --kb <obsidian-target-dir>
+  ```
+  Obsidian 侧不在副本目录重新生成内容，只 `cp` + 重建该目录自己的 MEMORY。
 
-Parse `<slug>`, optional `--target-dir`, `--format`. Defaults applied. Validate:
-- `<specsRoot>/<slug>/` exists with at least `requirements.md`
-- `--target-dir` is absolute. If on `/Volumes/`, verify mounted (`ls "/Volumes/<name>"` succeeds; refuse if unmounted)
-- `mkdir -p <target-dir>/<slug>/{rules,business,modules,cases,pitfalls}`
-
-### Step 2 — read the full spec
-
-`Read` every `.md` under `<specsRoot>/<slug>/` (depth ≤ 3). Typical: requirements / design / implementation-log / bugfix / acceptance-checklist / tasks. Hold in memory for step 3.
-
-> **v4 NO RECALL**: do NOT call `codemap recall` or read `.ai-memory/knowledge/`. Distill is purely from the spec docs.
-
-### Step 3 — `AskUserQuestion` propose breakdown (non-skippable)
-
-Apply 5-dimension heuristics (`references/breakdown-heuristics.md`) to propose N candidates per category:
-
-- `rules/` — global mechanism / constraint identified in the spec
-- `business/` — end-to-end flow / UI feature
-- `modules/` — table / call chain / API surface touched
-- `cases/` — this spec's implementation (always exactly 1, id = `<slug>`)
-- `pitfalls/` — reusable failure / fix lesson from spec's `bugfix.md` or review findings
-
-Each candidate carries: `category` / `title` (中文) / `summary` (一行) / `tags`. `knowledge_id` is derived as `<prefix>-<kebab(title)>`.
-
-`AskUserQuestion`: user can confirm / add / drop / rename / recategorize. After confirmation, list is locked → step 4.
-
-### Step 4 — write each knowledge point as Obsidian md
-
-For each confirmed candidate, the host agent **directly authors the md content** (no external CLI). Template:
-
-```markdown
----
-title: <title>
-category: <category>
-spec_id: <slug>
-created_at: <YYYY-MM-DD>
-tags: <[tag1, tag2, ...]>
-related: <[[id1]], [[id2]], ...>   # optional cross-refs
----
-
-# <title>
-
-<one-line summary>
-
-## <category-specific section 1>
-...
-
-## <category-specific section 2>
-...
-```
-
-Category-specific section sets (see `references/doc-template.md` for full template):
-
-- **rules**: `规则陈述` / `为什么` / `适用场景` / `例外` / `如何强制`
-- **business**: `业务流程` / `触发条件` / `结束状态` / `关键步骤` / `UI 约束`
-- **modules**: `范围` / `主要 entity` / `数据列` / `分片策略` / `调用链`
-- **cases**: `实施摘要` / `关键决策` / `踩过的坑 / fix` / `验收结果` / `变更文件`
-- **pitfalls**: `现象` / `根因` / `修复方法` / `预防措施` / `影响范围`
-
-Write each `.md` to `<target-dir>/<slug>/<category>/<knowledge_id>.md`. Existing file → `Read` then ask user `overwrite / skip / merge`. The host agent authors the markdown directly — there is no external writer CLI.
+> 双轨逻辑只属于 distill 自身：不影响主流程，也不影响检索端——检索端永远只读
+> 项目目录的 `knowledge-base/`，绝不读 Obsidian 副本。
 
 ---
 
@@ -173,40 +189,20 @@ Write each `.md` to `<target-dir>/<slug>/<category>/<knowledge_id>.md`. Existing
 
 | Red line | Note |
 |---|---|
-| Spec dir is read-only | Never modify anything under `<specsRoot>/<slug>/` |
-| `--target-dir` is the SOLE write scope | Distill writes only under `<target-dir>/<slug>/`. Never writes to spec dir or to `<project_root>/.ai-memory/` |
-| External-drive precheck | If `--target-dir` is under `/Volumes/`, verify mounted; refuse if not |
-| No codemap recall | Distill explicitly does NOT call `codemap recall`. It is purely spec-content driven |
-| Md-only output | Distill produces Obsidian markdown only — no yml, no `codemap knowledge write`, no `.ai-memory` (yml/codemap path removed in 5.0.1) |
-| No injection elsewhere | Distill output is for the user's Obsidian wiki — it does NOT feed any future spec's `requirements.md`, does NOT feed any `task.md` to subagents |
-| Read-before-overwrite | If target md exists, `Read` then ask user before overwriting |
-
----
-
-## What v4 does NOT do (vs v3)
-
-| Removed | Why |
-|---|---|
-| Auto-trigger from acceptance phase | v4 specode main flow has no distill prompt; user runs manually only |
-| Pre-step P2-2 codemap recall reverse-check | Distill doesn't read `.ai-memory/` at all |
-| yml output (`--format yml` / `both` via `codemap knowledge write`) | Removed in 5.0.1 — md-only. yml's only consumer (`codemap recall`) was deleted in v4.0.0, so it fed nothing |
-| Default write to `<project_root>/.ai-memory/knowledge/` | Default writes to `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/` |
-| Coordination with task-swarm's ingest_lessons | task-swarm v0.10.0+ removes ingest entirely; no coordination needed |
-| Same-id merge across distill + auto-ingest | No auto-ingest exists; existing target md → `Read` then ask overwrite / skip / merge |
-
-If user wants the v3 behavior (auto-trigger + write to `.ai-memory/`), checkout `backup/specode-v3.4.0-task-swarm-v0.9.2` branch.
-
----
-
-## Coordination
-
-`<target-dir>/<slug>/` is **not** read by any other specode/task-swarm phase. It's purely the user's Obsidian wiki staging. Subsequent `/wiki-sort` (obsidian-wiki plugin) can organize it into the LLM Wiki structure.
-
-`<project_root>/.ai-memory/knowledge/` (if it exists from old v3 ingest) is **not touched** by v4 distill. Users can leave it for `codemap recall` independent use, or delete it.
+| 主写域 = `<project_root>/knowledge-base/` | distill 的主产物固定落项目目录的 `cases/` + `navigation/` + `MEMORY.md` |
+| Spec 目录只读 | 绝不修改 `<specsRoot>/<slug>/` 下任何文件 |
+| `project_root` 单一来源 | 经 `resolve_root.py read-project-root --spec ...` 读取，**不从 cwd 反推** |
+| Obsidian 是可选副本，直写不拼接 | `--target-dir` / 用户输入的绝对路径直接作为写入目录，distill 不做任何路径拼接 |
+| `/Volumes/` 挂载校验 | 副本目录在 `/Volumes/` 下时先验挂载，未挂载则拒绝 |
+| `knowledge-base/` 不提交仓库 | 本地私有定位资产；落盘时 `ensure-gitignore` 保证 `.gitignore` 含 `knowledge-base/` |
+| Md-only | 只产 markdown —— 无 yml、无 `codemap knowledge write`、无 `.ai-memory` |
+| NO recall / 无注入 | distill 不读旧 KB 当事实、不调 `codemap recall`；产物不喂任何后续 spec 的 `requirements.md`、不喂 task-swarm |
+| MEMORY 不手改 | 永远由 `knowledge.py memory-rebuild` 从各文档 frontmatter 全量重建 |
+| Read-before-overwrite | 目标 md 已存在 → `Read` 后问用户 overwrite / skip / merge |
 
 ---
 
 ## References
 
-- `references/breakdown-heuristics.md` — 5-dimension breakdown → 5-category mapping
-- `references/doc-template.md` — Obsidian md template per category (5 templates total)
+- `references/breakdown-heuristics.md` —— 原子知识点提炼 → case / navigation 两类映射。
+- `references/doc-template.md` —— case / navigation 两类文档的 frontmatter + 正文模板。

@@ -150,6 +150,42 @@ def cmd_ensure_gitignore(args) -> int:
     return 0
 
 
+def _memory_paths(kb: Path):
+    """Parse the 路径 column out of an existing MEMORY.md (empty if none)."""
+    mem = kb / "MEMORY.md"
+    if not mem.exists():
+        return set()
+    paths = set()
+    for line in mem.read_text(encoding="utf-8").splitlines():
+        if not line.startswith("| ") or "---" in line or "| 标题 |" in line:
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) == len(_COLS):
+            paths.add(cells[_COLS.index("路径")])
+    return paths
+
+
+def cmd_memory_validate(args) -> int:
+    kb = Path(args.kb)
+    if not kb.is_dir():
+        sys.stderr.write(f"knowledge: knowledge-base 目录不存在：{kb}\n")
+        return 1
+    indexed = _memory_paths(kb)
+    on_disk = {p.relative_to(kb).as_posix() for p in _iter_docs(kb)
+               if _parse_doc(p, kb) is not None}
+    dangling = sorted(indexed - on_disk)
+    unindexed = sorted(on_disk - indexed)
+    for d in dangling:
+        sys.stdout.write(f"⚠ 悬空索引（MEMORY 有、磁盘无）：{d}\n")
+    for u in unindexed:
+        sys.stdout.write(f"⚠ 未索引文档（磁盘有、MEMORY 无）：{u}\n")
+    if dangling or unindexed:
+        sys.stdout.write("knowledge: MEMORY 漂移，建议 `memory-rebuild`。\n")
+        return 2
+    sys.stdout.write("✓ knowledge: MEMORY 与磁盘一致\n")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="knowledge.py")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -161,6 +197,10 @@ def main(argv=None) -> int:
     mr = sub.add_parser("memory-rebuild")
     mr.add_argument("--kb", required=True)
     mr.set_defaults(func=cmd_memory_rebuild)
+
+    mv = sub.add_parser("memory-validate")
+    mv.add_argument("--kb", required=True)
+    mv.set_defaults(func=cmd_memory_validate)
 
     args = parser.parse_args(argv)
     return args.func(args)

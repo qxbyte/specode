@@ -88,3 +88,31 @@ def test_ensure_gitignore_appends_preserving(run_script, tmp_path: Path):
     assert res.returncode == 0, res.stderr
     lines = (proj / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "dist/" in lines and "knowledge-base/" in lines
+
+
+def test_memory_validate_clean(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    res = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+
+
+def test_memory_validate_detects_unindexed(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    _write_doc(kb, "cases/y.md", 标题="Y", 类型="case")  # added after rebuild
+    res = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
+    assert res.returncode == 2
+    assert "cases/y.md" in (res.stdout + res.stderr)
+
+
+def test_memory_validate_detects_dangling(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    (kb / "cases" / "x.md").unlink()  # removed after rebuild
+    res = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
+    assert res.returncode == 2
+    assert "cases/x.md" in (res.stdout + res.stderr)

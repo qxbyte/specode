@@ -4,6 +4,24 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 5.1.2 (2026-06-30) — distill 打磨（gitignore 非 git 跳过 / copy-to / nav 来源单值）
+
+承接 5.1.1，第二轮真实项目试跑后的打磨项。
+
+### Added
+
+- **`knowledge.py copy-to --kb <src> --dest <abs>`**（+3 测试）：一步 dual-landing —— 把 `cases/` + `navigation/` 复制到绝对路径 dest 并重建该目录的 `MEMORY.md`（直写不拼接）。取代「手动 `cp` 两次 + 记得再 `memory-rebuild`」的多步法。
+
+### Changed / Fixed
+
+- **`ensure-gitignore` 非 git 跳过（F3）**：项目无 `.git` 且无既有 `.gitignore` 时跳过，不再创建无用的 stray `.gitignore`。
+- **distill Step 5 改用 `copy-to`（F4）**：Obsidian 可选副本一步完成，杜绝漏跑 MEMORY 重建。
+- **navigation `来源` 单值（F8）**：合并多 spec 的 navigation 点时 `来源` 保留首次引入的 slug，后续复用 spec 在正文列出（零 schema 影响）；并强化「写 navigation 前先 `Read` MEMORY 去重」。
+
+### Notes
+
+- **F5**（monorepo 项目级约束扫描）经评估不归 specode 管——用户在需要的项目目录自行放 `CLAUDE.md`/`CODEBUDDY.md`，扫描已认 `CODEBUDDY.md`。**F6**（prose 易漏步）由 F4 的 CLI 化顺带收敛。
+
 ## 5.1.1 (2026-06-30) — 试跑验证修复（distill 时机 / nav 去重 / 检索相关性）
 
 承接 5.1.0，用真实项目（ops）多轮试跑验证后修三处。

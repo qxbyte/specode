@@ -11,6 +11,8 @@ description: 手动把一个已完成（或进行中）的 spec 沉淀为项目 
 
 行为：调用 `distill` skill，纯粹从 spec 文档 + 当前 agent 上下文提炼原子知识点（case / navigation 两类）→ 落盘到项目 `knowledge-base/` → 重建 MEMORY.md 索引 → 可选 Obsidian 副本。完整流程以 `skills/distill/SKILL.md`（当前权威）为准。
 
+> 建议在**执行 + 验收完成后**运行：沉淀「已落地 + 已验证」的知识点价值最高；在未执行完的 spec 上沉淀，知识点可能指向未落地代码（distill Step 1 的执行完成度检查会告警）。
+
 红线（v5.1+）：
 
 - **主写域 = `<project_root>/knowledge-base/`**（`cases/` + `navigation/` + `MEMORY.md`）；Obsidian 是**可选副本**，不是默认主产物

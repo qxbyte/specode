@@ -120,3 +120,35 @@ def test_get_root_specsroot_beats_legacy_obsidian_root(run_script, fake_home, tm
     cp = run_script("resolve_root.py", "get-root")
     assert cp.returncode == 0, cp.stderr
     assert cp.stdout.strip() == str(tmp_path / "new-specs")
+
+
+# --- design-unchecked (F1: distill should warn if spec not fully executed) ---
+
+
+def _make_spec(tmp_path: Path, name: str, design_body):
+    spec = tmp_path / name
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / "requirements.md").write_text("# req\n", encoding="utf-8")
+    if design_body is not None:
+        (spec / "design.md").write_text(design_body, encoding="utf-8")
+    return spec
+
+
+def test_design_unchecked_all_checked_exits_0(run_script, fake_home, tmp_path):
+    spec = _make_spec(tmp_path, "done", "# d\n- [x] a\n  - [x] b\n")
+    cp = run_script("resolve_root.py", "design-unchecked", "--spec", str(spec))
+    assert cp.returncode == 0, cp.stderr
+    assert cp.stdout.strip() == "0"
+
+
+def test_design_unchecked_counts_unchecked_exits_2(run_script, fake_home, tmp_path):
+    spec = _make_spec(tmp_path, "wip", "# d\n- [ ] a\n- [x] b\n  - [ ] c\n")
+    cp = run_script("resolve_root.py", "design-unchecked", "--spec", str(spec))
+    assert cp.returncode == 2, cp.stderr
+    assert cp.stdout.strip() == "2"
+
+
+def test_design_unchecked_no_design_exits_3(run_script, fake_home, tmp_path):
+    spec = _make_spec(tmp_path, "nodesign", None)
+    cp = run_script("resolve_root.py", "design-unchecked", "--spec", str(spec))
+    assert cp.returncode == 3, cp.stderr

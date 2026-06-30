@@ -66,6 +66,10 @@ spec `requirements.md` frontmatter 的 `project_root`），**不从 cwd 反推**
 （「是否进入 distill 沉淀本次经验？」），不强制、不自动跑。用户想更新本项目的
 定位库时才运行本命令。
 
+> **建议在执行 + 验收完成后运行 distill。** 沉淀「已落地 + 已验证」的知识点价值
+> 最高；在尚未执行完的 spec 上沉淀，知识点可能指向**计划中但未落地的代码**（如
+> design 提到、但执行从未创建的工具文件）。Step 1 有一道执行完成度检查会就此告警。
+
 ---
 
 ## Inputs
@@ -125,6 +129,14 @@ spec `requirements.md` frontmatter 的 `project_root`），**不从 cwd 反推**
    ```bash
    sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" ensure-gitignore --project-root <project_root>
    ```
+5. **执行完成度检查（F1，防悬空指针）**：
+   ```bash
+   sh "$R/scripts/run.sh" "$R/scripts/resolve_root.py" design-unchecked --spec <specsRoot>/<slug>
+   ```
+   - exit 0 → 该 spec 的 design Task 已全部勾选（已执行），正常继续。
+   - exit 2（仍有未勾选 `- [ ]` Task）或 exit 3（无 design.md）→ 该 spec **尚未执行完**，
+     沉淀的知识点可能引用**未落地代码**。先 `AskUserQuestion` 警告并让用户选
+     「继续沉淀 / 中止」；用户选中止则结束，不写任何文档。
 
 ### Step 2 — 读全 spec + 回顾 agent 上下文（NO recall）
 
@@ -135,6 +147,8 @@ implementation-log 等），并回顾本轮 agent 上下文里反复用到的「
 > **NO recall**：**不**读任何旧 KB（`knowledge-base/` / `MEMORY.md`）当事实
 > 输入。distill 只**产出**指针，从不把历史 KB 当真相消费。不调用任何
 > `codemap recall`，不读 `.ai-memory/`。
+> （例外：Step 4 写 navigation 点前可 `Read` `MEMORY.md` **仅用于去重比对**——
+> 这是索引维护，不是把历史 KB 当事实喂给新内容，与本不变量不冲突。）
 
 ### Step 3 — `AskUserQuestion` 提案原子拆分（不可跳过）
 
@@ -157,8 +171,11 @@ confirm / add / drop / rename / recategorize，锁定后进 Step 4。
 直接 author markdown，无外部 writer CLI）。
 
 - 已存在同名文件 → `Read` 后问用户 `overwrite / skip / merge`。
-- **navigation 跨 spec 去重合并**：由模型按 `tags` + `标题` 判定是否同一导航
-  点——是则 merge/更新已有文档，否则新建；不重复造。
+- **navigation 跨 spec 去重合并（写前必查，F7）**：写每个 navigation 点**前先
+  `Read` `<project_root>/knowledge-base/MEMORY.md`**，按 `tags` + `标题` 比对是否
+  已有同主题 navigation 点——是则 **merge/更新已有文档**（不新建重复文件），否则
+  新建。不查就新建会产生重复点，而 `memory-rebuild` 在索引层**不去重**（会把两条
+  都索引）。（仅 case 一需求一改一文档，通常不涉及去重。）
 
 全部写完后，重建索引（由 frontmatter 全量重建，请勿手改 MEMORY.md）：
 ```bash

@@ -157,6 +157,14 @@ def _requirements_path(spec: str) -> Path:
     return p
 
 
+def _design_path(spec: str) -> Path:
+    """Resolve the design.md for a spec given a dir or a file path."""
+    p = Path(spec)
+    if p.is_dir():
+        return p / "design.md"
+    return p
+
+
 def _split_frontmatter(text: str):
     """Return ``(fm_lines | None, body)``.
 
@@ -286,6 +294,30 @@ def cmd_read_project_root(args) -> int:
         return 4
     sys.stdout.write(value + "\n")
     return 0
+
+
+def cmd_design_unchecked(args) -> int:
+    """F1: count unchecked ``- [ ]`` Task steps in a spec's design.md.
+
+    distill uses this to warn before sedimenting: a spec with unchecked
+    Task steps is not fully executed, so its distilled knowledge points may
+    reference planned-but-unbuilt code (e.g. a util file the design proposes
+    but execution never created).
+
+    exit 0 — design.md exists and every checkbox is checked (executed)
+    exit 2 — design.md exists with N>0 unchecked ``- [ ]`` (prints N)
+    exit 3 — no design.md (not designed/executed)
+    """
+    d = _design_path(args.spec)
+    if not d.is_file():
+        sys.stderr.write(f"specode: 找不到 design.md：{d}\n")
+        return 3
+    n = 0
+    for line in d.read_text(encoding="utf-8").splitlines():
+        if line.lstrip().startswith("- [ ]"):
+            n += 1
+    sys.stdout.write(f"{n}\n")
+    return 2 if n > 0 else 0
 
 
 _DEFAULTS_SCHEMA = {
@@ -544,6 +576,12 @@ def main(argv=None) -> int:
     rdp = sub.add_parser("read-project-root")
     rdp.add_argument("--spec", required=True)
     rdp.set_defaults(func=cmd_read_project_root)
+
+    du = sub.add_parser("design-unchecked",
+                        help="count unchecked '- [ ]' Task steps in design.md "
+                             "(0 ok / 2 has-unchecked / 3 no-design)")
+    du.add_argument("--spec", required=True)
+    du.set_defaults(func=cmd_design_unchecked)
 
     # v0.9 M1/M9 (3.4.0): autonomous-mode defaults
     rd = sub.add_parser("read-defaults",

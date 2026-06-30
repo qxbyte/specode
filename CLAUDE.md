@@ -114,7 +114,7 @@ The engine only decides *who generates the content*, never the form/name/locatio
 | `scripts/` member | Role |
 |---|---|
 | `resolve_root.py` | The specsRoot / project_root / defaults business CLI. specsRoot resolution + persistence + spec listing + project_root single-reader/writer + autonomous-mode defaults. stdlib-only. Invoked from `commands/*.md` and SKILL prose via `run.sh`. |
-| `knowledge.py` | **(5.1.0)** The knowledge-base index CLI. stdlib-only verbs: `ensure-gitignore` / `memory-rebuild` (rebuild `MEMORY.md` from each knowledge-point's frontmatter) / `memory-validate` (drift detection). Invoked by `distill` via `run.sh`; tests in `tests/test_knowledge.py`. |
+| `knowledge.py` | **(5.1.0+)** The knowledge-base index CLI. stdlib-only verbs: `ensure-gitignore` (skips when the project is non-git **and** has no existing `.gitignore`) / `memory-rebuild` (rebuild `MEMORY.md` from each knowledge-point's frontmatter) / `memory-validate` (drift detection) / `copy-to --kb <src> --dest <abs>` (one-step dual-landing: copy `cases/`+`navigation/` to an absolute dest + rebuild its MEMORY). Invoked by `distill` via `run.sh`; tests in `tests/test_knowledge.py`. |
 | `spec_hooks.py` | The only hook handler: `SessionStart` injects an advisory discipline reminder via `additionalContext` and exits 0. Tolerates non-TTY/empty stdin, swallows all exceptions (advisory, never blocks). |
 | `run.sh` / `run.cmd` | Python interpreter probes (`python3 → python → py`) — Windows alias-stub handling lives here. |
 

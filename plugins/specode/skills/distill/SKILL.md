@@ -191,11 +191,11 @@ sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" memory-rebuild --kb <project_ro
   **不做任何拼接**）。若路径在 `/Volumes/` 下，先校验挂载
   （`ls "/Volumes/<name>"` 成功，否则拒绝并提示）。然后：
   ```bash
-  cp -R <project_root>/knowledge-base/cases  <obsidian-target-dir>/
-  cp -R <project_root>/knowledge-base/navigation <obsidian-target-dir>/
-  sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" memory-rebuild --kb <obsidian-target-dir>
+  sh "$R/scripts/run.sh" "$R/scripts/knowledge.py" copy-to --kb <project_root>/knowledge-base --dest <obsidian-target-dir>
   ```
-  Obsidian 侧不在副本目录重新生成内容，只 `cp` + 重建该目录自己的 MEMORY。
+  `copy-to` **一步完成**：把 `cases/` + `navigation/` 复制到副本目录并重建该目录
+  自己的 `MEMORY.md`（dest 绝对路径直写不拼接）。Obsidian 侧不重新生成内容、只复制
+  + 重建索引。（旧的「手动 `cp` 两次 + 记得再 `memory-rebuild`」多步法已由本 verb 取代，杜绝漏跑重建。）
 
 > 双轨逻辑只属于 distill 自身：不影响主流程，也不影响检索端——检索端永远只读
 > 项目目录的 `knowledge-base/`，绝不读 Obsidian 副本。

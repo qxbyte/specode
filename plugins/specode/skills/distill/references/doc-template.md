@@ -20,7 +20,7 @@ tags: [<页面名>, <字段名>, <功能域>]
 ```
 
 - `类型` 取值：`case`（单需求改法/调用链）或 `navigation`（跨 spec 累积的项目导航经验）。
-- `来源`：case 必填，写源 spec slug；navigation 跨 spec 累积可留最近一次 slug。
+- `来源`：case 必填，写源 spec slug；**navigation 合并多 spec 时 `来源` 保留首次引入的 slug（单值、不堆逗号）**，后续复用/补充的 spec 在**正文**里列出（如 `> 跨 spec 累积点：由 X 引入，Y 复用补充` 一行）——保持 MEMORY 的「来源」列干净（F8）。
 
 `memory-rebuild` 由上述 frontmatter 自动生成 MEMORY 行：
 `| 标题 | 类型 | 描述 | 来源 | 路径 | tags |`（请勿手改 MEMORY.md）。
@@ -76,5 +76,5 @@ tags: [查询列表, 定位, B页面]
 ## 写入规则
 - 文件按**主题** kebab 命名，不按 slug。
 - 已存在同名文件 → `Read` 后问用户 `overwrite / skip / merge`。
-- navigation 跨 spec 去重合并：由模型按 `tags` + `标题` 判定是否同一导航点，是则 merge/更新，否则新建。
-- 全部写完后，host agent 运行 `knowledge.py memory-rebuild --kb <project_root>/knowledge-base` 重建索引。
+- navigation 跨 spec 去重合并：**写前先 `Read` `MEMORY.md`**，由模型按 `tags` + `标题` 判定是否同一导航点，是则 merge/更新已有文档（`来源` 保留 origin、正文补「由 X 引入，Y 复用」一行），否则新建。
+- 全部写完后，host agent 运行 `knowledge.py memory-rebuild --kb <project_root>/knowledge-base` 重建索引；若要复制到 Obsidian，用 `knowledge.py copy-to --kb <project_root>/knowledge-base --dest <abs>` 一步完成。

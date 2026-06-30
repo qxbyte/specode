@@ -3,8 +3,11 @@
 
 verbs:
   ensure-gitignore --project-root <abs>   确保 <root>/.gitignore 含 `knowledge-base/`
+                                          （无 .git 且无 .gitignore 时跳过，不建 stray）
   memory-rebuild   --kb <dir>             由 <dir>/**/*.md frontmatter 重建 <dir>/MEMORY.md
   memory-validate  --kb <dir>             校验 MEMORY 与磁盘文档是否一致（漂移检测）
+  copy-to          --kb <src> --dest <abs>  把 cases/+navigation/ 复制到 dest 并重建其
+                                          MEMORY（一步 dual-landing；dest 绝对路径直写不拼接）
 
 knowledge-base/ 是「定位用，非事实用」的指针库；MEMORY.md 是其轻量索引，
 单一事实源是各文档的 frontmatter——memory-rebuild 永远由 frontmatter 全量重建。
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -122,20 +126,51 @@ def _render_memory(rows) -> str:
     return head + note + header + sep + body
 
 
-def cmd_memory_rebuild(args) -> int:
-    kb = Path(args.kb)
-    if not kb.is_dir():
-        sys.stderr.write(f"knowledge: knowledge-base 目录不存在：{kb}\n")
-        return 1
+def _rebuild_memory(kb: Path):
+    """Rebuild kb/MEMORY.md from doc frontmatter. Returns (n_rows, skipped_paths)."""
     rows, skipped = [], []
     for p in _iter_docs(kb):
         row = _parse_doc(p, kb)
         (rows if row else skipped).append(row if row else p)
     rows.sort(key=lambda r: (r["类型"], r["路径"]))
     _atomic_write_text(kb / "MEMORY.md", _render_memory(rows))
+    return len(rows), skipped
+
+
+def cmd_memory_rebuild(args) -> int:
+    kb = Path(args.kb)
+    if not kb.is_dir():
+        sys.stderr.write(f"knowledge: knowledge-base 目录不存在：{kb}\n")
+        return 1
+    n, skipped = _rebuild_memory(kb)
     for p in skipped:
         sys.stderr.write(f"knowledge: 跳过缺 标题/类型 的文档：{p}\n")
-    sys.stdout.write(f"knowledge: 已重建 MEMORY（{len(rows)} 条，跳过 {len(skipped)}）\n")
+    sys.stdout.write(f"knowledge: 已重建 MEMORY（{n} 条，跳过 {len(skipped)}）\n")
+    return 0
+
+
+def cmd_copy_to(args) -> int:
+    """F4: one-step dual-landing — copy cases/ + navigation/ to an absolute
+    dest dir, then rebuild that dir's MEMORY. 直写不拼接：dest 即写入目录。"""
+    src = Path(args.kb)
+    if not src.is_dir():
+        sys.stderr.write(f"knowledge: 源 knowledge-base 不存在：{src}\n")
+        return 1
+    dest = Path(args.dest)
+    if not dest.is_absolute():
+        sys.stderr.write(f"knowledge: 目标必须是绝对路径（直写不拼接）：{dest}\n")
+        return 1
+    dest.mkdir(parents=True, exist_ok=True)
+    copied = []
+    for subname in ("cases", "navigation"):
+        s = src / subname
+        if s.is_dir():
+            shutil.copytree(s, dest / subname, dirs_exist_ok=True)
+            copied.append(subname)
+    n, _ = _rebuild_memory(dest)
+    sys.stdout.write(
+        f"knowledge: 已复制 {('/'.join(copied)) or '(无文档)'} 到 {dest} "
+        f"并重建 MEMORY（{n} 条）\n")
     return 0
 
 
@@ -145,6 +180,13 @@ def cmd_ensure_gitignore(args) -> int:
         sys.stderr.write(f"knowledge: project-root 目录不存在：{root}\n")
         return 1
     gi = root / ".gitignore"
+    if not gi.exists() and not (root / ".git").exists():
+        # F3: 非 git 项目且无既有 .gitignore → 不创建 stray 文件（无 git 时
+        # .gitignore 也不生效；knowledge-base 本就本地私有，无需 ignore）。
+        sys.stdout.write(
+            f"knowledge: {root} 无 .git 且无 .gitignore，跳过"
+            f"（knowledge-base 本地私有，无需 ignore）\n")
+        return 0
     lines = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
     if GITIGNORE_ENTRY in (ln.strip() for ln in lines):
         sys.stdout.write(f"knowledge: .gitignore 已含 {GITIGNORE_ENTRY}\n")
@@ -209,6 +251,13 @@ def main(argv=None) -> int:
     mv = sub.add_parser("memory-validate")
     mv.add_argument("--kb", required=True)
     mv.set_defaults(func=cmd_memory_validate)
+
+    ct = sub.add_parser("copy-to",
+                        help="copy cases/+navigation/ to an absolute dest dir "
+                             "and rebuild that dir's MEMORY (one-step dual-landing)")
+    ct.add_argument("--kb", required=True)
+    ct.add_argument("--dest", required=True)
+    ct.set_defaults(func=cmd_copy_to)
 
     args = parser.parse_args(argv)
     return args.func(args)

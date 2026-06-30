@@ -59,14 +59,24 @@ def test_memory_rebuild_skips_malformed(run_script, tmp_path: Path):
     assert "cases/bad.md" not in mem
 
 
-def test_ensure_gitignore_creates_file(run_script, tmp_path: Path):
+def test_ensure_gitignore_creates_file_in_git_repo(run_script, tmp_path: Path):
     proj = tmp_path / "proj"
     proj.mkdir()
+    (proj / ".git").mkdir()  # a git repo -> .gitignore is meaningful
     res = run_script("knowledge.py", "ensure-gitignore", "--project-root", str(proj))
     assert res.returncode == 0, res.stderr
     gi = proj / ".gitignore"
     assert gi.exists()
     assert "knowledge-base/" in gi.read_text(encoding="utf-8").splitlines()
+
+
+def test_ensure_gitignore_skips_when_no_git_no_gitignore(run_script, tmp_path: Path):
+    # F3: non-git project with no existing .gitignore -> don't create a stray file
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    res = run_script("knowledge.py", "ensure-gitignore", "--project-root", str(proj))
+    assert res.returncode == 0, res.stderr
+    assert not (proj / ".gitignore").exists()
 
 
 def test_ensure_gitignore_idempotent(run_script, tmp_path: Path):
@@ -164,3 +174,37 @@ def test_memory_rebuild_comma_string_tags(run_script, tmp_path: Path):
     assert res.returncode == 0, res.stderr
     mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
     assert "银行账号,脱敏" in mem
+
+
+# --- copy-to (F4: one-step dual-landing — cp cases/navigation + rebuild MEMORY on dest) ---
+
+
+def test_copy_to_copies_and_rebuilds(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case", tags=["t"])
+    _write_doc(kb, "navigation/y.md", 标题="Y", 类型="navigation", tags=["t"])
+    (kb / "MEMORY.md").write_text("stale\n", encoding="utf-8")  # src MEMORY is irrelevant
+    dest = tmp_path / "obsidian-copy"
+    res = run_script("knowledge.py", "copy-to", "--kb", str(kb), "--dest", str(dest))
+    assert res.returncode == 0, res.stderr
+    assert (dest / "cases" / "x.md").exists()
+    assert (dest / "navigation" / "y.md").exists()
+    mem = (dest / "MEMORY.md").read_text(encoding="utf-8")
+    assert "| 标题 | 类型 | 描述 | 来源 | 路径 | tags |" in mem
+    assert "cases/x.md" in mem and "navigation/y.md" in mem
+
+
+def test_copy_to_rejects_relative_dest(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    res = run_script("knowledge.py", "copy-to", "--kb", str(kb), "--dest", "rel/dir")
+    assert res.returncode == 1, res.stderr
+
+
+def test_copy_to_creates_missing_dest(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    dest = tmp_path / "newdir" / "kb-copy"  # does not exist yet
+    res = run_script("knowledge.py", "copy-to", "--kb", str(kb), "--dest", str(dest))
+    assert res.returncode == 0, res.stderr
+    assert (dest / "cases" / "x.md").exists()

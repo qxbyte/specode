@@ -90,8 +90,8 @@ fi
 Each phase is annotated "if superpowers is installed, call it / otherwise go native". To decide "installed or not": **first try to call the matching superpowers skill via the `Skill` tool; if it is unavailable (skill missing / call fails), take the native branch.**
 
 1. **specsRoot**: `get-root` (first-time setup if missing) → obtain `<specsRoot>` → `mkdir -p <specsRoot>/<slug>/` (the host agent derives the kebab-case slug from the request).
-2. **requirements (clarify + requirements)** — three sub-steps, always in this order:
-   1. **`project_root` confirmation (required)**: get the default via `resolve_root.py resolve-project-root` (it returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-step 2 and gets persisted to frontmatter at sub-step 3 **via `resolve_root.py write-project-root`** (the single writer — do not hand-write the frontmatter field).
+2. **requirements (clarify + requirements)** — four sub-steps, always in this order:
+   1. **`project_root` confirmation (required)**: get the default via `resolve_root.py resolve-project-root` (it returns `git rev-parse --show-toplevel` of cwd, falling back to cwd) and call `AskUserQuestion` **once** with that default pre-selected to let the user confirm or override. Hold the confirmed absolute path; it's needed by sub-steps 2–3 (docs scan + 经验检索) and gets persisted to frontmatter at sub-step 4 **via `resolve_root.py write-project-root`** (the single writer — do not hand-write the frontmatter field).
    2. **Project-level agent docs scan (filesystem-only, no memory recall)**: scan the filesystem for project-level agent-instruction docs and inject them as a `## 项目级约束（CLAUDE.md / AGENT.md）` section into the requirements draft. Scan order (deduped, only existing files): (1) `<project_root>/CLAUDE.md|AGENTS.md|AGENT.md|CODEBUDDY.md`; (2) `<project_root>` 直接父目录下同 4 个文件（覆盖 monorepo workspace 根，如 `wework-ops-assistant/CLAUDE.md` 而下挂子 git repo 自身没有）;(3) 任何已经在用户描述中点名的子目录（如「ops-web 模块」）。Template — **paths only, do not copy content**:
 
       ```markdown
@@ -105,8 +105,9 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
 
       为何 path-only 而非内容拷贝：主 agent 的上下文里已经有完整内容，requirements.md 复制一遍只是冗余 + 内容陈旧风险。task-swarm 0.7.3+ 渲染 task.md 时会按同样的扫描规则把这些路径塞进 coder/reviewer/validator prompt（subagent 进程不自动加载这些文件，必须用路径告知），所以 specode + task-swarm 联合保证从 requirements → design → 执行 → subagent 整条链路都看得见项目级约束。若一个文件都没扫到（典型的 fresh 项目），**整段省略**（不要写「无」之类占位）。
 
-      > **v4.0.0 BREAKING**: 之前的 P3-1 codemap recall 注入 prior knowledge 段 + 冷启动 code_context 段 **已被完全移除**。requirements.md 不再含 `## 已知约束 / 历史坑` 段，不再自动从 `.ai-memory/knowledge/` 召回任何东西。如果你想手动整理 prior knowledge 到 Obsidian wiki，用 `/specode:distill <slug>` (md-only, 见 §distill)。
-   3. **draft requirements**:
+      > **v4.0.0 BREAKING + 新检索（philosophy 不同，勿混为一谈）**: 旧的 P3-1 codemap recall（确定性脚本把历史**内容**当事实自动注入、不省 token）已于 4.0.0 **完全移除**——不再自动从 `.ai-memory/knowledge/` 召回任何东西。**现引入一套全新的、定位优先的经验检索**（下面的 sub-step 3，规格见 `references/retrieval.md`）：注入的是**指针非事实**、由**模型判断**而非脚本召回、默认只读小索引、读 `<project_root>/knowledge-base/`（**非**旧 `.ai-memory/knowledge/`）。要手动把经验沉淀进 `knowledge-base/`，用 `/specode:distill <slug>`（见 §Acceptance 末尾的沉淀提示 + `skills/distill/SKILL.md`）。
+   3. **经验检索（若 `<project_root>/knowledge-base/MEMORY.md` 存在）**: 用 sub-step 1 已确认的 `project_root`（此时 requirements.md frontmatter 尚未写，直接用持有的绝对路径，不要 `read-project-root`），按 `references/retrieval.md` 跑**两级 gated** —— Tier-1 读 `knowledge-base/MEMORY.md` 小索引、比对当前需求的页面/字段/域；命中才 Tier-2 读 ≤5 个点全文、用其前后端文件 + 调用链**定位真实代码**。命中结果贴成「**参考定位（非事实来源）**」段，仅作需求分析 / 范围界定的输入：**定位用、非事实**——指针只指向真实代码，**真实代码才是唯一事实**；**不写进 `requirements.md` 的事实结论**。`knowledge-base/MEMORY.md` 不存在（fresh 项目 / 未 distill 过）→ **静默跳过**，不报错、不写空段。引擎细节（两级触发条件 / 注入格式 / schema 契约）见 `references/retrieval.md`，此处不重述。
+   4. **draft requirements**:
       - superpowers installed → call `superpowers:brainstorming` (it internally does clarification + requirements exploration + the user-approval gate).
       - not installed → **specode-native**: the host agent clarifies with an `AskUserQuestion` wizard (2-4 blocking sub-questions), then writes per the `assets/templates/requirements.md` template.
       - Relocate the artifact to `<specsRoot>/<slug>/requirements.md` (see §superpowers orchestration + relocation).
@@ -115,8 +116,9 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
    - superpowers installed → call `superpowers:writing-plans` (it internally does self-review + user review).
    - not installed → **specode-native**: break down into `## Task N` + `**Files:**` + `验证: AC-N` + `- [ ]` TDD steps per the `assets/templates/design.md` template.
    - Relocate the artifact to `<specsRoot>/<slug>/design.md`.
+   - **经验检索（同 requirements，定位用）**: design 同样按 `references/retrieval.md` 跑**两级 gated** —— 此 phase frontmatter 已写，用 §specsRoot resolver `resolve_root.py read-project-root --spec <specsRoot>/<slug>` 取 `project_root`；命中点的前后端文件 + 调用链用于把每个 `## Task N` 的 `**Files:**` **指向真实文件**（design 的判断仍基于真实代码，检索只缩短定位延迟）。`<project_root>/knowledge-base/MEMORY.md` 不存在 → 静默跳过。
 
-   > **v4.0.0 BREAKING**: 之前的 P3-2 rule-acknowledgement post-check 段 (grep `[[rule-*]]` 是否被 design.md 引用并 AskUser 处理偏离) **已被完全移除**。design 阶段不再做任何与 `.ai-memory/knowledge/rules/` 关联的检查。
+   > **v4.0.0 BREAKING**: 旧的 P3-2 rule-acknowledgement post-check 段（grep `[[rule-*]]` 是否被 design.md 引用并 AskUser 处理偏离）**仍保持移除**——design 阶段不做任何与 `.ai-memory/knowledge/rules/` 关联的 rule 检查。上面新增的 design 检索是**定位用**（把 `**Files:**` 指向真实文件），**不引入任何「规则确认 / 偏离 gate」**——它只产出指针，不产出 must / 规则。
 4. **「执行方式」selector**: after design completes, call `AskUserQuestion` to present it (adaptive 4 options, see §执行方式 selector), verbatim per the `references/selectors.md` example.
 5. **Execution** (branches by selector choice, all TDD):
    - Delegate to task-swarm (installed) → see §task-swarm handoff.
@@ -128,8 +130,9 @@ Each phase is annotated "if superpowers is installed, call it / otherwise go nat
    - superpowers installed → call `superpowers:verification-before-completion` (optionally also `superpowers:requesting-code-review`).
    - not installed → **specode-native**: the host agent verifies item by item against `design.md` test points / the `AC-N` in `requirements.md`.
    - Say "请验收" in prose and write an acceptance summary in `implementation-log.md`. **There is no formal acceptance-gate selector.**
+   - **沉淀提示（distill, gated by `auto_distill`）**: acceptance 写完后，按 §Autonomous-mode defaults rule 决定是否提示沉淀 —— 用 §specsRoot resolver `resolve_root.py read-defaults --key auto_distill --json` 取 effective value + source；当 `interactive == false` 且有 effective default（`source ∈ {env, file}`）时按 default **静默处理**（不打断），否则 `AskUserQuestion`「是否运行 `/specode:distill <slug>` 把本次经验沉淀进项目 knowledge-base？」。distill 仍是**用户触发的独立命令**（本体行为见 `skills/distill/SKILL.md`，Plan A 已改为项目 `knowledge-base/` primary）；这里只把入口提示重新挂回 acceptance 末尾，**不在主流程里自动跑 distill**。
 
-   > **v4.0.0 BREAKING**: 之前的 acceptance 后**自动 AskUserQuestion 触发 distill** sub-step **已被完全移除**。acceptance 写完即结束，不再询问沉淀。如需手动沉淀本 spec 知识到 Obsidian wiki, 后续运行 `/specode:distill <slug>` (md-only, 默认写到 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`, 详见 `skills/distill/SKILL.md`)。
+   > **v4.0.0 → 重新挂回**: 4.0.0 曾把 acceptance 后的自动 distill sub-step 整体移除；现按 `auto_distill` default **把入口提示重新挂回**（见上一条 bullet，遵循既有 autonomous-mode 规则——interactive 时询问、非 interactive 有 effective default 时静默，**非无条件自动执行**）。沉淀目标是项目 `knowledge-base/`（供下次 requirements/design 检索定位），md-only 行为见 `skills/distill/SKILL.md`。
 
 phase ↔ skill quick map: `requirements` → brainstorming; `design` → writing-plans; execution → subagent-driven-development / executing-plans (the task-swarm path does not use superpowers); acceptance → verification-before-completion / requesting-code-review.
 
@@ -215,3 +218,4 @@ When writing / updating spec documents, **never** reprint the full text in chat.
 - `references/selectors.md` — verbatim `AskUserQuestion` example for the 「执行方式」 selector (the first-time directory-setup question is here too).
 - `references/obsidian.md` — specsRoot path resolution and directory conventions.
 - `references/superpowers-wiring.md` — the per-phase ↔ superpowers skill mapping, pre-instructions, and post-relocation instructions.
+- `references/retrieval.md` — 两级 gated 经验检索注入规格（requirements/design phase 调用）。

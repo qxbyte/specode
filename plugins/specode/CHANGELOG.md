@@ -4,6 +4,24 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 5.1.0 (2026-06-30) — 重新引入经验检索注入（定位用·非事实用）
+
+把 v4.0.0 拔掉的「检索注入」以全新路线重新引入：KB 是**定位用、非事实用**——注入指针（文件路径 + 调用链），模型仍以真实代码为唯一事实，只缩短定位延迟。
+
+### Added
+
+- **`scripts/knowledge.py`**（stdlib-only，新增 12 测试）：`ensure-gitignore`（保证 `knowledge-base/` 不入仓）/ `memory-rebuild`（由各知识点 frontmatter 全量重建 `MEMORY.md` 索引）/ `memory-validate`（漂移检测）。
+- **`skills/specode/references/retrieval.md`**：两级 gated 检索规格 —— Tier-1 读 `MEMORY.md` 小索引按 tags+描述 匹配；命中才 Tier-2 读 ≤5 个知识点全文，用其前后端文件 + 调用链定位真实代码；含 schema↔推理 对照表与变更纪律。接入 `skills/specode/SKILL.md` 的 requirements + design phase（执行 / task-swarm 阶段零注入）。
+
+### Changed
+
+- **distill 重写**：从「Obsidian-primary 5 类组织器」改为「项目 `<project_root>/knowledge-base/` primary，原子 `case`/`navigation` 知识点 + `MEMORY.md` 索引」，可选复制一份到 Obsidian（绝对路径直写不拼接）。`knowledge-base/` 不提交仓库。涉及 `skills/distill/SKILL.md`、`references/{doc-template,breakdown-heuristics}.md`、`commands/distill.md`。
+- **acceptance 末尾重新挂回 distill 提示**，按既有 `auto_distill` autonomous-mode default 决定是否 `AskUserQuestion`（复用既有机制，无新开关）。
+
+### Notes
+
+- 与 v4.0.0 被拔掉的 codemap recall 的根本区别：注入**指针非事实**、模型判断非脚本召回、默认只读小索引、命中才读且封顶 N=5。成功标准 = 定位更快/更准（token 持平亦可接受）。
+
 ## 5.0.1 (2026-06-30) — distill 收敛 md-only + 隐藏 + 全量清理 .ai-memory/codemap 残留
 
 承接 5.0.0,把 distill 彻底收敛为「纯 md-only Obsidian 整理器」,并清掉全仓最后的记忆注入文档残留。

@@ -116,3 +116,51 @@ def test_memory_validate_detects_dangling(run_script, tmp_path: Path):
     res = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
     assert res.returncode == 2
     assert "cases/x.md" in (res.stdout + res.stderr)
+
+
+# Fix 2: pipe character in 描述 must not corrupt the MEMORY table
+def test_memory_validate_pipe_in_description(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/pipe.md", 标题="管道测试", 类型="case", 描述="前端|后端")
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
+    # Each data row must have exactly len(_COLS) cells
+    for line in mem.splitlines():
+        if line.startswith("| ") and "| 标题 |" not in line and "---" not in line:
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            assert len(cells) == 6, f"wrong cell count: {line!r}"
+    res2 = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
+    assert res2.returncode == 0, res2.stdout + res2.stderr
+
+
+# Fix 3: triple-dash in 描述 must not be mistaken for a table separator
+def test_memory_validate_dashes_in_description(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/dash.md", 标题="横杠测试", 类型="case", 描述="前端---后端")
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    res2 = run_script("knowledge.py", "memory-validate", "--kb", str(kb))
+    assert res2.returncode == 0, res2.stdout + res2.stderr
+
+
+# Fix 4: tags as plain comma-string (no brackets) must be indexed correctly
+def test_memory_rebuild_comma_string_tags(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    # Write frontmatter directly — _write_doc always brackets the tag list
+    p = kb / "cases" / "tag-plain.md"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        "---\n"
+        "标题: 平铺标签测试\n"
+        "类型: case\n"
+        "来源: 需求X\n"
+        "tags: 银行账号, 脱敏\n"
+        "描述: 无括号逗号标签\n"
+        "---\n\n# body\n",
+        encoding="utf-8",
+    )
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
+    assert "银行账号,脱敏" in mem

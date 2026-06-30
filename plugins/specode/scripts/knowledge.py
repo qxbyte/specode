@@ -106,13 +106,18 @@ def _parse_doc(p: Path, kb: Path):
 _COLS = ["标题", "类型", "描述", "来源", "路径", "tags"]
 
 
+def _sanitize_cell(val: str) -> str:
+    """Replace characters that would break the markdown table."""
+    return val.replace("\n", " ").replace("\r", " ").replace("|", "/").strip()
+
+
 def _render_memory(rows) -> str:
     head = "# Knowledge MEMORY（本项目知识点索引）\n\n"
     note = "> 由 `knowledge.py memory-rebuild` 从各知识点 frontmatter 自动重建，请勿手改。\n\n"
     header = "| " + " | ".join(_COLS) + " |\n"
     sep = "|" + "|".join(["---"] * len(_COLS)) + "|\n"
     body = "".join(
-        "| " + " | ".join(r[c] for c in _COLS) + " |\n" for r in rows
+        "| " + " | ".join(_sanitize_cell(r[c]) for c in _COLS) + " |\n" for r in rows
     )
     return head + note + header + sep + body
 
@@ -157,7 +162,10 @@ def _memory_paths(kb: Path):
         return set()
     paths = set()
     for line in mem.read_text(encoding="utf-8").splitlines():
-        if not line.startswith("| ") or "---" in line or "| 标题 |" in line:
+        if not line.startswith("| ") or "| 标题 |" in line:
+            continue
+        # Precise separator row: only pipes, dashes, and spaces
+        if set(line.strip()) <= {"|", "-", " "}:
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
         if len(cells) == len(_COLS):

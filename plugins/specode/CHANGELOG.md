@@ -4,6 +4,24 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 
 ## Unreleased
 
+## 5.1.1 (2026-06-30) — 试跑验证修复（distill 时机 / nav 去重 / 检索相关性）
+
+承接 5.1.0，用真实项目（ops）多轮试跑验证后修三处。
+
+### Added
+
+- **`resolve_root.py design-unchecked --spec <dir>`**（+3 hermetic 测试）：数 `design.md` 里未勾选的 `- [ ]` Task —— exit 0=已执行完 / 2=有未勾选 / 3=无 design.md。distill 用它在沉淀前判断 spec 是否执行完。
+
+### Changed / Fixed
+
+- **distill 防悬空指针（F1）**：沉淀前跑 `design-unchecked`，spec 未执行完则 `AskUserQuestion` 告警（知识点可能引用未落地代码）；SKILL / `commands/distill.md` / `breakdown-heuristics.md` 补「执行 + 验收后再 distill」时机指引；`retrieval.md` 免责句补「指针可能指向计划中 / 已重构代码」。
+- **distill navigation 去重（F7）**：写 navigation 点**前先 `Read` MEMORY** 按 tags+标题 比对，命中则合并而非新建（`memory-rebuild` 索引层不去重）；NO-recall 不变量补「读 MEMORY 仅用于去重比对」例外说明。
+- **retrieval 相关性（F9）**：Tier-1 强调 `tags`/`描述` 命中只是候选，需判断改动类型 / 语义是否真适用，不适用不注入（避免退化成 v3 噪声注入）。
+
+### Notes
+
+- **F2（非 git / monorepo 的 project_root）评估为 by design 不修**：specode 不依赖 git，`project_root` 以 requirements.md frontmatter 里用户确认过的值为准，git-toplevel 只是默认建议值。
+
 ## 5.1.0 (2026-06-30) — 重新引入经验检索注入（定位用·非事实用）
 
 把 v4.0.0 拔掉的「检索注入」以全新路线重新引入：KB 是**定位用、非事实用**——注入指针（文件路径 + 调用链），模型仍以真实代码为唯一事实，只缩短定位延迟。

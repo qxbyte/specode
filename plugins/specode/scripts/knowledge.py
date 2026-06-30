@@ -42,6 +42,98 @@ def _atomic_write_text(path: Path, text: str) -> None:
             os.remove(tmp)
 
 
+# --- frontmatter helpers (mirror resolve_root.py, stdlib-only) ---
+
+def _split_frontmatter(text: str):
+    if not text.startswith("---"):
+        return None
+    lines = text.split("\n")
+    if lines[0].strip() != "---":
+        return None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return lines[1:i]
+    return None
+
+
+def _fm_get(fm_lines, key: str):
+    prefix = key + ":"
+    for line in fm_lines:
+        if line.startswith(prefix):
+            val = line[len(prefix):].strip()
+            if len(val) >= 2 and val[0] == val[-1] and val[0] in {'"', "'"}:
+                val = val[1:-1]
+            return val
+    return None
+
+
+def _fm_get_tags(fm_lines):
+    raw = _fm_get(fm_lines, "tags")
+    if not raw:
+        return []
+    raw = raw.strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [t.strip() for t in raw.split(",") if t.strip()]
+
+
+def _iter_docs(kb: Path):
+    for p in sorted(kb.rglob("*.md")):
+        if p.name == "MEMORY.md":
+            continue
+        yield p
+
+
+def _parse_doc(p: Path, kb: Path):
+    """Return a row dict or None if malformed (missing 标题/类型)."""
+    fm = _split_frontmatter(p.read_text(encoding="utf-8"))
+    if fm is None:
+        return None
+    title = _fm_get(fm, "标题")
+    ktype = _fm_get(fm, "类型")
+    if not title or not ktype:
+        return None
+    return {
+        "标题": title,
+        "类型": ktype,
+        "描述": _fm_get(fm, "描述") or "",
+        "来源": _fm_get(fm, "来源") or "",
+        "路径": p.relative_to(kb).as_posix(),
+        "tags": ",".join(_fm_get_tags(fm)),
+    }
+
+
+_COLS = ["标题", "类型", "描述", "来源", "路径", "tags"]
+
+
+def _render_memory(rows) -> str:
+    head = "# Knowledge MEMORY（本项目知识点索引）\n\n"
+    note = "> 由 `knowledge.py memory-rebuild` 从各知识点 frontmatter 自动重建，请勿手改。\n\n"
+    header = "| " + " | ".join(_COLS) + " |\n"
+    sep = "|" + "|".join(["---"] * len(_COLS)) + "|\n"
+    body = "".join(
+        "| " + " | ".join(r[c] for c in _COLS) + " |\n" for r in rows
+    )
+    return head + note + header + sep + body
+
+
+def cmd_memory_rebuild(args) -> int:
+    kb = Path(args.kb)
+    if not kb.is_dir():
+        sys.stderr.write(f"knowledge: knowledge-base 目录不存在：{kb}\n")
+        return 1
+    rows, skipped = [], []
+    for p in _iter_docs(kb):
+        row = _parse_doc(p, kb)
+        (rows if row else skipped).append(row if row else p)
+    rows.sort(key=lambda r: (r["类型"], r["路径"]))
+    _atomic_write_text(kb / "MEMORY.md", _render_memory(rows))
+    for p in skipped:
+        sys.stderr.write(f"knowledge: 跳过缺 标题/类型 的文档：{p}\n")
+    sys.stdout.write(f"knowledge: 已重建 MEMORY（{len(rows)} 条，跳过 {len(skipped)}）\n")
+    return 0
+
+
 def cmd_ensure_gitignore(args) -> int:
     root = Path(args.project_root)
     if not root.is_dir():
@@ -65,6 +157,10 @@ def main(argv=None) -> int:
     eg = sub.add_parser("ensure-gitignore")
     eg.add_argument("--project-root", required=True)
     eg.set_defaults(func=cmd_ensure_gitignore)
+
+    mr = sub.add_parser("memory-rebuild")
+    mr.add_argument("--kb", required=True)
+    mr.set_defaults(func=cmd_memory_rebuild)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -4,6 +4,61 @@ from __future__ import annotations
 from pathlib import Path
 
 
+def _write_doc(kb: Path, rel: str, *, 标题, 类型, 来源="", tags=None, 描述=""):
+    p = kb / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    taglist = "[" + ", ".join(tags or []) + "]"
+    fm = (
+        "---\n"
+        f"标题: {标题}\n"
+        f"类型: {类型}\n"
+        f"来源: {来源}\n"
+        f"tags: {taglist}\n"
+        f"描述: {描述}\n"
+        "---\n\n# body\n"
+    )
+    p.write_text(fm, encoding="utf-8")
+
+
+def test_memory_rebuild_two_docs_sorted(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "navigation/list-locate.md", 标题="查询列表定位路径",
+               类型="navigation", 来源="需求2", tags=["查询列表", "B页面"], 描述="列表页定位套路")
+    _write_doc(kb, "cases/a-page-bank-mask.md", 标题="A页面银行账号脱敏改法",
+               类型="case", 来源="需求1", tags=["银行账号", "脱敏", "A页面"], 描述="前端列+后端DTO脱敏")
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
+    assert "| 标题 | 类型 | 描述 | 来源 | 路径 | tags |" in mem
+    # case 排在 navigation 前（类型升序），路径用相对 kb 的 POSIX
+    case_idx = mem.index("cases/a-page-bank-mask.md")
+    nav_idx = mem.index("navigation/list-locate.md")
+    assert case_idx < nav_idx
+    assert "银行账号,脱敏,A页面" in mem  # tags 以逗号连接
+
+
+def test_memory_rebuild_excludes_memory_itself(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/x.md", 标题="X", 类型="case")
+    (kb / "MEMORY.md").write_text("stale\n", encoding="utf-8")
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
+    assert "MEMORY.md" not in mem  # 不索引自身
+    assert "cases/x.md" in mem
+
+
+def test_memory_rebuild_skips_malformed(run_script, tmp_path: Path):
+    kb = tmp_path / "knowledge-base"
+    _write_doc(kb, "cases/good.md", 标题="Good", 类型="case")
+    (kb / "cases" / "bad.md").write_text("no frontmatter here\n", encoding="utf-8")
+    res = run_script("knowledge.py", "memory-rebuild", "--kb", str(kb))
+    assert res.returncode == 0, res.stderr
+    mem = (kb / "MEMORY.md").read_text(encoding="utf-8")
+    assert "cases/good.md" in mem
+    assert "cases/bad.md" not in mem
+
+
 def test_ensure_gitignore_creates_file(run_script, tmp_path: Path):
     proj = tmp_path / "proj"
     proj.mkdir()

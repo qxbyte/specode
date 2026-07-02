@@ -4,6 +4,8 @@ obsidian-wiki 是维护 Obsidian LLM-Wiki 的多 agent 插件（从独立 skills
 
 ## Unreleased
 
+## 2.0.1 (2026-07-02) — 清理 spec-distill 剥离后的文档残留
+
 ### Fixed — 清理 2.0.0 spec-distill 剥离后的文档残留
 
 2.0.0 删除了 `skills/spec-distill/`（含 `kn_scan.py`），但大量文档没同步：

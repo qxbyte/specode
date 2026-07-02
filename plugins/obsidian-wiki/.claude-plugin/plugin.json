@@ -1,12 +1,19 @@
 {
   "name": "obsidian-wiki",
-  "version": "2.0.0",
-  "description": "Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / per-dir READMEs / partition pages), content curation (lint/ingest/curate), and a unified orchestrator. Generic code + per-vault .wiki/config.json, zero hardcoded structure. v2.0 BREAKING: spec-distill has been extracted out of this plugin into specode (as distill sub-skill); obsidian-wiki now focuses purely on vault maintenance.",
+  "version": "2.0.1",
+  "description": "Maintain an Obsidian LLM-Wiki with three skills: deterministic structure layer (wiki-struct: Home tree / per-dir READMEs / partition pages), content curation (wiki-curate: ingest/curate/lint), and a unified orchestrator (wiki-orchestrate). Generic code + per-vault config in the home-dir registry ~/.config/obsidian-wiki/ (fallback: <vault>/.wiki/config.json), zero hardcoded structure. **v2.0.1**: docs cleanup — purged all stale spec-distill references left over from the v2.0 extraction (README/AGENTS no longer advertise four skills; the orchestrator no longer invokes the removed kn_scan.py). **v2.0.0 BREAKING**: spec-distill was extracted out of this plugin into specode's /specode:distill; obsidian-wiki now focuses purely on vault maintenance.",
   "author": {
     "name": "xueqiang",
     "email": "xueqiang361@gmail.com"
   },
   "homepage": "https://github.com/qxbyte/pluginhub",
   "license": "MIT",
-  "keywords": ["obsidian", "llm-wiki", "knowledge-base", "notes", "curation", "workflow"]
+  "keywords": [
+    "obsidian",
+    "llm-wiki",
+    "knowledge-base",
+    "notes",
+    "curation",
+    "workflow"
+  ]
 }

@@ -1,0 +1,12 @@
+{
+  "name": "ragkit",
+  "version": "0.1.0",
+  "description": "Standalone knowledge-base RAG: chunk + embed + multi-channel recall (vector/lexical/metadata, RRF-fused) over distill-style knowledge-base/ directories.",
+  "author": {
+    "name": "xueqiang",
+    "email": "xueqiang361@gmail.com"
+  },
+  "homepage": "https://github.com/qxbyte/pluginhub",
+  "license": "MIT",
+  "keywords": ["rag", "knowledge-base", "vector-search", "embedding"]
+}

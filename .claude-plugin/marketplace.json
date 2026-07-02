@@ -35,6 +35,16 @@
       "repository": "https://github.com/qxbyte/pluginhub",
       "license": "MIT",
       "keywords": ["obsidian", "llm-wiki", "knowledge-base", "notes", "curation"]
+    },
+    {
+      "name": "ragkit",
+      "source": "./plugins/ragkit",
+      "version": "0.1.0",
+      "description": "Standalone knowledge-base RAG plugin (vector/lexical/metadata multi-channel recall).",
+      "homepage": "https://github.com/qxbyte/pluginhub",
+      "repository": "https://github.com/qxbyte/pluginhub",
+      "license": "MIT",
+      "keywords": ["rag", "knowledge-base", "vector-search", "embedding"]
     }
   ]
 }

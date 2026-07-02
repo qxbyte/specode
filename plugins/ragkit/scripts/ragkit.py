@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from rag import backend  # noqa: E402
+from rag import backend, chunker, store  # noqa: E402
 from rag.pipeline import DEFAULT_TOP, query_pipeline  # noqa: E402
 
 _VECTOR_NOTES = {
@@ -63,6 +63,89 @@ def _render_cards(out: dict) -> str:
     return "\n".join(lines)
 
 
+def cmd_embed(args: argparse.Namespace) -> int:
+    import numpy as np
+
+    kb = Path(args.kb).resolve()
+    if not kb.is_dir():
+        print(f"RagKit：知识库目录不存在：{kb}（fresh 项目属正常，先产出 knowledge-base 再来）")
+        return 1
+    chunks = chunker.chunk_kb(kb)
+    if not chunks:
+        n_md = sum(len(list((kb / s).glob("*.md"))) for s in ("cases", "navigation") if (kb / s).is_dir())
+        if n_md == 0:
+            print(f"RagKit：{kb} 下没有任何 cases/navigation md 文件，0 chunks（fresh 项目属正常）。")
+        else:
+            print(f"RagKit：发现 {n_md} 个 md 但切出 0 chunks——请检查文档是否有正文/标题结构。")
+        return 1
+
+    cfg = backend.load_config(kb)
+    kind, opts = backend.resolve(cfg)
+    if kind == "none":
+        store.save_index(kb, chunks, None, "")
+        print(f"RagKit：已构建词汇/元数据索引（{len(chunks)} chunks，无向量）。")
+        print(backend.no_backend_block())
+        return backend.EXIT_NO_BACKEND
+
+    mid = backend.model_id(kind, opts)
+    old_hashes = store.load_manifest(kb).get("hashes", {})
+    old_chunks = store.load_chunks(kb)
+    old_vecs = store.load_vectors(kb)
+    old_row = {c["chunk_id"]: i for i, c in enumerate(old_chunks)}
+    can_reuse = (not args.rebuild and old_vecs is not None
+                 and store.load_model_id(kb) == mid and len(old_chunks) == len(old_vecs))
+
+    todo = [c for c in chunks
+            if not (can_reuse and old_hashes.get(c.chunk_id) == c.text_hash and c.chunk_id in old_row)]
+    new_vecs = backend.encode(kind, opts, [c.text for c in todo]) if todo else None
+    dim = (new_vecs.shape[1] if new_vecs is not None else old_vecs.shape[1])
+    vectors = np.zeros((len(chunks), dim), dtype="float32")
+    todo_ids = {c.chunk_id for c in todo}
+    j = 0
+    for i, c in enumerate(chunks):
+        if c.chunk_id in todo_ids:
+            vectors[i] = new_vecs[j]
+            j += 1
+        else:
+            vectors[i] = old_vecs[old_row[c.chunk_id]]
+    store.save_index(kb, chunks, vectors, mid)
+    print(f"RagKit embed 完成：{len(chunks)} chunks（new {len(todo)} / reused {len(chunks) - len(todo)}），backend = {mid}")
+    return 0
+
+
+def cmd_backend(args: argparse.Namespace) -> int:
+    kb = Path(args.kb).resolve()
+    if args.action == "set":
+        preset = backend.PRESETS.get(args.provider)
+        if preset is None:
+            print(f"未知 provider：{args.provider}。可选：{', '.join(backend.PRESETS)}")
+            return 1
+        cloud = {"provider": args.provider,
+                 "base_url": args.base_url or preset["base_url"],
+                 "model": args.model or preset["model"],
+                 "key_env": args.key_env or preset["key_env"]}
+        if not cloud["base_url"]:
+            print("azure 需要显式 --base-url")
+            return 1
+        cfg = backend.load_config(kb)
+        cfg["cloud"] = cloud
+        backend.save_config(kb, cfg)
+        print(json.dumps(cloud, ensure_ascii=False))
+        print(f"已写入 {backend.config_path(kb)}。请确保环境变量 {cloud['key_env']} 已设置（密钥不落盘）。")
+        return 0
+    if args.action == "show":
+        print(json.dumps(backend.load_config(kb), ensure_ascii=False, indent=2))
+        return 0
+    if args.action == "reset":
+        cfg = backend.load_config(kb)
+        cfg.pop("cloud", None)
+        cfg.pop("backend", None)
+        backend.save_config(kb, cfg)
+        print("已清除后端配置，回到默认解析顺序（本地优先）。")
+        return 0
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ragkit")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -74,6 +157,20 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--json", action="store_true")
     q.add_argument("--channels", default="")
     q.set_defaults(func=cmd_query)
+
+    e = sub.add_parser("embed", help="chunk + vectorize knowledge-base")
+    e.add_argument("--kb", default="./knowledge-base")
+    e.add_argument("--rebuild", action="store_true")
+    e.set_defaults(func=cmd_embed)
+
+    b = sub.add_parser("backend", help="cloud backend config")
+    b.add_argument("action", choices=["set", "show", "reset"])
+    b.add_argument("--kb", default="./knowledge-base")
+    b.add_argument("--provider", default="")
+    b.add_argument("--model", default="")
+    b.add_argument("--base-url", default="")
+    b.add_argument("--key-env", default="")
+    b.set_defaults(func=cmd_backend)
     return p
 
 

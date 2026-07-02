@@ -60,9 +60,11 @@ def test_dummy_encode_similarity_ordering():
 
 
 class _Handler(BaseHTTPRequestHandler):
+    seen_auth: list = []
+
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-        assert self.headers["Authorization"] == "Bearer sk-test"
+        _Handler.seen_auth.append(self.headers.get("Authorization"))
         data = [{"index": i, "embedding": [1.0, float(i)]} for i in range(len(body["input"]))]
         payload = json.dumps({"data": data}).encode("utf-8")
         self.send_response(200)
@@ -75,6 +77,7 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def test_cloud_encode_openai_compat(monkeypatch):
+    _Handler.seen_auth.clear()
     server = HTTPServer(("127.0.0.1", 0), _Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setenv("TEST_RAGKIT_KEY", "sk-test")
@@ -83,4 +86,19 @@ def test_cloud_encode_openai_compat(monkeypatch):
     vecs = backend.encode("cloud", opts, ["a", "b"])
     server.shutdown()
     assert vecs.shape == (2, 2)
+    assert np.allclose(np.linalg.norm(vecs, axis=1), 1.0, atol=1e-5)
+    assert set(_Handler.seen_auth) == {"Bearer sk-test"}
+
+
+def test_cloud_encode_batching_and_index_order(monkeypatch):
+    _Handler.seen_auth.clear()
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    monkeypatch.setenv("TEST_RAGKIT_KEY", "sk-test")
+    opts = {"base_url": f"http://127.0.0.1:{server.server_port}",
+            "model": "m", "key_env": "TEST_RAGKIT_KEY"}
+    texts = [f"text-{i}" for i in range(17)]   # crosses the _BATCH=16 boundary
+    vecs = backend.encode("cloud", opts, texts)
+    server.shutdown()
+    assert vecs.shape == (17, 2)
     assert np.allclose(np.linalg.norm(vecs, axis=1), 1.0, atol=1e-5)

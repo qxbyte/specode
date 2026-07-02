@@ -1,4 +1,4 @@
-# specode 经验检索注入（两级 gated，模型驱动 prose）
+# specode 经验检索注入（Tier-0 Gate + 两级 gated，模型驱动 prose）
 
 > 本文件是 requirements / design 两个 phase 的检索规格。检索智能全在这里的 prose，
 > **运行时无新增脚本**：读 `MEMORY.md` 用 `Read` 工具即可（它是 `<project_root>/knowledge-base/` 下的本地文件）。
@@ -21,7 +21,7 @@ KB 是「**定位用，非事实用**」：
 1. 经 `resolve_root.py read-project-root --spec <specsRoot>/<slug>` 取 `project_root`。
 2. 看 `<project_root>/knowledge-base/MEMORY.md` 是否存在。
    - **不存在**（fresh 项目 / 还没 distill 过）→ **静默跳过整个检索**，不报错、不写空段，正常进入需求/设计。
-   - 存在 → 进入两级 gated。
+   - 存在 → 进入下方检索流程（先尝试 Tier-0 Gate，不适用时再走两级 gated）。
 
 ## Tier-0 Gate：RagKit（可选加速路，先于 Tier-1）
 
@@ -35,6 +35,7 @@ KB 是「**定位用，非事实用**」：
 - 返回的是定位卡片（指针）。对每条做语义取舍——tags/词面命中 ≠ 相关（同 Tier-1 纪律）；采纳的条目按 Tier-2 方式 `Read` 原文并跳到真实代码。
 - 注入仍用下方「注入格式」的「参考定位（非事实来源）」段；命中并注入后**跳过 Tier-1/2**。
 - RagKit 输出的降级/提示信息（╭─ RagKit ─╮ 块）原样转述给用户。
+- 若多轮检索后确认无相关知识 → 退出本节，继续下方 Tier-1/2 流程。
 
 本 gate 与 RagKit **零依赖**：specode 不读其内部实现；RagKit 缺席时本节整体不生效（与 task-swarm 的 zero-import 模式同构）。
 

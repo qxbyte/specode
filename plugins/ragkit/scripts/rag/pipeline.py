@@ -18,6 +18,7 @@ def query_pipeline(kb_root: Path, query: str, top: int = DEFAULT_TOP,
                  "vector_channel": "skipped", "index_stale": False, "results": []}
     if not chunks:
         out["vector_channel"] = "no_index"
+        out["focus"] = extract_focus(query)
         return out
     out["index_stale"] = index_stale(kb_root)
     focus = extract_focus(query)

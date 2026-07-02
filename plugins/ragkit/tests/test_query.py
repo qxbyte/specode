@@ -52,3 +52,8 @@ def test_cli_query_markdown_card(kb, run_cli):
     assert "RagKit 召回" in res.stdout
     assert "cases/114371-mask-rule.md" in res.stdout
     assert "非事实来源" in res.stdout
+
+
+def test_cli_query_unknown_channel_returns_2(kb, run_cli):
+    res = run_cli("query", "x", "--kb", str(kb), "--channels", "lexcial")
+    assert res.returncode == 2

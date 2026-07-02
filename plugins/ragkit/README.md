@@ -76,7 +76,7 @@ uv run plugins/ragkit/scripts/ragkit.py embed --kb <知识库路径> [--rebuild]
 
 - 默认**增量**：只重嵌变更 chunk；模型/后端切换或索引损坏时加 `--rebuild` 全量重建。
 - 索引写入 `<知识库路径>/.ragkit/`；`knowledge-base/.gitignore` 应包含 `.ragkit/`（embed 自动写入）。
-- **退出码 3** = 无向量后端：词汇 + 元数据索引已建好，`query` 可降级使用；stderr 的 ╭─ RagKit ─╮ 提示块**原样转述给用户**（不改写、不省略），含本地模型安装命令与第三方配置步骤。
+- **退出码 3** = 无向量后端：词汇 + 元数据索引已建好，`query` 可降级使用；stdout 的 ╭─ RagKit ─╮ 提示块**原样转述给用户**（不改写、不省略），含本地模型安装命令与第三方配置步骤。
 
 **插件调用**（Claude Code / CodeBuddy）：
 
@@ -232,7 +232,7 @@ knowledge-base/
     chunks.json
     vectors.npy
     manifest.json
-    model_id
+    model_id.txt
 ```
 
 ## 与 specode 的集成
@@ -248,6 +248,7 @@ knowledge-base/
 
 | 退出码 | 含义 |
 | --- | --- |
-| 0 | 成功 |
-| 1 | 参数错误或知识库目录不存在 |
+| 0 | 成功（含 query/status 降级场景） |
+| 1 | embed：知识库目录不存在或 0 chunks |
+| 2 | argparse 参数错误（argparse 默认行为） |
 | 3 | embed 成功但无向量后端（词汇/元数据索引已建好） |

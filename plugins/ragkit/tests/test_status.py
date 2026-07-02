@@ -34,4 +34,13 @@ def test_status_detects_drift_and_staleness(kb, run_cli):
 def test_status_no_backend_prints_block(kb, run_cli):
     res = run_cli("status", "--kb", str(kb))
     assert res.returncode == 0
-    assert "未检测到可用的向量后端" in res.stdout
+    assert "未检测到可用的向量后端" in res.stderr
+
+
+def test_status_json_is_pure_json_even_without_backend(kb, run_cli):
+    import json as _json
+    res = run_cli("status", "--kb", str(kb), "--json")
+    assert res.returncode == 0
+    payload = _json.loads(res.stdout)   # must not raise
+    assert payload["backend_resolved"] == "none"
+    assert "未检测到可用的向量后端" in res.stderr

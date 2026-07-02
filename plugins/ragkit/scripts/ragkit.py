@@ -31,6 +31,11 @@ _VECTOR_NOTES = {
 def cmd_query(args: argparse.Namespace) -> int:
     kb = Path(args.kb).resolve()
     channels_filter = args.channels.split(",") if args.channels else None
+    if channels_filter:
+        unknown = set(channels_filter) - {"lexical", "metadata", "vector"}
+        if unknown:
+            print(f"未知通道: {', '.join(sorted(unknown))}（可选 lexical/metadata/vector）", file=sys.stderr)
+            return 2
     out = query_pipeline(kb, args.text, top=args.top, channels_filter=channels_filter)
     note = _VECTOR_NOTES.get(out["vector_channel"], "")
     if note:
@@ -145,7 +150,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         for k, v in s.items():
             print(f"{k}: {v}")
     if kind == "none":
-        print(backend.no_backend_block())
+        print(backend.no_backend_block(), file=sys.stderr)
     return 0
 
 
@@ -157,6 +162,11 @@ def cmd_eval(args: argparse.Namespace) -> int:
         Path(__file__).resolve().parent / "rag" / "evalset.json")
     evalset = json.loads(evalset_path.read_text(encoding="utf-8"))
     channels_filter = args.channels.split(",") if args.channels else None
+    if channels_filter:
+        unknown = set(channels_filter) - {"lexical", "metadata", "vector"}
+        if unknown:
+            print(f"未知通道: {', '.join(sorted(unknown))}（可选 lexical/metadata/vector）", file=sys.stderr)
+            return 2
     report = run_evalset(kb, evalset, top=args.top, channels_filter=channels_filter)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=1))
@@ -186,6 +196,8 @@ def cmd_backend(args: argparse.Namespace) -> int:
         cfg = backend.load_config(kb)
         cfg["cloud"] = cloud
         backend.save_config(kb, cfg)
+        if kb.is_dir():
+            store.ensure_gitignore(kb)
         print(json.dumps(cloud, ensure_ascii=False))
         print(f"已写入 {backend.config_path(kb)}。请确保环境变量 {cloud['key_env']} 已设置（密钥不落盘）。")
         return 0

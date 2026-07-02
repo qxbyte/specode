@@ -1,9 +1,9 @@
 # 子 skill 能力说明
 
-供 `wiki-orchestrate` 编排时参考：三个子 skill 各自能干什么、怎么调、读写边界、红线、
+供 `wiki-orchestrate` 编排时参考：两个子 skill 各自能干什么、怎么调、读写边界、红线、
 适合在什么体检信号下触发。
 
-> **基调（重要）**：本文是**能力说明**，不是限制。三个 skill 的**所有命令对模型全部开放**；
+> **基调（重要）**：本文是**能力说明**，不是限制。两个 skill 的**所有命令对模型全部开放**；
 > "何时倾向触发"只是建议。是否调用、调哪个命令、用什么参数、是否跳过——**最终由模型按当次
 > 体检结果按需判断**。下文所有相对路径以 vault 根为基准；调脚本时请传 `--vault "<vault>"`。
 
@@ -26,32 +26,14 @@
 
 ---
 
-## 2. spec-distill —— 知识沉淀
+## 2. wiki-curate —— 内容向策展
 
 | 字段 | 内容 |
 |---|---|
-| **职责** | 把 SpecIn 里 specode 生成的需求文档**逐项目**提炼成细粒度知识文档，落到 `10-Work/知识库/<系统>/`，并维护该系统 `MEMORY.md`。替换遗留 `wiki-curate sync-specs` 与 Windows `kn-indexer`。 |
-| **脚本入口** | `python3 "$WIKI/skills/spec-distill/scripts/kn_scan.py" scan [--source <相对路径>] --vault "<vault>"`（增量检测，只读） |
-| **LLM 流程** | `sync` **不是**脚本子命令，是 SKILL.md 编排的 6 步交互流程：①AskUserQuestion 选系统归属 → ②读全项目 → ③AskUserQuestion 提议知识点拆分（不可跳过）→ ④逐篇写深度知识文档 → ⑤更新 MEMORY（只追加）→ ⑥写 wiki-log。 |
-| **读 / 写** | 读：`SpecIn/`（只读）、各系统 `MEMORY.md`。写：**仅** `10-Work/知识库/<系统>/`（新建知识文档 + 更新 MEMORY）。 |
-| **报告文件** | `00-Index/_system/spec-distill-report.md`（待沉淀项目 / 已覆盖需求号 / 系统 计数） |
-| **红线** | SpecIn 永不修改/移动/重命名；`10-Work/` 仅 `知识库/` 可写，其余子目录只读；敏感信息（账号/token/密钥/人员）AskUserQuestion 拦截；批量写前 tar 备份。 |
-| **何时倾向触发** | kn_scan 报 **待沉淀项目 > 0**。逐项目处理、用户控节奏，**不批量自动**。 |
-
-调用建议：先 `scan`；对每个待沉淀项目按 SKILL.md 6 步走。源目录默认
-`<SpecInRoot>/windows-Public/specs/`，可用 `--source` 指定其它 host 的 specs 路径。
-跳过个人 / 测试项目。
-
----
-
-## 3. wiki-curate —— 内容向策展
-
-| 字段 | 内容 |
-|---|---|
-| **职责** | 内容向策展：ingest / curate / lint（方法论伞）。结构层（Home 树/分区页/README/地图）见 wiki-struct；SpecIn 知识沉淀已迁移到 spec-distill。**专注内容笔记质量，不碰受管块、不写 spec-distill 产物。** |
+| **职责** | 内容向策展：ingest / curate / lint（方法论伞）。结构层（Home 树/分区页/README/地图）见 wiki-struct；SpecIn 知识沉淀已迁移到 specode 的 `/specode:distill`（v2.0.0 剥离）。**专注内容笔记质量，不碰受管块、不写遗留知识库产物。** |
 | **脚本入口** | `python3 "$WIKI/skills/wiki-curate/scripts/lint.py" lint --vault "<vault>"`（确定性内容体检：缺「用途」段 / 重复 basename / 孤儿无反链 / frontmatter 缺字段）。`scan` 与 `lint` 流程都内部调用它。 |
 | **LLM 流程** | `ingest <path>`（吸纳单篇：摘要/挂索引/补双链/记日志，完成后提示跑 `wiki-struct apply`）；`curate`（补缺失「用途」段、英文说明性标签改中文、在相关内容笔记正文补 `[[..]]` 修复孤儿双链；**不碰受管块**）；`lint`（跑 lint.py + LLM 判断过时/矛盾）。 |
-| **读 / 写** | 读：全 vault。写：Wiki 区内容笔记（`01-Concepts/`~`08-Sources/`、`09-Journal/` 等正文）。**不写 wiki-struct 受管块，不写 spec-distill 的 `10-Work/知识库/` 产物。** |
+| **读 / 写** | 读：全 vault。写：Wiki 区内容笔记（`01-Concepts/`~`08-Sources/`、`09-Journal/` 等正文）。**不写 wiki-struct 受管块，不写遗留的 `10-Work/知识库/` 产物（历史 spec-distill 产物，保留只读）。** |
 | **报告文件** | `00-Index/_system/curate-report.md`（scan）、`00-Index/_system/lint-report.md`（lint）。 |
 | **红线** | 绝不移动/重命名/删除 `07-Ideas/`、`10-Work/`、`SpecIn/` 原文；敏感子目录只路径级；破坏性动作前 AskUserQuestion；批量前备份。**坏链与结构漂移不归它管——见 `wiki-struct check`。** |
 | **何时倾向触发** | 策展巡查发现 **孤儿页**、**缺「用途」段**、**收件箱（99-Inbox/、Clippings/）积压**、或需要**内容健康体检**。**通常作为收尾阶段**。 |
@@ -63,6 +45,6 @@
 
 ## 共用产物与约定
 
-- 三者都向 `<vault>/<system_dir>/wiki-log.md`（`system_dir` 来自该库配置（家目录注册表 `configs/<名>.json`，回退 `<vault>/.wiki/config.json`），默认 `00-Index/_system`）追加 append-only 操作日志（编排入口也写）。
-- 三者报告都落在 `<vault>/<system_dir>/` 下，编排入口只读汇总，不覆盖它们。
-- 三者脚本 `--vault` **必填**（代码在插件 cache、不从位置推断 vault）；结构配置由家目录注册表 `~/.config/obsidian-wiki/configs/<名>.json` 给（未注册则回退 `<vault>/.wiki/config.json`）。
+- 两者都向 `<vault>/<system_dir>/wiki-log.md`（`system_dir` 来自该库配置（家目录注册表 `configs/<名>.json`，回退 `<vault>/.wiki/config.json`），默认 `00-Index/_system`）追加 append-only 操作日志（编排入口也写）。
+- 两者报告都落在 `<vault>/<system_dir>/` 下，编排入口只读汇总，不覆盖它们。
+- 两者脚本 `--vault` **必填**（代码在插件 cache、不从位置推断 vault）；结构配置由家目录注册表 `~/.config/obsidian-wiki/configs/<名>.json` 给（未注册则回退 `<vault>/.wiki/config.json`）。

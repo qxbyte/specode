@@ -47,7 +47,7 @@
 
 ## `10-Work/知识库/` 的写入归属
 
-对 `10-Work/知识库/` 的写入由 `/spec-distill` 负责（见 `obsidian-wiki/spec-distill/`）；wiki-curate 不写该子树。
+`10-Work/知识库/` 是已剥离的 spec-distill（v2.0.0 迁往 specode 的 `/specode:distill`）的遗留产物，现无维护方；wiki-curate 不写该子树。
 
 `00-Index/` 的 index/分区页/Home 是 wiki-struct 受管块，wiki-curate 不手改。
 

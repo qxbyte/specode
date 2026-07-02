@@ -3,23 +3,24 @@
 维护 Obsidian **LLM-Wiki** 的一套 skill。代码通用、**零结构硬编码**：每个库的结构配置存在**家目录注册表**
 `~/.config/obsidian-wiki/configs/<名>.json`（按 `--vault` 路径解析；未注册则回退库内 `<vault>/.wiki/config.json`）。数据留在 vault，代码随插件安装，配置在家目录。
 
-> **给 Claude Code / Copilot CLI / CodeBuddy**：四个 skill 在 `skills/` 下，宿主会自动发现，
-> 直接用触发语（`/wiki-struct`、`/spec-distill`、`/wiki-curate`、`/wiki-orchestrate` 或「整理笔记库」）即可。
+> **给 Claude Code / Copilot CLI / CodeBuddy**：三个 skill 在 `skills/` 下，宿主会自动发现，
+> 直接用触发语（`/wiki-struct`、`/wiki-curate`、`/wiki-orchestrate` 或「整理笔记库」）即可。
 > 各 skill 的完整流程、红线见对应 `skills/<name>/SKILL.md`。
 >
 > **给 Codex CLI（无 SKILL.md 斜杠系统）**：本文件即入口。按下文直接调脚本；需要 LLM 流程
-> （`sync` 沉淀、`curate` 策展、`init` 插 marker、编排）时，**读对应 `skills/<name>/SKILL.md` 内联执行其步骤**。
+> （`curate` 策展、`init` 插 marker、编排）时，**读对应 `skills/<name>/SKILL.md` 内联执行其步骤**。
 
-## 四个 skill
+## 三个 skill
 
 | skill | 职责 | 确定性脚本（只读体检 / 重写受管块） |
 |---|---|---|
 | `wiki-struct` | 结构层：Home 总览树 / 各级 README / 分区页的受管块再生成 | `skills/wiki-struct/scripts/struct_gen.py check\|apply` |
-| `spec-distill` | 知识沉淀：SpecIn 需求文档逐项目提炼成知识库 + 维护 MEMORY | `skills/spec-distill/scripts/kn_scan.py scan` |
 | `wiki-curate` | 内容策展：ingest / curate / lint（写作规范与红线） | `skills/wiki-curate/scripts/lint.py lint` |
-| `wiki-orchestrate` | 统一编排：只读体检 → 计划 → 按「结构→沉淀→策展」调用上面三个 | 无脚本（playbook） |
+| `wiki-orchestrate` | 统一编排：只读体检 → 计划 → 按「结构→策展」调用上面两个 | 无脚本（playbook） |
 
-`lib/wikicommon.py` 是三脚本共享库（脚本自带相对 import，无需配置）。
+`lib/wikicommon.py` 是各脚本共享库（脚本自带相对 import，无需配置）。
+
+> spec-distill（SpecIn 需求 → vault 知识库沉淀）已于 v2.0.0 剥离，能力迁移到 specode 插件的 `/specode:distill <slug>`（写到各项目自己的 `knowledge-base/`）。
 
 ## 跑脚本
 
@@ -31,11 +32,10 @@ WIKI="${CLAUDE_PLUGIN_ROOT:-${CODEBUDDY_PLUGIN_ROOT:-}}"; [ -d "$WIKI/skills/wik
 
 V="/path/to/your/vault"
 python3 "$WIKI/skills/wiki-struct/scripts/struct_gen.py" check --vault "$V"
-python3 "$WIKI/skills/spec-distill/scripts/kn_scan.py"   scan  --vault "$V"
 python3 "$WIKI/skills/wiki-curate/scripts/lint.py"       lint  --vault "$V"
 ```
 
-三者皆只读，仅向 `<vault>/<system_dir>/`（默认 `00-Index/_system/`）写体检报告。
+两者皆只读，仅向 `<vault>/<system_dir>/`（默认 `00-Index/_system/`）写体检报告。
 
 ## 首次配置（家目录多库注册表）
 

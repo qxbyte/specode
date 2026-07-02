@@ -1,7 +1,10 @@
 # Contributing
 
-Project-level conventions for changes under `plugins/specode/`. Read
-this before opening a PR or cutting a release.
+Project-level conventions for changes under `plugins/`. The sections
+below use **specode** as the concrete example; **task-swarm** follows
+the same stdlib/CLI/test conventions, and **obsidian-wiki** documents
+itself in its own `README.md` / `AGENTS.md`. Each plugin releases
+independently. Read this before opening a PR or cutting a release.
 
 ## Runtime is stdlib-only
 
@@ -53,11 +56,13 @@ Run the suite from the repo root:
 python3 -m pytest plugins/specode/tests/ -v
 ```
 
-The lite suite currently covers `resolve_root.py`: 3-tier specsRoot
+The suite currently covers `resolve_root.py` (3-tier specsRoot
 resolution priority, `set-root` persistence + absolute-path rejection,
-and `list-specs` behavior. There is **no** state machine, lock,
-selector-drift, or template-lint test anymore — those mechanisms were
-removed in 1.0.0.
+`list-specs` behavior, project_root read/write, autonomous-mode
+defaults, `design-unchecked`) and `knowledge.py` (MEMORY
+rebuild/validate, `ensure-gitignore`, `copy-to`), plus the SessionStart
+cache-drift hint. There is **no** state machine, lock, selector-drift,
+or template-lint test anymore — those mechanisms were removed in 1.0.0.
 
 When adding behavior, prefer:
 
@@ -82,10 +87,15 @@ The single hook handler in `spec_hooks.py` (`SessionStart`) MUST:
 
 ## Persisted config
 
-The plugin owns one persisted file:
+The plugin owns two persisted files:
 
 - `~/.config/specode/config.json` — currently holds only `specsRoot`
   (the user's document directory, used verbatim as the specs root).
+- `~/.config/specode/defaults.json` — optional autonomous-mode
+  defaults (`interactive` / `project_root_default` /
+  `execution_mode_default` / `auto_distill` / `specs_root_default`),
+  written via `resolve_root.py write-default`; env vars
+  (`SPECODE_*`) always win over it.
 
 There is no per-session state file and no per-spec config/lock file
 anymore — spec state is inferred from the documents on disk (which
@@ -99,21 +109,22 @@ Public release procedure for plugin maintainers.
 
 ### Version manifests (must agree)
 
-Two manifests carry `version`. They MUST match or the plugin tag
-tooling refuses to operate:
+Two manifests carry `version` for the plugin being released. They MUST
+match or both the CI gate (`scripts/check_marketplace_versions.py`)
+and the plugin tag tooling refuse to operate:
 
-- `plugins/specode/.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
-- `.claude-plugin/marketplace.json` → the **specode** entry's `version`
-  (`plugins[0]`; leave the task-swarm entry untouched)
+- `plugins/<plugin>/.claude-plugin/plugin.json` → `"version": "X.Y.Z"`
+- `.claude-plugin/marketplace.json` → **that plugin's** entry's
+  `version` (leave the other two entries untouched)
 
 ### Picking the next version (semver)
 
-"API surface" for semver purposes (2.0.0+) = the three command names
+"API surface" for semver purposes = the four command names
 (`/specode:spec <需求>` / `/specode:continue <slug>` /
-`/specode:list`), the `SessionStart` hook event, the persisted
-`config.json.specsRoot` field, and the 3 fixed document filenames
-(`requirements.md` / `design.md` / `implementation-log.md`) that users
-or future runtime code observe.
+`/specode:list` / `/specode:distill [<slug>]`), the `SessionStart`
+hook event, the persisted `config.json.specsRoot` field, and the 3
+fixed document filenames (`requirements.md` / `design.md` /
+`implementation-log.md`) that users or future runtime code observe.
 
 | Bump | When | Examples |
 | --- | --- | --- |
@@ -127,31 +138,36 @@ When in doubt, bump higher.
 
 ```sh
 # 1. Bump both manifests to the new version
-$EDITOR plugins/specode/.claude-plugin/plugin.json
+$EDITOR plugins/<plugin>/.claude-plugin/plugin.json
 $EDITOR .claude-plugin/marketplace.json
 
-# 2. Land CHANGELOG.md: rename `## Unreleased` → `## X.Y.Z (YYYY-MM-DD)`,
-#    then add a fresh empty `## Unreleased` above it for the next cycle
-$EDITOR CHANGELOG.md
+# 2. Land the plugin's CHANGELOG: rename `## Unreleased` →
+#    `## X.Y.Z (YYYY-MM-DD)`, then add a fresh empty `## Unreleased`
+#    above it for the next cycle
+$EDITOR plugins/<plugin>/CHANGELOG.md
 
-# 3. Run the test suite one more time
-python3 -m pytest plugins/specode/tests/ -q
+# 3. Run the version-sync gate (the same check CI runs)
+python3 scripts/check_marketplace_versions.py
 
-# 4. Commit + push
-git commit -am "Bump to X.Y.Z: <summary>"
+# 4. Run that plugin's test suite one more time
+python3 -m pytest plugins/<plugin>/tests/ -q
+
+# 5. Commit + push
+git commit -am "Bump <plugin> to X.Y.Z: <summary>"
 git push
 
-# 5. Dry-run the tag first
-claude plugin tag --dry-run plugins/specode
-# (or codebuddy plugin tag --dry-run plugins/specode — pick whichever
+# 6. Dry-run the tag first
+claude plugin tag --dry-run plugins/<plugin>
+# (or codebuddy plugin tag --dry-run plugins/<plugin> — pick whichever
 #  host CLI is installed; both wrap the same git operations)
 
-# 6. Create + push the annotated tag
-claude plugin tag plugins/specode --push
+# 7. Create + push the annotated tag
+claude plugin tag plugins/<plugin> --push
 ```
 
-Tag format: `specode--v{version}` (annotated, message
-`specode {version}`). The plugin is **not** packaged into a tarball
+Tag format: `<plugin>--v{version}` (annotated, message
+`<plugin> {version}`, e.g. `specode--v5.1.2` /
+`task-swarm--v0.10.1`). The plugin is **not** packaged into a tarball
 or registry artifact — host CLIs fetch the marketplace manifest
 directly from GitHub and resolve plugins by git tag. **Pushing the
 tag IS the release.**
@@ -161,9 +177,9 @@ tag IS the release.**
 Only safe if no user has installed it yet:
 
 ```sh
-git tag -d specode--vX.Y.Z
-git push --delete origin specode--vX.Y.Z
-claude plugin tag plugins/specode --push      # re-create
+git tag -d <plugin>--vX.Y.Z
+git push --delete origin <plugin>--vX.Y.Z
+claude plugin tag plugins/<plugin> --push      # re-create
 ```
 
 Once a release is in user hands, prefer a new patch version.
@@ -172,8 +188,9 @@ Once a release is in user hands, prefer a new patch version.
 
 ```sh
 # Adjust the CLI name for whichever host you use (claude / codebuddy).
-claude plugin marketplace update qxbyte
-claude plugin install specode@qxbyte         # or `update`
+# The marketplace name is `pluginhub` (the repo name), NOT `qxbyte`.
+claude plugin marketplace update pluginhub
+claude plugin install specode@pluginhub      # or `update`
 claude plugin list | grep specode             # confirm new version
 ```
 

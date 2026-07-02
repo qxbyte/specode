@@ -348,13 +348,13 @@ URL: https://example.com
 
 ## 项目知识库 MEMORY.md（`10-Work/知识库/<子项目>/`）
 
-`MEMORY.md` 由 `/spec-distill` 负责创建与维护，不由本 skill 写入。完整骨架（新系统头部、两张索引表、知识关联图）和更新规则见 `obsidian-wiki/spec-distill/references/memory-rules.md`（§4 新系统骨架）。
+`MEMORY.md` 是已剥离的 spec-distill（v2.0.0 迁往 specode 的 `/specode:distill`）的遗留产物，不由本 skill 写入、也不再有维护方；保留只读。
 
 wiki-curate 在 lint 阶段若遇到 `10-Work/知识库/` 下的 `MEMORY.md`，跳过"缺用途段"检查（该文件用途由其结构隐含）。
 
 ## 项目汇总（SpecIn → 10-Work/知识库）
 
-项目汇总文档由 `/spec-distill` 负责生成与维护，不由本 skill 创建。完整模板和填充规则见 `obsidian-wiki/spec-distill/references/doc-template.md`。
+项目汇总文档是已剥离的 spec-distill 的遗留产物，不由本 skill 创建、也不再新增；新的 spec 知识沉淀走 specode 插件的 `/specode:distill`（模板见 specode `skills/distill/references/doc-template.md`）。
 
 此类笔记（`10-Work/知识库/<系统>/`）的 frontmatter 含 `tags: [需求汇总, ...]`——wiki-curate lint 阶段的"缺用途段"检查遇到此特征会跳过（不要求"## 用途"，因为有"## 需求背景"承担同等功能）。
 

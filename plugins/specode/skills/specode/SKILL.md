@@ -15,7 +15,7 @@ Activate only in one of these cases:
 - The current user input is `/specode:spec <request>`, `/specode:continue <slug>`, or `/specode:list`.
 - The user explicitly says "use spec mode" / "按 spec 流程做" / equivalent.
 
-Otherwise **do not activate**; handle as normal conversation. There is **no session file** — whether a spec is active is inferred entirely from the **current conversation context** (which slug is running this turn) plus the **documents under that slug's directory in obsidian**. No persistent state file is ever read.
+Otherwise **do not activate**; handle as normal conversation. There is **no session file** — whether a spec is active is inferred entirely from the **current conversation context** (which slug is running this turn) plus the **documents under `<specsRoot>/<slug>/`**. No persistent state file is ever read.
 
 ## Core invariant 🔒
 

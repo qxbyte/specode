@@ -7,6 +7,7 @@ specode 是 spec-driven 轻量工作流插件：requirements → design → exec
 ### Changed / Fixed
 
 - **`list-specs` intake 阶段 spec 可见**（+3 测试）：原先只列含 `requirements.md` 的子目录，intake 阶段（目录已 `mkdir`、requirements 未写）的 spec 在 `/specode:list` 里隐身，与续接表里明确存在的 intake 状态不一致。现在列出「含任一固定产物（requirements / design / implementation-log.md）的子目录 + 空子目录（intake）」；隐藏目录（`.obsidian` 等）与只装无关内容的目录仍排除。
+- **文档陈旧内容清理**：SKILL.md §Activation Guard 残留的 "in obsidian" 措辞改为 `<specsRoot>/<slug>/`（specsRoot 早已泛化，不再绑定 Obsidian）。
 
 ## 5.1.2 (2026-06-30) — distill 打磨（gitignore 非 git 跳过 / copy-to / nav 来源单值）
 

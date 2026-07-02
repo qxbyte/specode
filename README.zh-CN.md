@@ -8,7 +8,7 @@
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-233%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-255%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte 面向 CLI 编码代理（Claude Code / CodeBuddy）的插件 marketplace。
 
@@ -20,9 +20,9 @@
 | --- | --- | --- |
 | **specode** | 5.1.2 | 轻量**规格驱动工作流**——编排外壳，每个阶段委托给 [superpowers](https://github.com/obra/superpowers) 技能（一等公民原生降级），每条规格固定产出 3 份文档。**v5.1.2**：distill 打磨——非 git 且无 .gitignore 时 `ensure-gitignore` 跳过(不建 stray);新增 `copy-to` 一步 dual-landing(复制 + 重建 dest MEMORY),distill Step5 改用;navigation `来源` 单值保留 origin。 **v5.1.1**：试跑验证修复——distill 沉淀前 `design-unchecked` 检查是否执行完(未完告警,防指向未落地代码);写 navigation 前比对 MEMORY 去重;retrieval 强调语义相关而非 tag 命中。 **v5.1.0**：以全新「定位用·非事实用」路线重新引入经验检索注入——新增 stdlib `knowledge.py`(ensure-gitignore/memory-rebuild/memory-validate);distill 改产**原子 case/navigation 知识点**到项目 `<project_root>/knowledge-base/`(cases/+navigation/+MEMORY 索引,不入仓),可选复制到 Obsidian;新增 `references/retrieval.md` 两级 gated 检索接入 requirements/design 阶段(注入指针非事实、默认只读小索引、命中才读≤5点);acceptance 末尾按 `auto_distill` 重新挂回 distill 提示。 **v5.0.1**：`distill` skill 改为 `user-invocable: false`（隐藏裸 `/distill` 与重复的 `/specode:distill`，只留命令一条）；distill 收敛为纯 **md-only**（移除已死的 `--format yml|both` 与 `codemap knowledge write` 路径）；清理全部 `.ai-memory`/codemap 文档残留，并从 requirements 模板删除已废弃的 recall 段。**v5.0.0 BREAKING**：命令去掉冗余 `specode-` 前缀——`/specode:spec` / `/specode:continue` / `/specode:list` / `/specode:distill`（原 `/specode:specode-*`）；`distill` skill 目录与 `name` 同改为 `distill`；编排内核 skill `specode` 改为 `user-invocable: false`，斜杠菜单不再显示裸 `/specode`（仍经命令自动激活）。AI-EDS 时代保留至 v4.0.0 的能力：项目级 `CLAUDE.md` / `AGENT.md` filesystem 扫描注入「## 项目级约束」段（痛点 #14 方案 D）、SessionStart cache 与 marketplace drift 提示（M8）、autonomous-mode defaults（5 schema key + 5 个 `SPECODE_*` env var + `read-defaults` / `write-default` / `reset-default` verb，M1+M9）。**v4.0.0 BREAKING**：拔除记忆注入工程——P3-1 `codemap recall` 注入 / P3-2 rule-acknowledgement post-check / acceptance 后自动 distill 全部砍掉；round 1/2 baseline 实验证明 recall 注入未 net 节省 token。`distill` skill v4 完全重写为**仅手动**Obsidian 整理器——`/specode:distill <slug>` 默认 md-only 写到 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`，不再写 `.ai-memory/`。如需 v3 行为：`git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`。 |
 | **task-swarm** | 0.10.1 | 由 `pipeline.yml` 驱动的**多 agent 编排**：语义任务组 + 跨组并发、fork coder、按组 reviewer + validator 循环。**v0.10.1**：编排内核 skill `task-swarm` 改为 `user-invocable: false`，斜杠菜单不再显示裸 `/task-swarm`（命令 `/task-swarm:swarm` 不变）。AI-EDS 时代保留至 v0.10.0 的能力：frontmatter-first `project_root` + registry-based run 查找（0.7.x）、coder/reviewer/validator `task.md` 中「## 项目级约束（必读）」段 + `_PROJECT_AGENT_DOCS.md` inbox sentinel（0.7.3+0.7.4）、lifecycle group + `init` dedupe（`--on-existing` flag）+ `run.pipeline_end_validator`（0.8.0+0.8.1）、M2 `run-loop` 自动驱动器（0.8.1）、task.md 「## 开发纪律 (范式参考)」段列出 superpowers skill 名作为范式标识（0.9.0–0.9.2）。**v0.10.0 BREAKING**：拔除记忆注入工程——删 `_ingest_lessons.py` + `cmd_resolve` 自动 ingest + `--no-ingest` flag，`cmd_resolve` 不再写 `<project_root>/.ai-memory/knowledge/cases\|pitfalls/*.yml`。如需 v0.9.x 行为：`git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`。详见 [`plugins/task-swarm/`](./plugins/task-swarm)。 |
-| **obsidian-wiki** | 2.0.0 | 维护 Obsidian LLM-Wiki：确定性结构层（Home 树 / README / 分区页）、SpecIn → knowledge-base 蒸馏 + MEMORY、内容养护（lint / ingest / curate）、统一编排器。通用代码 + 按 vault 配 `.wiki/config.json`。详见 [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki)。 |
+| **obsidian-wiki** | 2.0.0 | 维护 Obsidian LLM-Wiki 的三个 skill：确定性结构层（`wiki-struct`：Home 树 / README / 分区页）、内容策展（`wiki-curate`：ingest / curate / lint）、统一编排器（`wiki-orchestrate`）。通用代码 + 家目录注册表 `~/.config/obsidian-wiki/` 按库配置（回退库内 `.wiki/config.json`）。**v2.0.0 BREAKING**：spec-distill 已剥离并迁入 specode 的 `/specode:distill`。详见 [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki)。 |
 
-`## 安装` 覆盖整个 marketplace；其余章节（能力亮点、使用、项目结构）记录的是 **specode**（旗舰插件）。**task-swarm** 的文档见 [`plugins/task-swarm/`](./plugins/task-swarm) 下的源码与 `CHANGELOG`。
+`## 安装` 覆盖整个 marketplace；其余章节（能力亮点、使用、项目结构）记录的是 **specode**（旗舰插件）。**task-swarm** 的文档见 [`plugins/task-swarm/`](./plugins/task-swarm) 下的源码与 `CHANGELOG`；**obsidian-wiki** 的文档见 [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki) 下的 `README.md` / `AGENTS.md`。
 
 ## 能力亮点
 
@@ -36,7 +36,7 @@
 - **并发执行是独立插件。** 选"委托 task-swarm"后，specode 读取 `design.md` 派生 `pipeline.yml`，零 import 衔接独立的 **task-swarm** 插件。
 - **项目级约束沿链路传递。** specode + task-swarm（AI-EDS v0.9 痛点 #14 方案 D，保留至 v4.0.0 / v0.10.0）扫 `<project_root>` 根 / 直接父目录 / 任何被 `@writes` 触达的子目录里的 `CLAUDE.md` / `AGENT.md` / `AGENTS.md` / `CODEBUDDY.md`，把命中的**绝对路径**（不复制内容）同步注入 `requirements.md` 的「## 项目级约束」段 + 每个 coder / reviewer / validator `task.md` 的「## 项目级约束（必读）」段。`_PROJECT_AGENT_DOCS.md` inbox sentinel 强化硬约束。修掉「独立 subagent 进程看不到主 agent 自动加载的指南文件」这个静默漏点。
 - **autonomous mode / CI 友好（opt-in）。** 设 `SPECODE_INTERACTIVE=false` + 相关 `SPECODE_PROJECT_ROOT` / `SPECODE_EXECUTION_MODE` / `SPECODE_AUTO_DISTILL` / `SPECODE_SPECS_ROOT_DEFAULT` env var（或 `resolve_root.py write-default --key X --value Y` 持久化），原本会在 CI / 长跑场景阻塞的每个 `AskUserQuestion` 都会 silently 跳过用 default。schema default 是 `interactive=true`，**默认行为零变化**——只 opt-in 用户走 autonomous 路径。
-- **无记忆注入（v4.0.0 / v0.10.0 BREAKING）。** AI-EDS 时代的记忆注入管线（specode P3-1 `codemap recall` + P3-2 rule-check + acceptance auto-distill，加 task-swarm `cmd_resolve` auto-ingest 写 `.ai-memory/knowledge/*.yml`）在 baseline 实验（3 case）证明 recall 注入未 net 节省 token 后被完全移除。specode 4.0.0 是纯 spec-orchestration 外壳；task-swarm 0.10.0 是纯 multi-agent 执行器；两者都不读写 `.ai-memory/knowledge/`。如需在 Obsidian wiki 中保存按 spec 整理的知识，手动跑 `/specode:distill <slug>` — 默认 md-only 写到 `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`。如需 v3.4.0 / v0.9.2 行为：`git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`。
+- **定位型知识，而非记忆注入。** AI-EDS 时代的记忆注入管线（specode P3-1 `codemap recall` + P3-2 rule-check + acceptance auto-distill，加 task-swarm `cmd_resolve` auto-ingest 写 `.ai-memory/knowledge/*.yml`）在 baseline 实验（3 case）证明 recall 注入未 net 节省 token 后于 v4.0.0 / v0.10.0 完全移除，两插件都不读写 `.ai-memory/knowledge/`。**v5.1.0 以「定位用·非事实用」的全新路线重新引入检索**：手动跑 `/specode:distill <slug>` 把原子 case / navigation 知识点沉淀到项目自己的 `<project_root>/knowledge-base/`（gitignored，可选复制到你指定的 Obsidian 目录）；requirements / design 阶段对其小索引 `MEMORY.md` 跑两级 gated 检索、只注入定位指针——真实代码始终是唯一事实来源，执行 / task-swarm 阶段零注入。如需 v3.4.0 / v0.9.2 行为：`git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`。
 
 ## 安装
 
@@ -78,11 +78,11 @@ claude --plugin-url https://github.com/qxbyte/pluginhub/archive/refs/heads/main.
 
 ```sh
 git clone https://github.com/qxbyte/pluginhub.git
-claude    --plugin-dir ./specode/plugins/specode
-codebuddy --plugin-dir ./specode/plugins/specode
+claude    --plugin-dir ./pluginhub/plugins/specode
+codebuddy --plugin-dir ./pluginhub/plugins/specode
 
 # 想用委托式多 agent 执行就把 task-swarm 也挂上
-claude --plugin-dir ./specode/plugins/specode --plugin-dir ./specode/plugins/task-swarm
+claude --plugin-dir ./pluginhub/plugins/specode --plugin-dir ./pluginhub/plugins/task-swarm
 ```
 
 ### 卸载
@@ -109,7 +109,7 @@ codebuddy plugin marketplace update pluginhub
 
 ## 使用
 
-specode 只有三条命令。
+specode 共有四条命令。
 
 ### 1. 新建规格
 
@@ -117,7 +117,7 @@ specode 只有三条命令。
 /specode:spec <需求>
 ```
 
-先 `cd` 到你的项目目录——specode 以当前终端 cwd 作为项目根（无需额外指定）。**首次运行**时会询问一次文档管理目录并记住它。之后代理依次走完流水线：
+先 `cd` 到你的项目目录——specode 以 cwd 推导项目根默认值（`git rev-parse --show-toplevel`，无 git 则 cwd），并在每条 spec 开始时让你确认一次。**首次运行**时还会询问一次文档管理目录并记住它。之后代理依次走完流水线：
 
 1. **需求阶段** — 澄清 + 写 `requirements.md`（通过 `superpowers:brainstorming`，或原生 `AskUserQuestion` 向导）。
 2. **设计阶段** — 生成可执行计划 `design.md`（通过 `superpowers:writing-plans`，或原生任务分解）。
@@ -143,18 +143,28 @@ specode 只有三条命令。
 
 列出 `<specsRoot>` 下所有规格及其推断阶段，仅供概览，不会自动续接。
 
+### 4. 沉淀知识（流水线外）
+
+```sh
+/specode:distill <slug> [--target-dir <abs-path>]
+```
+
+手动把一个已完成的 spec（加当前 agent 上下文）提炼成**原子 case / navigation 知识点**，落到该 spec 所属项目自己的 `<project_root>/knowledge-base/`（`cases/` + `navigation/` + `MEMORY.md` 索引，gitignored），可选复制一份到 Obsidian 目录。requirements / design 阶段之后会把这些点当作**定位指针（非事实）**检索——真实代码始终是唯一事实来源。绝不自动运行；验收收尾只做提示。
+
 ## 项目结构
 
 ```
-.claude-plugin/marketplace.json   marketplace 清单（specode + task-swarm）
+.claude-plugin/marketplace.json   marketplace 清单（specode + task-swarm + obsidian-wiki）
 plugins/specode/
-  .claude-plugin/plugin.json      插件清单（version 2.0.0）
+  .claude-plugin/plugin.json      插件清单
   hooks/hooks.json                1 个提醒式 SessionStart hook
   commands/spec.md        /specode:spec（新建）
   commands/continue.md    /specode:continue <slug>
   commands/list.md        /specode:list
+  commands/distill.md     /specode:distill <slug>（流水线外沉淀器）
   scripts/
-    resolve_root.py               specsRoot 解析 + 持久化 + list
+    resolve_root.py               specsRoot / project_root / defaults 业务 CLI
+    knowledge.py                  knowledge-base 索引 CLI（MEMORY 重建/校验/copy-to）
     spec_hooks.py                 SessionStart 规范注入
     run.sh / run.cmd              python3 → python → py 解释器探测
   skills/specode/
@@ -163,12 +173,16 @@ plugins/specode/
       selectors.md                执行方式选择器逐字示例
       obsidian.md                 specsRoot 路径解析 + 惯例
       superpowers-wiring.md       阶段 ↔ superpowers 技能映射
+      retrieval.md                两级 gated 经验检索规格
+  skills/distill/
+    SKILL.md                      /specode:distill 行为（case/navigation 知识点）
+    references/                   拆分启发式 + 文档模板
   assets/templates/               requirements.md / design.md /
                                   implementation-log.md 种子模板
-  tests/                          hermetic pytest 测试套件（resolve_root.py）
+  tests/                          hermetic pytest 测试套件（resolve_root.py + knowledge.py）
 ```
 
-配套的 **task-swarm** 插件（`plugins/task-swarm/`）是独立的多代理编排器，specode 可选择性地将执行阶段交由它负责；详见其自身的 README 和 `CLAUDE.md`。
+配套的 **task-swarm** 插件（`plugins/task-swarm/`）是独立的多代理编排器，specode 可选择性地将执行阶段交由它负责；详见其自身的 `skills/task-swarm/SKILL.md` 与 `CHANGELOG.md`。**obsidian-wiki** 插件（`plugins/obsidian-wiki/`）自成一体，文档见其 `README.md` / `AGENTS.md`。
 
 ## 贡献
 

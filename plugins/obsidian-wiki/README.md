@@ -3,16 +3,17 @@
 一套维护 Obsidian **LLM-Wiki** 的插件（Karpathy 方法论：Sources 只读 / Wiki 由 LLM 写 / Schema 规约）。
 **代码通用、零结构硬编码**：每个库的结构配置存在家目录注册表 `~/.config/obsidian-wiki/`（按库 keying；未注册则回退库内 `<vault>/.wiki/config.json`），数据留在 vault。
 
-## 四个 skill
+## 三个 skill
 
 | skill | 职责 | 入口 |
 |---|---|---|
 | **wiki-struct** | 结构层：Home 总览树 / 各级 README / 分区页受管块的确定性再生成 | `/wiki-struct` |
-| **spec-distill** | 知识沉淀：SpecIn 需求逐项目提炼成知识库 + 维护 MEMORY | `/spec-distill` |
 | **wiki-curate** | 内容策展：ingest / curate / lint（写作规范 + 红线 doctrine） | `/wiki-curate` |
-| **wiki-orchestrate** | 统一编排：只读体检 → 计划 → 按「结构→沉淀→策展」调用上面三个 | `/wiki-orchestrate` |
+| **wiki-orchestrate** | 统一编排：只读体检 → 计划 → 按「结构→策展」调用上面两个 | `/wiki-orchestrate` |
 
-`lib/wikicommon.py` 是三脚本共享库；`config.example.json` 是各库结构配置的模板。
+`lib/wikicommon.py` 是各脚本共享库；`config.example.json` 是各库结构配置的模板。
+
+> **spec-distill 已于 v2.0.0 剥离**：spec → 知识沉淀能力迁移到 specode 插件的 `/specode:distill <slug>`（写到各项目自己的 `knowledge-base/`，不再写 vault）。详见本插件 CHANGELOG §2.0.0。
 
 ## 安装
 

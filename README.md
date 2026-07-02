@@ -8,7 +8,7 @@
 [![obsidian-wiki](https://img.shields.io/badge/obsidian--wiki-2.0.0-blue.svg)](./plugins/obsidian-wiki/.claude-plugin/plugin.json)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-8A2BE2)](https://github.com/qxbyte/pluginhub#installation)
 [![CodeBuddy](https://img.shields.io/badge/CodeBuddy-2.97.1%2B-1E90FF)](https://github.com/qxbyte/pluginhub#installation)
-[![Tests](https://img.shields.io/badge/pytest-233%20cases-success)](./plugins/task-swarm/tests)
+[![Tests](https://img.shields.io/badge/pytest-255%20cases-success)](./plugins/task-swarm/tests)
 
 > qxbyte's plugin marketplace for CLI coding agents
 > (Claude Code / CodeBuddy).
@@ -22,12 +22,14 @@ any plugin it hosts. More plugins will land here over time.
 | --- | --- | --- |
 | **specode** | 5.1.2 | A lightweight spec-driven **workflow** — orchestration shell that delegates each phase to [superpowers](https://github.com/obra/superpowers) skills (first-class native fallback) and lands 3 fixed docs per spec. **v5.1.2**: distill polish — `ensure-gitignore` skips in a non-git project with no existing `.gitignore` (no stray file); new `knowledge.py copy-to` verb (one-step dual-landing: copy cases/navigation + rebuild the dest's MEMORY) now used by distill Step 5; navigation `来源` keeps the origin slug (reusing specs listed in body). **v5.1.1**: validation-driven fixes — distill runs `design-unchecked` before sedimenting (warns if the spec isn't fully executed, so knowledge points don't reference unbuilt code); dedup navigation points against MEMORY before writing; retrieval emphasizes semantic relevance over tag-overlap. **v5.1.0**: reintroduces experience retrieval/injection on a new "pointers-not-facts" footing — new stdlib `knowledge.py` (ensure-gitignore/memory-rebuild/memory-validate); distill now emits **atomic case/navigation knowledge-points** to the project's `<project_root>/knowledge-base/` (cases/ + navigation/ + a MEMORY index, gitignored), optionally copied to Obsidian; new `references/retrieval.md` two-tier gated retrieval wired into the requirements/design phases (inject pointers not facts, default reads only the small index, ≤5 docs on hit); acceptance re-hooks the distill prompt via the existing `auto_distill` default. **v5.0.1**: the `distill` skill is now `user-invocable: false` (hides the bare `/distill` + the duplicate `/specode:distill`, leaving one clean command entry); distill is now **md-only** (dropped the dead `--format yml|both` + `codemap knowledge write` path); purged all remaining `.ai-memory`/codemap doc references and removed the obsolete recall section from the requirements template. **v5.0.0 BREAKING**: commands dropped the redundant `specode-` prefix — `/specode:spec` / `/specode:continue` / `/specode:list` / `/specode:distill` (were `/specode:specode-*`); the `distill` skill dir + name were renamed to `distill`; the `specode` orchestration skill is now `user-invocable: false` so the bare `/specode` no longer shows in the slash menu (still auto-activates via its commands). Preserved AI-EDS-era features: project-level `CLAUDE.md` / `AGENT.md` filesystem scan injected as `## 项目级约束` section (痛点 #14 方案 D), SessionStart cache-vs-marketplace drift hint (M8), autonomous-mode defaults — 5 schema keys + 5 `SPECODE_*` env vars + `read-defaults` / `write-default` / `reset-default` verbs (M1+M9). **v4.0.0 BREAKING**: removed memory-injection pipeline — P3-1 `codemap recall` injection / P3-2 rule-acknowledgement post-check / acceptance auto-distill prompt all dropped; round 1/2 baseline showed the recall round-trip did not net save token. `distill` skill v4 rewritten as a **manual-only Obsidian organizer** — `/specode:distill <slug>` writes md (default) to `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`, no `.ai-memory/` writes. To restore v3 behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`. |
 | **task-swarm** | 0.10.1 | Multi-agent **orchestration** driven by a `pipeline.yml`: semantic task groups with cross-group concurrency, fork coders, per-group reviewer + validator loops. **v0.10.1**: the `task-swarm` orchestration skill is now `user-invocable: false` so the bare `/task-swarm` no longer shows in the slash menu (the `/task-swarm:swarm` command is unchanged). Preserved AI-EDS-era features: frontmatter-first `project_root` + registry-based run lookup (0.7.x), `## 项目级约束（必读）` section + `_PROJECT_AGENT_DOCS.md` inbox sentinel (0.7.3 + 0.7.4), lifecycle group with `init` dedupe (`--on-existing {error/resume/abort-old/force-new}` flag) + `run.pipeline_end_validator` (0.8.0 + 0.8.1), M2 `run-loop` auto-driver (0.8.1), task.md `## 开发纪律 (范式参考)` section listing superpowers skill names as paradigm identifiers (0.9.0–0.9.2). **v0.10.0 BREAKING**: removed `_ingest_lessons.py` + `cmd_resolve` auto-ingest + `--no-ingest` flag — `cmd_resolve` no longer writes `<project_root>/.ai-memory/knowledge/cases\|pitfalls/*.yml`. To restore v0.9.x behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`. See [`plugins/task-swarm/`](./plugins/task-swarm). |
-| **obsidian-wiki** | 2.0.0 | Maintain an Obsidian LLM-Wiki: deterministic structure layer (Home tree / READMEs / partition pages), SpecIn → knowledge-base distillation + MEMORY, content curation (lint / ingest / curate), unified orchestrator. Generic + per-vault `.wiki/config.json`. See [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki). |
+| **obsidian-wiki** | 2.0.0 | Maintain an Obsidian LLM-Wiki with three skills: deterministic structure layer (`wiki-struct`: Home tree / READMEs / partition pages), content curation (`wiki-curate`: ingest / curate / lint), unified orchestrator (`wiki-orchestrate`). Generic code + per-vault config in the home-dir registry `~/.config/obsidian-wiki/` (falls back to `<vault>/.wiki/config.json`). **v2.0.0 BREAKING**: the spec-distill skill was extracted into specode's `/specode:distill`. See [`plugins/obsidian-wiki/`](./plugins/obsidian-wiki). |
 
 `## Installation` covers the whole marketplace; the other sections
 (Highlights, Usage, Architecture) document **specode**, the flagship
 plugin. For **task-swarm**, see its sources and `CHANGELOG` under
-[`plugins/task-swarm/`](./plugins/task-swarm).
+[`plugins/task-swarm/`](./plugins/task-swarm); for **obsidian-wiki**,
+see its own `README.md` / `AGENTS.md` under
+[`plugins/obsidian-wiki/`](./plugins/obsidian-wiki).
 
 ## Highlights
 
@@ -80,16 +82,21 @@ plugin. For **task-swarm**, see its sources and `CHANGELOG` under
   sessions skips silently with the configured default. Schema default
   is `interactive=true` so existing installs see **zero behaviour
   change** — only opt-in users get the autonomous path.
-- **No memory injection (v4.0.0 / v0.10.0 BREAKING).** The AI-EDS
+- **Location-oriented knowledge, not memory injection.** The old AI-EDS
   memory-injection pipeline (specode P3-1 `codemap recall` + P3-2
   rule-check + acceptance auto-distill, plus task-swarm `cmd_resolve`
-  auto-ingest writing `.ai-memory/knowledge/*.yml`) was removed after
-  baseline experiments (3 cases) showed the recall round-trip did not
-  net save token. specode 4.0.0 is a pure spec-orchestration shell;
-  task-swarm 0.10.0 is a pure multi-agent executor; neither reads /
-  writes `.ai-memory/knowledge/`. If you want per-spec knowledge in
-  your Obsidian wiki, run `/specode:distill <slug>` manually
-  — defaults to md-only at `/Volumes/External HD/Obsidian/Notes/11-KnowledgeBase/<slug>/`.
+  auto-ingest writing `.ai-memory/knowledge/*.yml`) was removed in
+  v4.0.0 / v0.10.0 after baseline experiments (3 cases) showed the
+  recall round-trip did not net save token; neither plugin reads /
+  writes `.ai-memory/knowledge/`. **v5.1.0 reintroduced retrieval on a
+  deliberately different, pointers-not-facts footing**: run
+  `/specode:distill <slug>` manually to sediment atomic
+  case / navigation knowledge points into the project's own
+  `<project_root>/knowledge-base/` (gitignored; optional copy to an
+  Obsidian dir you specify), and the requirements / design phases run a
+  two-tier gated retrieval over its small `MEMORY.md` index to locate
+  real code faster — real code stays the sole source of truth, and
+  execution / task-swarm receive zero injection.
   To restore v3.4.0 / v0.9.2 behaviour: `git checkout backup/specode-v3.4.0-task-swarm-v0.9.2`.
 
 ## Installation
@@ -137,11 +144,11 @@ claude --plugin-url https://github.com/qxbyte/pluginhub/archive/refs/heads/main.
 
 ```sh
 git clone https://github.com/qxbyte/pluginhub.git
-claude    --plugin-dir ./specode/plugins/specode
-codebuddy --plugin-dir ./specode/plugins/specode
+claude    --plugin-dir ./pluginhub/plugins/specode
+codebuddy --plugin-dir ./pluginhub/plugins/specode
 
 # add task-swarm too if you want delegated multi-agent execution
-claude --plugin-dir ./specode/plugins/specode --plugin-dir ./specode/plugins/task-swarm
+claude --plugin-dir ./pluginhub/plugins/specode --plugin-dir ./pluginhub/plugins/task-swarm
 ```
 
 ### Uninstall
@@ -168,7 +175,7 @@ codebuddy plugin marketplace update pluginhub
 
 ## Usage
 
-specode has exactly three commands.
+specode has exactly four commands.
 
 ### 1. Start a spec
 
@@ -176,10 +183,11 @@ specode has exactly three commands.
 /specode:spec <requirement>
 ```
 
-`cd` to your project directory first — specode uses the current
-terminal cwd as the project root (no prompt). On the **first ever**
-run it asks once for your document management directory and remembers
-it. The agent then walks the pipeline:
+`cd` to your project directory first — specode derives the default
+project root from the cwd (`git rev-parse --show-toplevel`, falling
+back to cwd) and asks you to confirm it once per spec. On the **first
+ever** run it also asks once for your document management directory
+and remembers it. The agent then walks the pipeline:
 
 1. **requirements** — clarify + write `requirements.md` (via
    `superpowers:brainstorming`, or a native `AskUserQuestion` wizard).
@@ -214,18 +222,34 @@ find a slug.
 Lists every spec under `<specsRoot>` with its inferred phase. Overview
 only — it does not resume.
 
+### 4. Distill knowledge (off-pipeline)
+
+```sh
+/specode:distill <slug> [--target-dir <abs-path>]
+```
+
+Manually sediments a finished spec (plus the current agent context)
+into atomic **case / navigation knowledge points** under the project's
+own `<project_root>/knowledge-base/` (cases/ + navigation/ + a
+`MEMORY.md` index, gitignored), optionally copying them to an Obsidian
+directory. The requirements / design phases later retrieve these as
+**location pointers, never facts** — real code stays the sole source
+of truth. Never auto-run; the acceptance phase only offers it.
+
 ## Architecture
 
 ```
-.claude-plugin/marketplace.json   marketplace manifest (specode + task-swarm)
+.claude-plugin/marketplace.json   marketplace manifest (specode + task-swarm + obsidian-wiki)
 plugins/specode/
-  .claude-plugin/plugin.json      plugin manifest (version 2.0.0)
+  .claude-plugin/plugin.json      plugin manifest
   hooks/hooks.json                1 advisory SessionStart hook
   commands/spec.md        /specode:spec (new spec)
   commands/continue.md    /specode:continue <slug>
   commands/list.md        /specode:list
+  commands/distill.md     /specode:distill <slug> (off-pipeline sedimenter)
   scripts/
-    resolve_root.py               specsRoot resolution + persistence + list
+    resolve_root.py               specsRoot / project_root / defaults CLI
+    knowledge.py                  knowledge-base index CLI (MEMORY rebuild/validate/copy-to)
     spec_hooks.py                 SessionStart discipline injection
     run.sh / run.cmd              python3 → python → py interpreter probe
   skills/specode/
@@ -234,14 +258,20 @@ plugins/specode/
       selectors.md                执行方式 selector verbatim examples
       obsidian.md                 specsRoot path resolution + conventions
       superpowers-wiring.md       phase ↔ superpowers skill mapping
+      retrieval.md                two-tier gated experience retrieval spec
+  skills/distill/
+    SKILL.md                      /specode:distill behavior (case/navigation points)
+    references/                   breakdown heuristics + doc templates
   assets/templates/               requirements.md / design.md /
                                   implementation-log.md seed templates
-  tests/                          hermetic pytest suite (resolve_root.py)
+  tests/                          hermetic pytest suite (resolve_root.py + knowledge.py)
 ```
 
 The companion **task-swarm** plugin (`plugins/task-swarm/`) is a
 standalone multi-agent orchestrator that specode optionally hands off
-to; see its own README and `CLAUDE.md`.
+to; see its own `skills/task-swarm/SKILL.md` and `CHANGELOG.md`. The
+**obsidian-wiki** plugin (`plugins/obsidian-wiki/`) is self-contained
+and documented by its own `README.md` / `AGENTS.md`.
 
 ## Contributing
 

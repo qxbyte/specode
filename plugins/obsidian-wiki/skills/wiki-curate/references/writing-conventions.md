@@ -12,7 +12,7 @@
 以下内容**不在本 skill 职责范围内**：
 
 - **index/分区页/Home 由 wiki-struct 受管块维护**：`00-Index/Home.md`、各一级目录 `README.md`、`00-Index/<目录>.md` 分区页的 `<!-- wiki-struct:tree ... -->` 块归 wiki-struct，wiki-curate 不手改。
-- **`10-Work/知识库/` + MEMORY 由 spec-distill 维护**：`10-Work/知识库/<系统>/` 下的知识文档与 `MEMORY.md` 归 `/spec-distill`（见 `obsidian-wiki/spec-distill/`），wiki-curate 不写该子树。
+- **`10-Work/知识库/` + MEMORY 是遗留产物（只读）**：`10-Work/知识库/<系统>/` 下的知识文档与 `MEMORY.md` 是已剥离的 spec-distill（v2.0.0 迁往 specode 的 `/specode:distill`）的历史产物，wiki-curate 不写该子树。
 - **坏链与结构漂移由 wiki-struct 负责**：broken link、分区页完整性检查见 `/wiki-struct check`。
 
 ---
@@ -39,7 +39,7 @@
 07-Ideas/      项目想法、产品需求、技术探索——硬只读 Raw source
 08-Sources/    论文、官方文档、changelog、发布说明、文章的资料卡片
 09-Journal/    按日期记录的观察、实验过程、临时想法和每日整理
-10-Work/       工作资料、需求项目、知识库——硬只读 Raw source（知识库由 spec-distill 管）
+10-Work/       工作资料、需求项目、知识库——硬只读 Raw source（知识库为遗留 spec-distill 产物，只读）
 99-Inbox/      待归档材料、临时摘录、尚未判断归属的内容（可流转）
 Clippings/     网页剪藏暂存（可 ingest 后归档）
 Database/      DB Folders 插件高级元数据视图

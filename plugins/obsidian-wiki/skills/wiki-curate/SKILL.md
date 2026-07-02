@@ -1,6 +1,6 @@
 ---
 name: wiki-curate
-description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpathy LLM Wiki 三层架构，对 vault 执行 Scan → Ingest → Curate → Lint 四阶段内容策展。结构层（Home 树/分区页/地图）见 wiki-struct；SpecIn 知识沉淀（→10-Work/知识库+MEMORY）见 spec-distill。绝不修改只读目录原文（07-Ideas/、10-Work/、SpecIn/），不写 wiki-struct 受管块，不写 spec-distill 产物。触发语：/wiki-curate、scan、ingest、curate、lint、「整理我的笔记库」、「整理 vault」、「整理 LLM Wiki」。
+description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpathy LLM Wiki 三层架构，对 vault 执行 Scan → Ingest → Curate → Lint 四阶段内容策展。结构层（Home 树/分区页/地图）见 wiki-struct；SpecIn 知识沉淀已迁移到 specode 的 /specode:distill（v2.0.0 剥离）。绝不修改只读目录原文（07-Ideas/、10-Work/、SpecIn/），不写 wiki-struct 受管块，不写遗留的 10-Work/知识库/ 产物。触发语：/wiki-curate、scan、ingest、curate、lint、「整理我的笔记库」、「整理 vault」、「整理 LLM Wiki」。
 ---
 
 
@@ -36,7 +36,7 @@ description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpat
 | **Raw sources（可归档）** | `99-Inbox/`、`Clippings/` | 用户放入，LLM ingest 后用户确认可移动 |
 | **参考资料** | `03-Memo/`、`Database/`、`_scaffold/` | 用户维护，LLM 仅引用 |
 | **Wiki** | `00-Index/`（结构归 wiki-struct）、`01-Concepts/`、`02-Models/`、`04-Tools/`、`05-Workflows/`、`06-Prompts/`、`08-Sources/`、`09-Journal/` | **LLM 增量写入与维护** |
-| **Schema** | `obsidian-wiki/{wiki-curate, wiki-struct, spec-distill}/` | 人类制定 |
+| **Schema** | `obsidian-wiki/{wiki-curate, wiki-struct}/` | 人类制定 |
 
 ## 三条硬红线（必须遵守）
 
@@ -46,13 +46,13 @@ description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpat
 |---|---|---|
 | `07-Ideas/` | mv / rm / rename / 重写正文 / 修 frontmatter | 在相关内容笔记正文补 `[[..]]` 双链；在 `01-Concepts/` 提炼通用概念 |
 | `10-Work/` | mv / rm / rename / 复制敏感字段到 Wiki / 批量改 MEMORY.md | 提炼可公开概念到 `01-Concepts/`（按用户启动、逐个确认） |
-| `SpecIn/` | mv / rm / rename / 改写 specode 工作流文档（requirements.md / design.md / tasks.md 等） | 在相关内容笔记补链接；知识沉淀交 `/spec-distill` |
+| `SpecIn/` | mv / rm / rename / 改写 specode 工作流文档（requirements.md / design.md / tasks.md 等） | 在相关内容笔记补链接；知识沉淀交 specode 的 `/specode:distill` |
 
 **敏感子目录更严格**：`10-Work/权限申请/`、`10-Work/系统/`、`99-Inbox/账号/`、`99-Inbox/激活/` 只做路径级索引（"账号/Docker.md - 容器镜像账号"这种粒度），不读取或摘要正文。
 
 **不写 wiki-struct 受管块**：`00-Index/Home.md`、各一级目录 `README.md`、`00-Index/<目录>.md` 分区页的 `<!-- wiki-struct:tree ... -->` 块归 wiki-struct。ingest/curate 只改**内容笔记正文**（用途/标签/双链）和**文件归属目录**；结构由用户跑 `/wiki-struct apply` 自动收。
 
-**不写 spec-distill 产物**：`10-Work/知识库/<系统>/` 下的知识文档与 `MEMORY.md` 归 spec-distill。
+**不写遗留知识库产物**：`10-Work/知识库/<系统>/` 下的知识文档与 `MEMORY.md` 是已剥离的 spec-distill 的历史产物，保留只读；新沉淀走 specode 的 `/specode:distill`（写到各项目 `knowledge-base/`，不再写 vault）。
 
 ## 写作规范
 
@@ -82,7 +82,7 @@ description: 方法论伞 + ingest/curate/lint（内容向）——基于 Karpat
 
 未指定子命令时按 `scan` 处理，并向用户提议下一步。
 
-spec 沉淀已迁移到 `/spec-distill`，见 `obsidian-wiki/spec-distill/`。
+spec 沉淀已迁移到 specode 插件的 `/specode:distill <slug>`（v2.0.0 剥离；写到各项目 `knowledge-base/`，不再写 vault）。
 
 ## 四阶段工作流
 
@@ -167,7 +167,7 @@ spec 沉淀已迁移到 `/spec-distill`，见 `obsidian-wiki/spec-distill/`。
 ```
 
 - **结构产物**（Home 树、分区页、README、地图）归 **wiki-struct**。
-- **知识库产物**（`10-Work/知识库/<系统>/` 知识文档与 MEMORY.md）归 **spec-distill**。
+- **知识库产物**（`10-Work/知识库/<系统>/` 知识文档与 MEMORY.md）为**已剥离的 spec-distill 遗留产物**，保留只读、不再维护。
 
 ## 操作约束
 
@@ -197,8 +197,8 @@ spec 沉淀已迁移到 `/spec-distill`，见 `obsidian-wiki/spec-distill/`。
 
 ## 参考文档（references/）
 
-- `karpathy-llm-wiki.md`：方法论摘要、原文出处、术语与本 vault 的对应；三层映射含 wiki-struct/spec-distill 分工
+- `karpathy-llm-wiki.md`：方法论摘要、原文出处、术语与本 vault 的对应；三层映射含 wiki-struct 分工
 - `writing-conventions.md`：完整写作规范——目录模型、笔记类型、标签、frontmatter、中文化原则；含"index/分区页/Home 由 wiki-struct 受管块维护，curate/ingest 不手改"的职责边界
-- `note-templates.md`：索引/概念/实体/工作流/来源/日记的标准模板；知识文档模板见 `obsidian-wiki/spec-distill/references/`
-- `readonly-dirs-policy.md`：三个只读目录（`07-Ideas/`、`10-Work/`、`SpecIn/`）的详细规则、敏感子目录处理、衍生页写作规则；`10-Work/知识库/` 写入归 spec-distill
+- `note-templates.md`：索引/概念/实体/工作流/来源/日记的标准模板；spec 知识沉淀模板见 specode 插件 `skills/distill/references/doc-template.md`
+- `readonly-dirs-policy.md`：三个只读目录（`07-Ideas/`、`10-Work/`、`SpecIn/`）的详细规则、敏感子目录处理、衍生页写作规则；`10-Work/知识库/` 为遗留产物、只读
 - `lint-checklist.md`：Lint 阶段内容健康检查清单（对齐 `scripts/lint.py` 四项确定性检查 + LLM 判断项）；坏链与结构漂移见 `/wiki-struct check`

@@ -4,6 +4,26 @@ obsidian-wiki 是维护 Obsidian LLM-Wiki 的多 agent 插件（从独立 skills
 
 ## Unreleased
 
+### Fixed — 清理 2.0.0 spec-distill 剥离后的文档残留
+
+2.0.0 删除了 `skills/spec-distill/`（含 `kn_scan.py`），但大量文档没同步：
+`wiki-orchestrate` 仍会尝试运行已不存在的 `kn_scan.py`，README / AGENTS 仍宣传
+「四个 skill」。本次全部对齐到三 skill 现实：
+
+- `README.md` / `AGENTS.md`：「四个 skill」→「三个 skill」，删 spec-distill 行与
+  `kn_scan.py` 调用示例，补「已剥离、迁往 specode `/specode:distill`」迁移说明。
+- `wiki-orchestrate/SKILL.md`：编排序「结构→沉淀→策展」→「结构→策展」；体检从
+  三方改两方（删 `kn_scan.py` 调用与 spec-distill-report）；删「知识沉淀」执行阶段、
+  wiki-log 行模板与 `knowledge.spec_in_candidates` 残留。
+- `wiki-orchestrate/references/sub-skills.md`：删 §2 spec-distill 整节（wiki-curate
+  升为 §2），「三个」→「两个」。
+- `wiki-orchestrate/references/decision-guide.md`：删 kn_scan 信号行、「知识沉淀」
+  默认阶段与「项目落哪个系统」判断点。
+- `wiki-curate/SKILL.md` + references（writing-conventions / note-templates /
+  readonly-dirs-policy / karpathy-llm-wiki）、`wiki-struct/SKILL.md`：spec-distill
+  职责描述改为「遗留产物只读；新沉淀走 specode `/specode:distill`」，并删除指向已
+  删除文件（`spec-distill/references/*.md`）的死链接。
+
 ## 2.0.0 (2026-06-26)
 
 ### BREAKING — spec-distill 已剥离

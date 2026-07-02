@@ -25,7 +25,7 @@ KB 是「**定位用，非事实用**」：
 
 ## Tier-0 Gate：RagKit（可选加速路，先于 Tier-1）
 
-满足以下**全部**条件才走本节；任一不满足 → 跳过本节按下方两级 gated 流程执行，且**不要读取 RagKit 的任何文档/skill**（零额外 token）：
+本节仅在「前置」通过（MEMORY.md 存在）后才被求值，且与「触发面」约束相同：**仅 requirements / design 两 phase 生效，执行 / task-swarm 阶段不触发**。满足以下**全部**条件才走本节；任一不满足 → 跳过本节按下方两级 gated 流程执行，且**不要读取 RagKit 的任何文档/skill**（零额外 token）：
 
 1. 会话可用 skills 列表中存在 `ragkit:query`；
 2. `test -f <project_root>/knowledge-base/.ragkit/chunks.json` 成立（索引已构建）。

@@ -19,7 +19,7 @@ def query_pipeline(kb_root: Path, query: str, top: int = DEFAULT_TOP,
     if not chunks:
         out["vector_channel"] = "no_index"
         return out
-    out["index_stale"] = _index_stale(kb_root)
+    out["index_stale"] = index_stale(kb_root)
     focus = extract_focus(query)
     out["focus"] = focus
     qtokens = tokenize(focus)
@@ -81,7 +81,7 @@ def _vector_rank(kb_root: Path, chunks: list[dict], focus_text: str):
     return "ok", ranked
 
 
-def _index_stale(kb_root: Path) -> bool:
+def index_stale(kb_root: Path) -> bool:
     built_at = store.load_manifest(kb_root).get("built_at", 0)
     for sub in ("cases", "navigation"):
         d = kb_root / sub

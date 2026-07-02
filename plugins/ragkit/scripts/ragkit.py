@@ -115,7 +115,7 @@ def cmd_embed(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    from rag.pipeline import _index_stale
+    from rag.pipeline import index_stale
 
     kb = Path(args.kb).resolve()
     chunks = store.load_chunks(kb)
@@ -133,7 +133,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         "n_chunks": len(chunks),
         "model_id": store.load_model_id(kb),
         "backend_resolved": kind,
-        "index_stale": _index_stale(kb) if chunks else False,
+        "index_stale": index_stale(kb) if chunks else False,
         "drift": {
             "missing_from_index": [i for i in disk_ids if i not in indexed_ids],
             "deleted_on_disk": [i for i in indexed_ids if i not in disk_ids],

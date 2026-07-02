@@ -53,3 +53,15 @@ def test_backend_show_and_reset(kb, run_cli):
     run_cli("backend", "reset", "--kb", str(kb))
     res2 = run_cli("backend", "show", "--kb", str(kb))
     assert "bigmodel.cn" not in res2.stdout
+
+
+def test_embed_lexical_index_survives_encode_failure(kb, run_cli, monkeypatch):
+    (kb / ".ragkit").mkdir(exist_ok=True)
+    (kb / ".ragkit" / "config.json").write_text(
+        '{"cloud": {"provider": "qwen", "base_url": "http://127.0.0.1:1",'
+        ' "model": "m", "key_env": "TEST_RAGKIT_KEY"}}', encoding="utf-8")
+    monkeypatch.setenv("TEST_RAGKIT_KEY", "sk-test")
+    res = run_cli("embed", "--kb", str(kb))
+    assert res.returncode != 0          # encode against 127.0.0.1:1 fails fast
+    assert store.load_chunks(kb)        # lexical index survived
+    assert store.load_vectors(kb) is None

@@ -97,6 +97,7 @@ def cmd_embed(args: argparse.Namespace) -> int:
 
     todo = [c for c in chunks
             if not (can_reuse and old_hashes.get(c.chunk_id) == c.text_hash and c.chunk_id in old_row)]
+    store.save_index(kb, chunks, None, "")   # lexical-first: survive encode failure
     new_vecs = backend.encode(kind, opts, [c.text for c in todo]) if todo else None
     dim = (new_vecs.shape[1] if new_vecs is not None else old_vecs.shape[1])
     vectors = np.zeros((len(chunks), dim), dtype="float32")
